@@ -86,6 +86,9 @@ a.chip{text-decoration:none;color:var(--accent)}
 .authbox input{padding:11px 12px}
 .authbox .go{padding:11px;font-size:15px}
 .mwapps{display:flex;justify-content:center;gap:6px;flex-wrap:wrap}.mwapps span{font-size:11px;color:var(--dim);border:1px solid var(--line);border-radius:99px;padding:3px 9px}
+.kind{display:grid;grid-template-columns:1fr 1fr;gap:6px}.kind button{padding:10px 8px;border-radius:12px;font-size:13px;font-weight:600;color:var(--dim);background:var(--panel)}
+.kind button.on{color:var(--text);border-color:var(--accent);background:linear-gradient(160deg,rgba(61,220,132,.16),rgba(198,240,107,.06))}
+.edubadge{font-size:11px;font-weight:700;color:#07130d;background:linear-gradient(135deg,#5fb3ff,#b18cff);border-radius:99px;padding:2px 8px;margin-left:6px;vertical-align:middle}
 .linkbtn{background:none;border:0;color:var(--dim);font-size:12px;text-decoration:underline;padding:2px;align-self:center}.linkbtn:hover{color:var(--text)}
 .authfoot{display:flex;justify-content:center;gap:8px;align-items:center;font-size:11px;color:var(--dim)}.authfoot svg{width:16px;height:16px}
 #aForm{display:flex;flex-direction:column;gap:10px}
@@ -145,11 +148,10 @@ form#form{padding:12px 16px 16px;border-top:1px solid var(--line)}
   <div class="authtop"><a class="mwbrand" href="/" id="mwHome"><svg viewBox="0 0 100 100" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M50 5l39 22.5v45L50 95 11 72.5v-45z" stroke="#3ddc84" stroke-width="6" fill="#0d1f16"/><path d="M16 38l18 26 16-28 16 28 18-26" stroke="#3ddc84" stroke-width="8"/><path d="M28 68V31l22 24 22-24v37" stroke="#0d1f16" stroke-width="12.5"/><path d="M28 68V31l22 24 22-24v37" stroke="#3ddc84" stroke-width="7.5"/></svg>MagicWinter Studio</a><a class="back" href="/" id="mwBack">← Back to site</a></div>
   <div class="authbox">
     <div class="logo" id="authLogo" style="width:76px;height:76px;margin:0 auto"></div>
-    <div class="eyebrow">MagicWinter account</div>
     <h2><span>Floof</span> AI</h2>
-    <div class="small" id="aSub" style="text-align:center;margin-bottom:4px">Use your <b style="color:var(--text)">Ares Revision</b> username and password — one account for every MagicWinter app.</div>
-    <div class="mwapps" id="aApps"><span>📚 Ares Revision</span><span>🎖️ Frontline</span><span>☁️ Floof AI</span><span>❄ MagicWinter</span></div>
-    <div class="tabs" id="aTabs" style="align-self:center;display:none"><button id="aTabIn" class="on" type="button">Sign in</button><button id="aTabUp" type="button">Create account</button></div>
+    <div class="kind" id="aKind"><button type="button" data-k="mw" class="on"><svg viewBox="0 0 100 100" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:15px;height:15px;vertical-align:-3px"><path d="M50 5l39 22.5v45L50 95 11 72.5v-45z" stroke="#3ddc84" stroke-width="7" fill="#0d1f16"/><path d="M28 68V31l22 24 22-24v37" stroke="#3ddc84" stroke-width="9"/></svg> MagicWinter</button><button type="button" data-k="ares">📚 Ares (Edu)</button></div>
+    <div class="small" id="aSub" style="text-align:center"></div>
+    <div class="tabs" id="aTabs" style="align-self:center"><button id="aTabIn" class="on" type="button">Sign in</button><button id="aTabUp" type="button">Create account</button></div>
     <form id="aForm" autocomplete="on">
       <input type="text" id="aUser" placeholder="Username" autocomplete="username" maxlength="20" required>
       <div class="row"><input type="password" id="aPass" placeholder="Password" autocomplete="current-password" required><button type="button" id="aShow" title="Show password" style="padding:8px 10px">👁</button></div>
@@ -158,7 +160,7 @@ form#form{padding:12px 16px 16px;border-top:1px solid var(--line)}
       <div id="aErr" class="small" style="color:var(--err);min-height:18px"></div>
       <button class="go" id="aGo" type="submit" style="width:100%">Sign in</button>
     </form>
-    <div class="small" id="aAresLinks" style="text-align:center">No account? <a href="https://ares-revision.vercel.app" target="_blank" rel="noopener" style="color:var(--accent)">Create one free on Ares Revision ↗</a></div>
+    <div class="small" id="aAresLinks" style="text-align:center;display:none">No Ares account? <a href="https://ares-revision.vercel.app" target="_blank" rel="noopener" style="color:var(--accent)">Create one on Ares Revision ↗</a></div>
     <button type="button" id="aSwitch" class="linkbtn">No internet? Use a device-only account</button>
     <div class="authfoot"><svg viewBox="0 0 100 100" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M50 5l39 22.5v45L50 95 11 72.5v-45z" stroke="#3ddc84" stroke-width="6" fill="#0d1f16"/><path d="M16 38l18 26 16-28 16 28 18-26" stroke="#3ddc84" stroke-width="8"/><path d="M28 68V31l22 24 22-24v37" stroke="#0d1f16" stroke-width="12.5"/><path d="M28 68V31l22 24 22-24v37" stroke="#3ddc84" stroke-width="7.5"/></svg><span>© MagicWinter Studio</span></div>
   </div>
@@ -171,7 +173,7 @@ form#form{padding:12px 16px 16px;border-top:1px solid var(--line)}
   <select id="model">
     <option value="SmolLM2-360M-Instruct">⚡ Tiny — fastest (~0.4 GB)</option>
     <option value="Llama-3.2-1B-Instruct">🌨 Light — quick (~0.9 GB)</option>
-    <option value="Qwen2.5-1.5B-Instruct" selected>❄ Balanced — recommended (~1.1 GB)</option>
+    <option value="Qwen2.5-1.5B-Instruct" selected>🌟 Balanced — recommended (~1.1 GB)</option>
     <option value="Qwen3-1.7B">🧠 Smart — better reasoning (~1.3 GB)</option>
     <option value="Llama-3.2-3B-Instruct">🏔 Big — smartest, slow (~2.3 GB)</option>
     <option value="Qwen2.5-Coder-1.5B-Instruct">💻 Coder — code specialist (~1.2 GB)</option>
@@ -565,10 +567,33 @@ async function migrateOldData(id) { // first account on this device inherits any
   try { const ks = (await idb.keys()).filter(k => typeof k === "string" && k.startsWith("mwai.")); const vals = await Promise.all(ks.map(k => idb.get(k)));
     await idb.raw(st => ks.forEach((k, i) => { st.put(vals[i], pre + k); st.delete(k); })); } catch {}
 }
-let SESSION_NAME = "", ARES_USER = false;
+let SESSION_NAME = "", ARES_USER = false, ACCOUNT_KIND = "device";
+const ARESSESS = "mw.ares";
+const mwEmail = u => u.toLowerCase() + "@accounts.magicwinter.app";
+async function mwAuth(kind, username, password) { // MagicWinter accounts: Supabase Auth, username-based (no emails sent)
+  const url = kind === "up" ? ARES + "/auth/v1/signup" : ARES + "/auth/v1/token?grant_type=password";
+  const body = kind === "up" ? { email: mwEmail(username), password, data: { username } } : { email: mwEmail(username), password };
+  try {
+    const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", apikey: ARES_KEY }, body: JSON.stringify(body) });
+    let j = {}; try { j = await r.json(); } catch {}
+    const msg = j.msg || j.error_description || j.message || j.error || "";
+    if (r.ok && j.access_token) return { ok: true, user: j.user?.user_metadata?.username || username, token: j.access_token };
+    if (r.ok && kind === "up") return { error: "Account made, but sign-in is waiting on email confirmation — the studio needs to switch that off in Supabase." };
+    if (/already registered|already exists/i.test(msg)) return { error: "That username is taken." };
+    if (/invalid login|invalid_credentials|invalid grant/i.test(msg + (j.error_code || ""))) return { error: "Wrong username or password.", bad: true };
+    if (/signups? not allowed|disabled/i.test(msg)) return { error: "New accounts are switched off right now." };
+    if (/password/i.test(msg)) return { error: msg };
+    if (r.status === 429) return { error: "Too many attempts — wait a minute." };
+    return { error: msg || "Something went wrong (" + r.status + ")." };
+  } catch { return { network: true, error: "Can't reach the account server. Check your internet — or use a device-only account below." }; }
+}
 function getSession() {
-  for (const st of [sessionStorage, localStorage]) { try { const v = JSON.parse(st.getItem(MWSESS)); if (v && v.user && (!v.until || v.until > Date.now())) { SESSION_NAME = v.user; ARES_USER = true; return "ares:" + v.user.toLowerCase(); } } catch {} }
-  for (const st of [sessionStorage, localStorage]) { try { const v = JSON.parse(st.getItem(SESS)); if (v && v.id && !v.id.startsWith("__") && (!v.until || v.until > Date.now()) && accounts()[v.id]) return v.id; } catch {} }
+  const read = k => { for (const st of [sessionStorage, localStorage]) { try { const v = JSON.parse(st.getItem(k)); if (v && v.user && (!v.until || v.until > Date.now())) return v; } catch {} } return null; };
+  let v = read(MWSESS);
+  if (v && v.kind === "mw") { SESSION_NAME = v.user; ACCOUNT_KIND = "mw"; return "mw:" + v.user.toLowerCase(); }
+  v = read(ARESSESS) || (v && !v.kind ? v : null); // (older sign-ins without a kind were Ares)
+  if (v) { SESSION_NAME = v.user; ACCOUNT_KIND = "ares"; ARES_USER = true; return "ares:" + v.user.toLowerCase(); }
+  for (const st of [sessionStorage, localStorage]) { try { const d = JSON.parse(st.getItem(SESS)); if (d && d.id && !d.id.startsWith("__") && (!d.until || d.until > Date.now()) && accounts()[d.id]) { ACCOUNT_KIND = "device"; return d.id; } } catch {} }
   return null;
 }
 // where "Back to site" goes: the MagicWinter site that sent you here (remembered), or "/" when Floof lives at /floof/ on that site
@@ -585,46 +610,62 @@ function snow() { // gentle snowfall, matches the MagicWinter site
 function authGate() {
   return new Promise(resolve => {
     const done = async id => {
-      // data from before accounts existed (or before signing up on the site) goes to the first account that signs in here
+      // data from before accounts existed goes to the first account that signs in here
       const accs = accounts(); if (!accs.__migrated && localStorage.getItem("mwai.chats.v1") !== null) { await migrateOldData(id); accs.__migrated = 1; setAccounts(accs); }
-      NS = "u:" + id + ":"; $("#auth").classList.add("hide"); resolve(ARES_USER ? SESSION_NAME : accounts()[id].name);
+      NS = "u:" + id + ":"; $("#auth").classList.add("hide"); resolve(ACCOUNT_KIND === "device" ? accounts()[id].name : SESSION_NAME);
     };
     const s = getSession(); if (s) return done(s);
     snow();
     $("#authLogo").innerHTML = document.querySelector(".brand .logo").innerHTML;
-    let mode = "ares", fails = 0, lockUntil = 0;
-    const setMode = m => { mode = m; const ar = m === "ares";
-      ["#aSub", "#aApps", "#aAresLinks"].forEach(q => $(q).style.display = ar ? "" : "none"); $("#aTabs").style.display = ar ? "none" : "";
-      $("#aSwitch").textContent = ar ? "No internet? Use a device-only account" : "← Sign in with your MagicWinter (Ares) account"; $("#aTabIn").classList.toggle("on", m === "in"); $("#aTabUp").classList.toggle("on", m === "up"); $("#aPass2").style.display = m === "up" ? "" : "none"; $("#aGo").textContent = m === "up" ? "Create account" : "Sign in"; $("#aPass").autocomplete = m === "up" ? "new-password" : "current-password"; $("#aErr").textContent = ""; };
-    $("#aTabIn").onclick = () => setMode("in"); $("#aTabUp").onclick = () => setMode("up");
-    $("#aSwitch").onclick = () => setMode(mode === "ares" ? (Object.keys(accounts()).filter(k => !k.startsWith("__")).length ? "in" : "up") : "ares");
-    setMode("ares");
+    let kind = "mw", tab = "in", fails = 0, lockUntil = 0;
+    const SUB = { mw: "One account for every <b style='color:var(--text)'>MagicWinter Studio</b> app — Floof AI, Frontline, the studio site and more. Full Floof, all features.",
+      ares: "Sign in with your <b style='color:var(--text)'>Ares Revision</b> account for <b style='color:var(--text)'>📚 Edu mode</b> — Floof becomes your study tutor.",
+      device: "A device-only account works offline, but only on this browser." };
+    const paint = () => {
+      $("#aKind").style.display = kind === "device" ? "none" : "";
+      $("#aKind").querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.k === kind));
+      $("#aSub").innerHTML = SUB[kind];
+      const tabs = kind !== "ares"; $("#aTabs").style.display = tabs ? "" : "none"; if (!tabs) tab = "in";
+      $("#aAresLinks").style.display = kind === "ares" ? "" : "none";
+      $("#aTabIn").classList.toggle("on", tab === "in"); $("#aTabUp").classList.toggle("on", tab === "up");
+      $("#aPass2").style.display = tab === "up" ? "" : "none"; $("#aPass").autocomplete = tab === "up" ? "new-password" : "current-password";
+      $("#aGo").textContent = tab === "up" ? "Create account" : "Sign in";
+      $("#aSwitch").textContent = kind === "device" ? "← Back to online accounts" : "No internet? Use a device-only account";
+      $("#aErr").textContent = "";
+    };
+    $("#aKind").querySelectorAll("button").forEach(b => b.onclick = () => { kind = b.dataset.k; paint(); });
+    $("#aTabIn").onclick = () => { tab = "in"; paint(); }; $("#aTabUp").onclick = () => { tab = "up"; paint(); };
+    $("#aSwitch").onclick = () => { if (kind === "device") kind = "mw"; else { kind = "device"; tab = Object.keys(accounts()).filter(k => !k.startsWith("__")).length ? "in" : "up"; } paint(); };
+    paint();
     $("#aShow").onclick = () => { const t = $("#aPass").type === "password" ? "text" : "password"; $("#aPass").type = $("#aPass2").type = t; };
     $("#aForm").onsubmit = async e => {
       e.preventDefault(); const err = m => $("#aErr").textContent = m;
-      const name = $("#aUser").value.trim(), id = name.toLowerCase(), pw = $("#aPass").value, accs = accounts();
+      const name = $("#aUser").value.trim(), id = name.toLowerCase(), pw = $("#aPass").value, accs = accounts(), keep = $("#aKeep").checked;
       if (Date.now() < lockUntil) return err(`Too many tries — wait ${Math.ceil((lockUntil - Date.now()) / 1000)}s.`);
-      if (mode === "ares") {
-        if (!name || !pw) return err("Enter your username and password.");
-        $("#aGo").disabled = true; $("#aGo").textContent = "Checking…";
-        try {
+      if (!name || !pw) return err("Enter your username and password.");
+      if (kind !== "ares" && !/^[a-zA-Z0-9][a-zA-Z0-9_]{2,19}$/.test(name)) return err("Username: 3–20 letters, numbers or _.");
+      if (tab === "up") { if (pw.length < 6) return err("Password needs at least 6 characters."); if (pw !== $("#aPass2").value) return err("Passwords don't match."); }
+      const store = (k, rec) => (keep ? localStorage : sessionStorage).setItem(k, JSON.stringify({ ...rec, until: keep ? Date.now() + 30 * 864e5 : 0 }));
+      $("#aGo").disabled = true; $("#aGo").textContent = "Checking…";
+      try {
+        if (kind === "mw") {
+          const r = await mwAuth(tab, name, pw);
+          if (!r.ok) { if (r.bad && ++fails >= 5) { lockUntil = Date.now() + 60000; fails = 0; } return err(r.error); }
+          SESSION_NAME = r.user; ACCOUNT_KIND = "mw"; store(MWSESS, { kind: "mw", user: r.user, token: r.token });
+          $("#aPass").value = $("#aPass2").value = ""; return done("mw:" + r.user.toLowerCase());
+        }
+        if (kind === "ares") {
           const r = await aresLogin(id, pw);
           if (r.network) return err("Can't reach the account server. Check your internet — or use a device-only account below.");
           if (r.error === "banned") return err("This account has been banned." + (r.reason ? " Reason: " + r.reason : ""));
           if (r.status === 429) return err(r.error || "Too many attempts — wait a minute.");
           if (!r.ok) { if (++fails >= 5) { lockUntil = Date.now() + 60000; fails = 0; } return err(r.status >= 500 ? "The account server is having trouble — try again soon." : (r.error || "Wrong username or password.")); }
-          const keep = $("#aKeep").checked; SESSION_NAME = r.username || id; ARES_USER = true;
-          (keep ? localStorage : sessionStorage).setItem(MWSESS, JSON.stringify({ user: SESSION_NAME, token: r.token, until: keep ? Date.now() + 30 * 864e5 : 0 }));
+          SESSION_NAME = r.username || id; ACCOUNT_KIND = "ares"; ARES_USER = true; store(ARESSESS, { kind: "ares", user: SESSION_NAME, token: r.token });
           $("#aPass").value = ""; return done("ares:" + SESSION_NAME.toLowerCase());
-        } finally { $("#aGo").disabled = false; $("#aGo").textContent = "Sign in"; }
-      }
-      if (!/^[a-zA-Z0-9][a-zA-Z0-9_]{2,19}$/.test(name)) return err("Username: 3–20 letters, numbers or _.");
-      $("#aGo").disabled = true;
-      try {
-        if (mode === "up") {
+        }
+        // device-only
+        if (tab === "up") {
           if (accs[id]) return err("That username is taken on this device.");
-          if (pw.length < 6) return err("Password needs at least 6 characters.");
-          if (pw !== $("#aPass2").value) return err("Passwords don't match.");
           const first = !Object.keys(accs).filter(k => !k.startsWith("__")).length, salt = toB64(crypto.getRandomValues(new Uint8Array(16)));
           accs[id] = { name, salt, hash: await hashPw(pw, salt), created: Date.now() }; setAccounts(accs);
           if (first) { await migrateOldData(id); accs.__migrated = 1; setAccounts(accs); }
@@ -632,10 +673,9 @@ function authGate() {
           const a = accs[id];
           if (!a || !sameHash(await hashPw(pw, a.salt), a.hash)) { if (++fails >= 5) { lockUntil = Date.now() + 30000; fails = 0; } return err("Wrong username or password."); }
         }
-        const sess = JSON.stringify({ id, until: $("#aKeep").checked ? Date.now() + 30 * 864e5 : 0 });
-        ($("#aKeep").checked ? localStorage : sessionStorage).setItem(SESS, sess);
+        ACCOUNT_KIND = "device"; store(SESS, { id, user: name });
         $("#aPass").value = $("#aPass2").value = ""; done(id);
-      } finally { $("#aGo").disabled = false; }
+      } finally { $("#aGo").disabled = false; $("#aGo").textContent = tab === "up" ? "Create account" : "Sign in"; }
     };
   });
 }
@@ -842,7 +882,8 @@ async function send(override, extra = {}) {
     const guide = `\n\nThe user's latest message is a ${u.type === "statement" ? "statement or request" : u.type + " question"}${keyTerms ? " about: " + keyTerms : ""}. Read the whole message carefully before answering, and answer every part of it.` + (info.type === "summary" ? " It is long: summarise its main points clearly, then offer to go deeper." : "")
       + (extra.full ? " The user attached a screenshot of their screen: find the question(s) in it and solve them step by step, giving a clear final answer for each." : scr ? " It was read from the user's screen with OCR, so it may contain small reading errors. Find the question(s) on it and solve them step by step, giving a clear final answer for each." + (solved.length ? " Exact results already worked out (use these): " + solved.join("; ") : "") : "");
     const tools = "\n\nYou can write JavaScript in ```js code blocks: the user can press Run to execute it in a sandbox (use console.log for output) and send you the result" + (cloudReady() && cloud.fix ? "; plain JS blocks (no DOM) are also run automatically and any error is sent back to you to fix" : "") + ". Write runnable code when the user asks you to code, test or calculate something. HTML in ```html blocks gets a live preview — for games and web pages give one complete self-contained ```html block." + (calc ? `\n\nExact calculator result (use this number, don't recalculate): ${calc.expr} = ${calc.value}` : "") + (hits.some(h => h.title.startsWith("🌐")) ? "\nSome facts come from Wikipedia; mention the page name when you use them." : "");
-    const sys = SYSTEM + memoryPrompt() + guide + tools + facts;
+    const edu = ACCOUNT_KIND === "ares" ? "\n\n📚 EDU MODE (signed in with a school Ares Revision account): act as a patient GCSE study tutor. Keep everything educational and age-appropriate. Explain step by step and check understanding; for homework or exam questions, guide them to the answer and show the method rather than only giving the final answer. Coding is fine when it's for learning. If asked for something unrelated to learning (e.g. just for fun or entertainment), kindly steer back to studying." : "";
+    const sys = SYSTEM + edu + memoryPrompt() + guide + tools + facts;
     let t = 0; const onT = d => { reply += d; const now = performance.now(); if (now - t > 50) { out.innerHTML = md(reply); scroll(); t = now; } };
     if (cloudReady()) {
       const hist = [];
@@ -1530,12 +1571,29 @@ $("#lAuto").checked = autoLearn; $("#lAuto").onchange = e => { autoLearn = e.tar
 $("#kClearWeb").onclick = () => { const n = docs.filter(d => d.web).length; if (!n || !confirm(`Remove ${n} web page${n > 1 ? "s" : ""} from the grid?`)) return; docs = docs.filter(d => !d.web); saveDocs(); rebuild(); };
 
 $("#whoami").textContent = $("#accName").textContent = ACCOUNT;
-$("#signOut").onclick = () => { try { for (const k of [SESS, MWSESS]) { localStorage.removeItem(k); sessionStorage.removeItem(k); } } catch {} location.reload(); };
-if (ARES_USER) { // password is managed on Ares Revision
+$("#signOut").onclick = () => { try { for (const k of [SESS, MWSESS, ARESSESS]) { localStorage.removeItem(k); sessionStorage.removeItem(k); } } catch {} location.reload(); };
+$("#accName").insertAdjacentHTML("afterend", ACCOUNT_KIND === "mw" ? " <span class='small'>· MagicWinter account (works in every studio app)</span>" : ACCOUNT_KIND === "ares" ? " <span class='small'>· Ares account · 📚 Edu mode</span>" : " <span class='small'>· device-only account</span>");
+if (ACCOUNT_KIND === "ares") { // Edu mode: Floof becomes a study tutor
+  document.querySelector(".brand").insertAdjacentHTML("beforeend", '<span class="edubadge">📚 EDU</span>');
+  $("#input").placeholder = "Ask a study question…";
+}
+if (ACCOUNT_KIND === "mw") { // change password on the MagicWinter account server
+  $("#accDel").style.display = "none";
+  $("#pChange").onclick = async () => {
+    const msg = t => $("#pMsg").textContent = t;
+    if ($("#pNew").value.length < 6) return msg("New password needs at least 6 characters.");
+    if ($("#pNew").value !== $("#pNew2").value) return msg("New passwords don't match.");
+    const r = await mwAuth("in", ACCOUNT, $("#pOld").value); if (!r.ok) return msg(r.bad ? "Current password is wrong." : r.error);
+    try { const u = await fetch(ARES + "/auth/v1/user", { method: "PUT", headers: { "Content-Type": "application/json", apikey: ARES_KEY, Authorization: "Bearer " + r.token }, body: JSON.stringify({ password: $("#pNew").value }) });
+      if (!u.ok) { let j = {}; try { j = await u.json(); } catch {} return msg(j.msg || j.message || "Couldn't change it — try again."); } } catch { return msg("Can't reach the account server."); }
+    $("#pOld").value = $("#pNew").value = $("#pNew2").value = ""; msg("✓ Password changed for every MagicWinter app.");
+  };
+}
+if (ACCOUNT_KIND === "ares") { // password is managed on Ares Revision
   ["#pOld", "#pNew", "#pNew2", "#pChange", "#accDel"].forEach(q => $(q).style.display = "none");
   $("#pMsg").innerHTML = `This is your MagicWinter account from <b>Ares Revision</b> — change your password there: <a href="https://ares-revision.vercel.app" target="_blank" rel="noopener" style="color:var(--accent)">Ares Revision ↗</a>`;
 }
-$("#pChange").onclick = async () => {
+if (ACCOUNT_KIND === "device") $("#pChange").onclick = async () => {
   const id = NS.slice(2, -1), accs = accounts(), a = accs[id], msg = t => $("#pMsg").textContent = t;
   if (!sameHash(await hashPw($("#pOld").value, a.salt), a.hash)) return msg("Current password is wrong.");
   if ($("#pNew").value.length < 6) return msg("New password needs at least 6 characters.");
@@ -1543,7 +1601,7 @@ $("#pChange").onclick = async () => {
   a.salt = toB64(crypto.getRandomValues(new Uint8Array(16))); a.hash = await hashPw($("#pNew").value, a.salt); setAccounts(accs);
   $("#pOld").value = $("#pNew").value = $("#pNew2").value = ""; msg("✓ Password changed.");
 };
-$("#accDel").onclick = async () => {
+if (ACCOUNT_KIND === "device") $("#accDel").onclick = async () => {
   const id = NS.slice(2, -1), a = accounts()[id], pw = prompt("Type your password to permanently delete this account and all its chats, notes and memory:");
   if (pw == null) return; if (!sameHash(await hashPw(pw, a.salt), a.hash)) return alert("Wrong password — nothing deleted.");
   for (let i = localStorage.length - 1; i >= 0; i--) { const k = localStorage.key(i); if (k && k.startsWith(NS)) localStorage.removeItem(k); }
