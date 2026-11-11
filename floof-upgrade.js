@@ -23,6 +23,16 @@
 
   const originalListModels = listModels;
   listModels = async function(pv, key) {
+    if (pv === "xai") {
+      const r = await fetch("https://api.x.ai/v1/models", { headers: { authorization: "Bearer " + key } });
+      if (!r.ok) {
+        let msg = "xAI model discovery failed (HTTP " + r.status + ").";
+        try { msg = (await r.json()).error?.message || msg; } catch {}
+        throw new Error(msg);
+      }
+      const j = await r.json();
+      return (j.data || []).map(m => m.id).filter(id => /^grok-/i.test(id) && !/(image|voice|video)/i.test(id)).sort((a, b) => b.localeCompare(a)).map(id => ({ id, name: id }));
+    }
     if (pv !== "openai") return originalListModels(pv, key);
     const r = await fetch("https://api.openai.com/v1/models", { headers: { authorization: "Bearer " + key } });
     if (!r.ok) {
@@ -40,9 +50,10 @@
 
   const originalStreamOnce = streamOnce;
   streamOnce = async function(pv, model, sys, msgs, onText) {
-    if (pv !== "openai") return originalStreamOnce(pv, model, sys, msgs, onText);
+    if (pv !== "openai" && pv !== "xai") return originalStreamOnce(pv, model, sys, msgs, onText);
     abortCtl = new AbortController();
-    const key = cloud.keys.openai || "";
+    const key = cloud.keys[pv] || "";
+    const endpoint = pv === "xai" ? "https://api.x.ai/v1/chat/completions" : "https://api.openai.com/v1/chat/completions";
     const messages = [
       { role: "system", content: sys },
       ...msgs.map(m => ({
@@ -55,7 +66,7 @@
     ];
     let r;
     try {
-      r = await fetch("https://api.openai.com/v1/chat/completions", {
+      r = await fetch(endpoint, {
         method: "POST", signal: abortCtl.signal,
         headers: { "content-type": "application/json", authorization: "Bearer " + key },
         body: JSON.stringify({ model, stream: true, stream_options: { include_usage: true }, max_completion_tokens: 8192, messages })
