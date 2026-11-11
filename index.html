@@ -105,6 +105,8 @@ a.chip{text-decoration:none;color:var(--accent)}
 .modalbox{width:100%;max-width:640px;max-height:calc(100vh - 32px);overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:20px;display:flex;flex-direction:column;gap:10px}
 .privbody h3{margin:14px 0 4px;font-size:15px}.privbody ul{margin:0;padding-left:20px;font-size:14px;color:var(--dim)}.privbody li{margin:4px 0}.privbody b{color:var(--text)}
 #scrVid.mirror{transform:scaleX(-1)}
+.autonote{align-self:center;font-size:12px;color:var(--dim);border:1px dashed var(--line);border-radius:99px;padding:4px 12px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.retry{font-size:12px;padding:4px 12px}
 .thumb{display:block;max-width:240px;border-radius:8px;border:1px solid var(--line);margin-bottom:6px}
 .srcs{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .chip{font-size:11px;padding:2px 8px;border-radius:99px;border:1px solid var(--line);color:var(--dim);background:var(--panel)}
@@ -840,7 +842,12 @@ function srcHTML(src, u) {
     .concat((src || []).map(s => s.url ? `<a class="chip" href="${esc(s.url)}" target="_blank" rel="noopener">${secChip(s.sector)} <b>${s.sector}</b> ${esc(s.title)} ↗</a>` : `<span class="chip">${secChip(s.sector)} <b>${s.sector}</b> ${esc(s.title)}</span>`));
   return chips.length ? `<div class="srcs">${chips.join("")}</div>` : "";
 }
-function bubble(role, text, src, u, img) {
+function bubble(role, text, src, u, img, auto) {
+  if (role === "user" && auto) { // auto-test reports show as a small note, not as something you said
+    const m = document.createElement("div"); m.className = "autonote";
+    m.textContent = "🧪 Auto-test: " + ((text.match(/```\n([^\n]{0,140})/) || [])[1] || "found a problem") + " — asking for a fix";
+    $("#wrap").appendChild(m); return m;
+  }
   const m = document.createElement("div"); m.className = "msg " + (role === "user" ? "user" : "ai");
   m.innerHTML = `<div class="av">${role === "user" ? "🙂" : LOGO}</div><div class="body"></div>`;
   const b = m.querySelector(".body");
@@ -856,7 +863,7 @@ function renderLog() {
     w.querySelectorAll(".sugs button").forEach(b => b.onclick = () => { $("#input").value = b.textContent; send(); });
     return;
   }
-  cur.msgs.forEach(m => bubble(m.role, m.content, m.src, m.u, m.img));
+  cur.msgs.forEach(m => bubble(m.role, m.content, m.src, m.u, m.img, m.auto));
   scroll();
 }
 const scroll = () => { const l = $("#log"); l.scrollTop = l.scrollHeight; };
@@ -906,7 +913,8 @@ async function send(override, extra = {}) {
   if (!cur.msgs.length) $("#wrap").innerHTML = "";
   const words = text.split(/\s+/).length;
   const prevUser = [...cur.msgs].reverse().find(m => m.role === "user");
-  cur.msgs.push({ role: "user", content: text, img: extra.img }); bubble("user", text, null, null, extra.img);
+  if (!extra.depth) stopLoop = false; // a message you typed resets the auto-fix loop
+  cur.msgs.push({ role: "user", content: text, img: extra.img, auto: !!extra.depth || undefined }); bubble("user", text, null, null, extra.img, !!extra.depth);
   if (override == null) { input.value = ""; autosize(); } renderChats();
 
   // memory: answer "what do you know about me", "forget…", "remember that…" directly
@@ -1007,7 +1015,7 @@ async function send(override, extra = {}) {
 
   busy = true; $("#send").disabled = true; $("#stop").hidden = false;
   status(hits.length ? `Understood (${u.type}) · grid found ${hits.length} fact${hits.length > 1 ? "s" : ""} — writing…` : `Understood (${u.type}) — writing…`);
-  let reply = "";
+  let reply = "", finishWhy = "";
   try {
     const facts = hits.length ? "\n\nRelevant facts from the user's knowledge grid. Use them if they help answer, prefer them over your own memory, and don't mention the grid:\n" + hits.map((h, i) => `[${i + 1}] ${h.text}`).join("\n") : "";
     const guide = (cur.msgs.length > 2 ? "\n\nThis is an ongoing conversation: use everything said earlier in this chat (names, details, decisions, code) and answer in that context. Resolve words like 'it', 'that' or 'the code' from the previous messages." : "") + (ty.fixes.length ? `\n\nThe user's message has typos; they most likely meant: "${ty.text}".` : "") + `\n\nThe user's latest message is a ${u.type === "statement" ? "statement or request" : u.type + " question"}${keyTerms ? " about: " + keyTerms : ""}. Read the whole message carefully before answering, and answer every part of it.` + (info.type === "summary" ? " It is long: summarise its main points clearly, then offer to go deeper." : "")
@@ -1025,7 +1033,7 @@ async function send(override, extra = {}) {
         if (hist.length && hist.at(-1).role === m.role) hist.at(-1).content += "\n\n" + m.content; else hist.push({ ...m });
       }
       if (extra.full && hist.length) hist.at(-1).img = extra.full;
-      const us = await cloudStream(sys, hist, onT);
+      const us = await cloudStream(sys, hist, onT); finishWhy = us.finish || "";
       status(`Ready ✓ · ${us.model || curModel()} · ${us.in + us.out} tokens · free`);
     } else {
       const history = fitHistory(cur.msgs, sys.length);
@@ -1046,17 +1054,30 @@ async function send(override, extra = {}) {
     else status("Error: " + (e.message || e), "err");
   } finally {
     out.classList.remove("cursor");
-    reply = reply.replace(/<think>[\s\S]*?(<\/think>|$)/g, "");
+    const raw = reply;
+    reply = reply.replace(/<think>[\s\S]*?<\/think>/g, "");
+    if (!reply.replace(/<[^>]+>/g, "").trim() && /<think>/.test(raw)) reply = raw.replace(/<\/?think>/g, ""); // the brain only "thought": show that rather than nothing
+    else reply = reply.replace(/<think>[\s\S]*$/, "");
     for (const m of reply.matchAll(/<remember>([\s\S]{2,160}?)<\/remember>/gi)) { const f = addMemory(m[1]); if (f) newMem.push(f); }
-    reply = reply.replace(/<remember>[\s\S]*?<\/remember>/gi, "").replace(/<remember>[\s\S]*$/i, "").trim() || "_(no reply)_";
+    reply = reply.replace(/<remember>[\s\S]*?<\/remember>/gi, "").replace(/<remember>[\s\S]*$/i, "").trim();
+    const empty = !reply;
+    if (empty) {
+      const why = /SAFETY|BLOCKED|PROHIBITED|content_filter/i.test(finishWhy) ? "the AI service blocked that reply for safety" : /MAX_TOKENS|length/i.test(finishWhy) ? "the answer ran out of space" : /RECITATION/i.test(finishWhy) ? "it would have copied text it isn't allowed to repeat" : "the brain sent back an empty answer";
+      reply = `⚠️ I didn't get an answer — ${why}. Press **↻ Try again**, or rephrase it.`;
+      status("No answer came back — you can try again.", "err");
+    }
     if (newMem.length) u.mem = [...new Set(newMem)];
     out.innerHTML = md(reply) + srcHTML(src, u);
-    decorateArtifacts(out, true);
-    cur.msgs.push({ role: "assistant", content: reply, src, u }); save();
+    if (empty) { // don't keep failed attempts in the chat history; offer a retry instead
+      const last = cur.msgs.at(-1);
+      out.insertAdjacentHTML("beforeend", `<div class="srcs"><button type="button" class="retry">↻ Try again</button></div>`);
+      out.querySelector(".retry").onclick = () => { if (busy) return; if (cur.msgs.at(-1) === last) cur.msgs.pop(); save(); renderLog(); send(last.content, { ...extra, retry: true }); };
+    } else decorateArtifacts(out, true);
+    if (!empty) cur.msgs.push({ role: "assistant", content: reply, src, u }); save();
     busy = false; $("#send").disabled = false; $("#stop").hidden = true; scroll(); input.focus();
   }
   // self-testing loop: run the code it just wrote (JS, Python or HTML); if it crashes, send the error back to be fixed
-  if ((cloudReady() || engine) && cloud.fix !== false && (extra.depth || 0) < 3) {
+  if ((cloudReady() || engine) && cloud.fix !== false && (extra.depth || 0) < 3 && !stopLoop) {
     const pres = [...out.querySelectorAll("pre[data-lang]")].filter(p => /^(js|javascript|python|py|html)$/.test(p.dataset.lang));
     const pre = pres.at(-1);
     if (pre) {
@@ -1067,9 +1088,11 @@ async function send(override, extra = {}) {
         let res;
         if (lang === "html") res = await testHtml(code);
         else { const box = document.createElement("div"); box.className = "runbox"; pre.after(box); res = await runCode(lang, code, box); }
-        if (res.errors.length) {
-          status(`🛠 Test ${(extra.depth || 0) + 1}/3 found a bug — fixing it…`);
-          await send(`I tested that ${lang === "html" ? "page" : "code"} and it failed with:\n\`\`\`\n${res.errors.slice(0, 8).join("\n").slice(0, 2000)}\n\`\`\`\nFind the cause, fix it, and give the full corrected code.`, { depth: (extra.depth || 0) + 1 });
+        const sig = res.errors[0] || "";
+        if (res.errors.length && extra.lastErr && sig === extra.lastErr) status("🛠 Same bug came back twice — stopped auto-fixing. Tell me what you want changed.", "err");
+        else if (res.errors.length && !stopLoop) {
+          status(`🛠 Test ${(extra.depth || 0) + 1}/3 found a bug — fixing it… (■ Stop to cancel)`);
+          await send(`I tested that ${lang === "html" ? "page" : "code"} and it failed with:\n\`\`\`\n${res.errors.slice(0, 8).join("\n").slice(0, 2000)}\n\`\`\`\nFind the cause, fix it, and give the full corrected code.`, { depth: (extra.depth || 0) + 1, lastErr: sig });
         } else status(lang === "html" ? "🧪 Page loaded and ran 3 seconds with no errors ✓" : "🧪 Code ran without errors ✓");
       }
     }
@@ -1308,6 +1331,8 @@ async function streamOnce(pv, model, sys, msgs, onText) {
     for await (const ev of sse(r)) {
       if (ev.error) throw new Error(ev.error.message);
       for (const p of ev.candidates?.[0]?.content?.parts || []) if (p.text && !p.thought) onText(p.text);
+      if (ev.candidates?.[0]?.finishReason) usage.finish = ev.candidates[0].finishReason;
+      if (ev.promptFeedback?.blockReason) usage.finish = "BLOCKED:" + ev.promptFeedback.blockReason;
       if (ev.usageMetadata) { usage.in = ev.usageMetadata.promptTokenCount || 0; usage.out = ev.usageMetadata.candidatesTokenCount || 0; }
     }
   } else if (pv === "openrouter" || pv === "ollama") {
@@ -1318,6 +1343,7 @@ async function streamOnce(pv, model, sys, msgs, onText) {
     for await (const ev of sse(r)) {
       if (ev.error) { const e = new Error(ev.error.message || "Provider error"); e.quota = /rate|quota|limit/i.test(e.message); throw e; }
       const d = ev.choices?.[0]?.delta?.content; if (d) onText(d);
+      if (ev.choices?.[0]?.finish_reason) usage.finish = ev.choices[0].finish_reason;
       if (ev.usage) { usage.in = ev.usage.prompt_tokens || 0; usage.out = ev.usage.completion_tokens || 0; }
     }
   }
@@ -1329,14 +1355,20 @@ async function cloudStream(sys, msgs, onText) {
   let first = curModel();
   if (pv === "openrouter" && typeof last === "string" && CODEY.test(last) && !cloud.model.openrouter) { const c = modelList.find(m => /coder|devstral|codestral/i.test(m.id)); if (c) first = c.id; } // coding question → coding model
   const order = [first, ...modelList.map(m => m.id).filter(id => id !== first)].slice(0, pv === "ollama" ? 1 : 4);
-  let got = false; const wrap = t => { got = true; onText(t); };
-  for (let i = 0; i < order.length; i++) {
-    try { return await streamOnce(pv, order[i], sys, msgs, wrap); }
-    catch (e) {
-      if (e.name === "AbortError" || got || !e.quota || i === order.length - 1) throw e;
-      status(`☁ ${order[i]} hit its free limit — trying ${order[i + 1]}…`);
+  let got = false, lastUsage = null; const wrap = t => { if (t && t.trim()) got = true; onText(t); };
+  const tries = order.length === 1 ? [order[0], order[0]] : order; // one model? try it twice
+  for (let i = 0; i < tries.length; i++) {
+    try {
+      lastUsage = await streamOnce(pv, tries[i], sys, msgs, wrap);
+      if (got) return lastUsage;
+      if (/SAFETY|BLOCKED|PROHIBITED|content_filter/i.test(lastUsage.finish || "")) return lastUsage; // blocked: don't keep retrying
+      if (i < tries.length - 1) status(`☁ ${tries[i]} sent back an empty answer — trying ${tries[i + 1] === tries[i] ? "again" : tries[i + 1]}…`);
+    } catch (e) {
+      if (e.name === "AbortError" || got || !e.quota || i === tries.length - 1) throw e;
+      status(`☁ ${tries[i]} hit its free limit — trying ${tries[i + 1]}…`);
     }
   }
+  return lastUsage || {};
 }
 // ---------- "make Floof smart": one-tap setup of a real thinking brain ----------
 let nudged = false;
@@ -1601,7 +1633,8 @@ $("#input").addEventListener("input", autosize);
 $("#input").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } });
 $("#form").onsubmit = e => { e.preventDefault(); send(); };
 $("#load").onclick = loadModel;
-$("#stop").onclick = () => { abortCtl?.abort(); engine?.interruptGenerate(); };
+let stopLoop = false;
+$("#stop").onclick = () => { stopLoop = true; abortCtl?.abort(); engine?.interruptGenerate(); };
 function showPv() {
   const pv = cloud.pv; $("#pv").value = pv; $("#cKey").style.display = pv ? "" : "none";
   $("#cKey").placeholder = pv ? PV[pv].ph : ""; if (pv && !cloud.keys[pv] && PV[pv].def) cloud.keys[pv] = PV[pv].def; $("#cKey").value = pv ? cloud.keys[pv] || "" : ""; $("#cKey").type = pv === "ollama" ? "text" : "password"; $("#pvHelp").innerHTML = pv ? PV[pv].help : "Pick Gemini or OpenRouter for a free, much smarter brain.";
