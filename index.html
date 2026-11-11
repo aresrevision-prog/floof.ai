@@ -107,6 +107,13 @@ a.chip{text-decoration:none;color:var(--accent)}
 #scrVid.mirror{transform:scaleX(-1)}
 .autonote{align-self:center;font-size:12px;color:var(--dim);border:1px dashed var(--line);border-radius:99px;padding:4px 12px;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .retry{font-size:12px;padding:4px 12px}
+.swatches{display:flex;gap:8px;flex-wrap:wrap}.swatches button{width:38px;height:38px;border-radius:50%;padding:0;border:2px solid var(--line)}.swatches button.on{border-color:var(--text);box-shadow:0 0 0 2px var(--panel) inset}
+.themepro{display:flex;flex-direction:column;gap:8px;border:1px dashed var(--line);border-radius:12px;padding:10px}.themepro.locked{opacity:.5;pointer-events:none}
+.colrow{display:flex;gap:10px;flex-wrap:wrap}.colrow label{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:11px;color:var(--dim)}.colrow input{width:42px;height:32px;border:1px solid var(--line);border-radius:8px;background:none;padding:2px}
+#plugBar{max-width:780px;margin:0 auto 8px;display:flex;gap:6px;flex-wrap:wrap}#plugBar:empty{display:none}
+#plugBar button{font-size:12px;padding:4px 10px;border-radius:99px}#plugBar button.on{border-color:var(--accent);color:var(--accent);background:var(--panel2)}
+.probadge{background:linear-gradient(135deg,#ffd76a,#ffb35c)!important}
+body.aurora main{background:radial-gradient(900px 500px at 10% -10%,color-mix(in srgb,var(--accent) 22%,transparent),transparent 60%),radial-gradient(800px 500px at 110% 110%,color-mix(in srgb,var(--accent2) 18%,transparent),transparent 60%),var(--bg)}
 .thumb{display:block;max-width:240px;border-radius:8px;border:1px solid var(--line);margin-bottom:6px}
 .srcs{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .chip{font-size:11px;padding:2px 8px;border-radius:99px;border:1px solid var(--line);color:var(--dim);background:var(--panel)}
@@ -222,6 +229,7 @@ form#form{padding:12px 16px 16px;border-top:1px solid var(--line)}
   <section class="view on" id="vChat">
     <div id="log"><div class="wrap" id="wrap"></div></div>
     <form id="form">
+      <div id="plugBar"></div>
       <div id="screenBar"><video id="scrVid" muted playsinline></video><div class="sp" id="scrText">Sharing your screen — open the question, then press Solve.</div><button type="button" id="camFlip" hidden title="Switch camera">🔄</button><button type="button" class="go" id="scrSnap">📸 Solve</button><button type="button" id="scrStop">⏹ Stop</button></div>
       <div class="inrow">
         <button type="button" id="webBtn" class="tog" title="Web search (Wikipedia) — lets Floof AI look things up">🌐</button>
@@ -258,6 +266,41 @@ form#form{padding:12px 16px 16px;border-top:1px solid var(--line)}
         <div class="row"><input type="text" id="mAdd" placeholder="Add something yourself, e.g. I'm doing triple science"><button class="go" id="mAddBtn">Add</button></div>
         <div id="mList" style="display:flex;flex-direction:column;gap:6px"></div>
         <div class="row"><button id="mClear" style="font-size:12px">Forget everything</button></div>
+      </div>
+      <div class="card" id="proCard">
+        <div class="row" style="justify-content:space-between"><h3>⭐ Floof Pro</h3><span id="proState" class="small"></span></div>
+        <div class="small">Support MagicWinter Studio and unlock extras — <b style="color:var(--text)">£5</b>. Pro is linked to your MagicWinter account.</div>
+        <ul class="small" style="margin:0;padding-left:18px">
+          <li>🧩 Make your own plugins, and import/export them</li>
+          <li>🎨 Full theme editor: any colours, fonts and an aurora background</li>
+          <li>💬 Keep 500 chats instead of 50</li>
+          <li>⭐ Pro badge, and new features first</li>
+        </ul>
+        <div class="small" style="font-size:11px">Everything else in Floof stays free for everyone. Floof has no shared server, so Pro doesn't make answers faster — the free brains are the same for all.</div>
+        <div class="row" id="proBuyRow"><a id="proBuy" class="go" target="_blank" rel="noopener" style="padding:8px 14px;border-radius:10px;text-decoration:none;font-weight:700">Get Pro — £5</a></div>
+        <div class="row"><input type="text" id="proCode" placeholder="Have a code? FLOOF-XXXX-XXXX" autocomplete="off"><button id="proRedeem">Redeem</button></div>
+        <div class="small" id="proMsg"></div>
+      </div>
+      <div class="card">
+        <h3>🎨 Appearance</h3>
+        <div class="swatches" id="themeSw"></div>
+        <div id="themePro" class="themepro">
+          <div class="small">⭐ Pro theme editor</div>
+          <div class="colrow"><label>Accent<input type="color" id="tcA"></label><label>Accent 2<input type="color" id="tcB"></label><label>Background<input type="color" id="tcBg"></label><label>Panels<input type="color" id="tcP"></label><label>Text<input type="color" id="tcT"></label></div>
+          <div class="row"><select id="tcFont"><option value="Manrope">Manrope (default)</option><option value="system-ui">System</option><option value="Syne">Syne</option><option value="ui-monospace">Monospace</option><option value="Georgia">Serif</option></select><label class="row small" style="cursor:pointer;white-space:nowrap"><input type="checkbox" id="tcAur"> Aurora background</label></div>
+        </div>
+        <div class="row"><button id="tcReset" style="font-size:12px">Reset to default</button></div>
+      </div>
+      <div class="card">
+        <h3>🧩 Plugins</h3>
+        <div class="small">Plugins add skills to Floof. Turn them on and they appear above the message box — tap one to use it for your next message. (They need a brain: ☁ Gemini works best.)</div>
+        <div id="plugList" style="display:flex;flex-direction:column;gap:6px"></div>
+        <div id="plugMake" class="themepro">
+          <div class="small">⭐ Pro: make your own plugin</div>
+          <div class="row"><input type="text" id="plEmoji" placeholder="🤖" maxlength="4" style="width:64px"><input type="text" id="plName" placeholder="Plugin name" maxlength="30"></div>
+          <textarea class="box" id="plPrompt" rows="3" placeholder="What should Floof do when this plugin is on? e.g. Answer as a Roman legionary and add a fun fact." maxlength="1500"></textarea>
+          <div class="row"><button class="go" id="plAdd">Add plugin</button><label class="small" style="cursor:pointer;border:1px solid var(--line);border-radius:10px;padding:8px 10px">📥 Import<input type="file" id="plImport" accept=".json,application/json" hidden></label><button id="plExport" style="font-size:12px">📤 Export mine</button></div>
+        </div>
       </div>
       <div class="card">
         <h3>👤 MagicWinter account</h3>
@@ -826,7 +869,7 @@ function md(src) {
 }
 
 // ---------- chat ----------
-function save() { ls.set(KEY, chats.slice(0, 50)); }
+function save() { ls.set(KEY, chats.slice(0, window.__floofPro ? 500 : 50)); }
 function renderChats() {
   const box = $("#chats"); box.innerHTML = "";
   chats.forEach(c => {
@@ -916,6 +959,7 @@ async function send(override, extra = {}) {
   const words = text.split(/\s+/).length;
   const prevUser = [...cur.msgs].reverse().find(m => m.role === "user");
   if (!extra.depth) stopLoop = false; // a message you typed resets the auto-fix loop
+  if (!extra.depth && !extra.plugin && activePlugin) { extra = { ...extra, plugin: activePlugin }; activePlugin = null; renderPlugBar(); }
   cur.msgs.push({ role: "user", content: text, img: extra.img, auto: !!extra.depth || undefined }); bubble("user", text, null, null, extra.img, !!extra.depth);
   if (override == null) { input.value = ""; autosize(); } renderChats();
 
@@ -1033,7 +1077,8 @@ async function send(override, extra = {}) {
 4. Before sending, mentally run it: check every variable is defined, every function is called with the right arguments, brackets balance, and there are no infinite loops.
 5. After the code: how to use it (1–3 lines) and 2–3 ideas to extend it.
 When fixing: find the root cause, explain it in one line, and return the FULL corrected program.` : "";
-    const sys = SYSTEM + edu + memoryPrompt() + guide + tools + coder + (coderOn ? "" : facts);
+    const plug = extra.plugin ? `\n\n🧩 PLUGIN "${extra.plugin.name}" is on for this message — follow it: ${extra.plugin.prompt}` : "";
+    const sys = SYSTEM + edu + memoryPrompt() + guide + tools + coder + plug + (coderOn ? "" : facts);
     let t = 0; const onT = d => { reply += d; const now = performance.now(); if (now - t > 50) { out.innerHTML = md(reply); scroll(); t = now; } };
     if (cloudReady()) {
       const hist = [];
@@ -2062,6 +2107,103 @@ $("#coderBtn").onclick = () => {
   status("💻 Coder mode on — planning, full programs, auto-testing & fixing; " + tip + ".", cloudReady() || engine ? "" : "err");
 };
 setCoder(coderOn);
+
+// ---------- ⭐ Floof Pro (MagicWinter accounts; codes are issued by the studio after payment) ----------
+const PRO_BUY_URL = ""; // paste your payment link here (e.g. a Stripe Payment Link) — until then the button explains how to get a code
+let proUntil = ls.get("mwai.pro", null);
+const isPro = () => ACCOUNT_KIND === "mw" && proUntil && new Date(proUntil) > new Date();
+const mwToken = () => { for (const st of [localStorage, sessionStorage]) { try { const v = JSON.parse(st.getItem(MWSESS)); if (v && v.kind === "mw") return v.token; } catch {} } return null; };
+function renderPro() {
+  const on = isPro(); window.__floofPro = on;
+  $("#proState").innerHTML = ACCOUNT_KIND !== "mw" ? "Needs a MagicWinter account" : on ? `<b style="color:#ffd76a">⭐ Active</b> until ${new Date(proUntil).toLocaleDateString()}` : "Free plan";
+  $("#proBuy").href = PRO_BUY_URL || "#"; $("#proBuy").textContent = on ? "Extend Pro — £5" : "Get Pro — £5";
+  $("#proRedeem").disabled = $("#proCode").disabled = ACCOUNT_KIND !== "mw";
+  document.querySelector(".brand .probadge")?.remove();
+  if (on) document.querySelector(".brand").insertAdjacentHTML("beforeend", '<span class="edubadge probadge">⭐ PRO</span>');
+  $("#themePro").classList.toggle("locked", !on); $("#plugMake").classList.toggle("locked", !on);
+  renderPlugins();
+}
+$("#proBuy").onclick = e => { if (!PRO_BUY_URL) { e.preventDefault(); $("#proMsg").innerHTML = "To get Pro, pay MagicWinter Studio £5 and you'll be sent a code — then enter it below." + (ACCOUNT_KIND !== "mw" ? " <b>You'll need a MagicWinter account first.</b>" : ""); } };
+$("#proRedeem").onclick = async () => {
+  const code = $("#proCode").value.trim(), msg = t => $("#proMsg").textContent = t, tok = mwToken();
+  if (!code) return msg("Enter your code."); if (!tok) return msg("Sign in with your MagicWinter account again first.");
+  let j; try { j = await mwRpc("mw_redeem", { p_token: tok, p_code: code }); } catch { return msg("Can't reach the account server."); }
+  if (!j.ok) return msg(/switched on|function/i.test(j.error || "") ? "Pro needs the latest magicwinter-accounts.sql run in Supabase." : j.error);
+  proUntil = j.pro_until; ls.set("mwai.pro", proUntil); $("#proCode").value = ""; msg("⭐ Pro unlocked — thank you!"); renderPro(); applyTheme();
+};
+async function refreshPro() {
+  if (ACCOUNT_KIND !== "mw" || !mwToken()) { renderPro(); return; }
+  try { const j = await mwRpc("mw_status", { p_token: mwToken() }); if (j.ok) { proUntil = j.pro_until; ls.set("mwai.pro", proUntil); } } catch {}
+  renderPro(); applyTheme();
+}
+
+// ---------- 🎨 Appearance (presets for everyone, full editor for Pro) ----------
+const PRESETS = [
+  { name: "Mint", a: "#3ddc84", b: "#c6f06b" }, { name: "Ocean", a: "#5fb3ff", b: "#8ef0ff" }, { name: "Grape", a: "#b18cff", b: "#ff9fd6" },
+  { name: "Sunset", a: "#ffb35c", b: "#ff7a8a" }, { name: "Rose", a: "#ff7ab6", b: "#ffc2e0" }, { name: "Snow", a: "#9fe7ff", b: "#e9f5ec" }];
+const DEF = { a: "#3ddc84", b: "#c6f06b", bg: "#07130d", p: "#0d1f16", t: "#e9f5ec", font: "Manrope", aur: false };
+let theme = { ...DEF, ...ls.get("mwai.theme", {}) };
+const mix = (h, w, k) => { const n = x => parseInt(x, 16), c = [1, 3, 5].map(i => Math.round(n(h.slice(i, i + 2)) * (1 - k) + n(w.slice(i, i + 2)) * k)); return "#" + c.map(v => v.toString(16).padStart(2, "0")).join(""); };
+function applyTheme() {
+  const r = document.documentElement.style, pro = isPro();
+  r.setProperty("--accent", theme.a); r.setProperty("--accent2", theme.b);
+  const bg = pro ? theme.bg : DEF.bg, p = pro ? theme.p : DEF.p, t = pro ? theme.t : DEF.t;
+  r.setProperty("--bg", bg); r.setProperty("--panel", p); r.setProperty("--panel2", mix(p, t, .06)); r.setProperty("--line", mix(p, theme.a, .22)); r.setProperty("--text", t); r.setProperty("--dim", mix(t, bg, .4));
+  document.body.style.fontFamily = `"${pro ? theme.font : "Manrope"}", system-ui, sans-serif`;
+  document.body.classList.toggle("aurora", pro && theme.aur);
+  $("#themeSw").innerHTML = PRESETS.map((x, i) => `<button type="button" title="${x.name}" data-i="${i}" class="${x.a === theme.a && x.b === theme.b ? "on" : ""}" style="background:linear-gradient(135deg,${x.a},${x.b})"></button>`).join("");
+  $("#themeSw").querySelectorAll("button").forEach(b => b.onclick = () => { const x = PRESETS[+b.dataset.i]; theme.a = x.a; theme.b = x.b; saveTheme(); });
+  $("#tcA").value = theme.a; $("#tcB").value = theme.b; $("#tcBg").value = theme.bg; $("#tcP").value = theme.p; $("#tcT").value = theme.t; $("#tcFont").value = theme.font; $("#tcAur").checked = theme.aur;
+}
+function saveTheme() { ls.set("mwai.theme", theme); applyTheme(); try { drawGrid(); } catch {} }
+[["#tcA", "a"], ["#tcB", "b"], ["#tcBg", "bg"], ["#tcP", "p"], ["#tcT", "t"], ["#tcFont", "font"]].forEach(([id, k]) => $(id).addEventListener("input", e => { if (!isPro()) return; theme[k] = e.target.value; saveTheme(); }));
+$("#tcAur").onchange = e => { if (!isPro()) return; theme.aur = e.target.checked; saveTheme(); };
+$("#tcReset").onclick = () => { theme = { ...DEF }; saveTheme(); };
+
+// ---------- 🧩 Plugins (built-in for everyone, custom ones for Pro) ----------
+const BUILTIN_PLUGINS = [
+  { id: "quiz", emoji: "📝", name: "Quiz Me", prompt: "Turn the topic into a 5-question multiple-choice quiz. Ask ONE question at a time with options A–D, wait for the user's answer, mark it with a short explanation, then ask the next. Give a score at the end." },
+  { id: "cards", emoji: "🃏", name: "Flashcards", prompt: "Make 10 concise revision flashcards on the topic as a markdown table with columns Front | Back. Keep each side under 20 words." },
+  { id: "simple", emoji: "🧒", name: "Explain Simply", prompt: "Explain it as if to a 10-year-old, using one everyday analogy, in under 120 words." },
+  { id: "essay", emoji: "✍️", name: "Essay Planner", prompt: "Write a GCSE-style essay plan: a thesis, three PEEL paragraphs (point, evidence/quotation, explanation, link) and a conclusion. Bullet points only." },
+  { id: "bugs", emoji: "🐞", name: "Bug Hunter", prompt: "Review the user's code: list each bug with its root cause in one line, then give the full corrected code in one block." },
+  { id: "translate", emoji: "🌍", name: "Translate", prompt: "Translate the message into the language the user names (French if none), then give a short pronunciation guide and one useful related phrase." }];
+let plugState = ls.get("mwai.plugins", { on: ["quiz", "simple"], custom: [] }), activePlugin = null;
+const allPlugins = () => BUILTIN_PLUGINS.concat(isPro() ? plugState.custom : []);
+function savePlugins() { ls.set("mwai.plugins", plugState); renderPlugins(); }
+function renderPlugBar() {
+  const on = allPlugins().filter(p => plugState.on.includes(p.id));
+  $("#plugBar").innerHTML = on.map(p => `<button type="button" data-id="${esc(p.id)}" class="${activePlugin && activePlugin.id === p.id ? "on" : ""}" title="${esc(p.prompt.slice(0, 120))}">${esc(p.emoji || "🧩")} ${esc(p.name)}</button>`).join("");
+  $("#plugBar").querySelectorAll("button").forEach(b => b.onclick = () => {
+    const p = allPlugins().find(x => x.id === b.dataset.id); activePlugin = activePlugin && activePlugin.id === p.id ? null : p; renderPlugBar();
+    status(activePlugin ? `🧩 ${p.name} is on for your next message.` + (cloudReady() || engine ? "" : " (Plugins need a brain — tap ⚡ Free Gemini.)") : "🧩 Plugin off.");
+    $("#input").focus();
+  });
+}
+function renderPlugins() {
+  const list = allPlugins();
+  $("#plugList").innerHTML = list.map(p => `<div class="doc"><span>${esc(p.emoji || "🧩")} <b>${esc(p.name)}</b> <span class="small">· ${esc(p.prompt.slice(0, 70))}…</span></span>
+    <label class="small" style="cursor:pointer"><input type="checkbox" data-on="${esc(p.id)}" ${plugState.on.includes(p.id) ? "checked" : ""}> On</label>${p.id.startsWith("c_") ? `<button class="x" data-del="${esc(p.id)}" title="Delete">✕</button>` : ""}</div>`).join("")
+    + (!isPro() && plugState.custom.length ? `<div class="small">${plugState.custom.length} custom plugin(s) saved — they come back with ⭐ Pro.</div>` : "");
+  $("#plugList").querySelectorAll("[data-on]").forEach(c => c.onchange = () => { const id = c.dataset.on; plugState.on = c.checked ? [...new Set([...plugState.on, id])] : plugState.on.filter(x => x !== id); savePlugins(); });
+  $("#plugList").querySelectorAll("[data-del]").forEach(b => b.onclick = () => { plugState.custom = plugState.custom.filter(p => p.id !== b.dataset.del); plugState.on = plugState.on.filter(x => x !== b.dataset.del); savePlugins(); });
+  renderPlugBar();
+}
+const cleanPlugin = p => ({ id: "c_" + (Date.now().toString(36) + Math.random().toString(36).slice(2, 6)), emoji: String(p.emoji || "🧩").slice(0, 4), name: String(p.name || "Plugin").slice(0, 30), prompt: String(p.prompt || "").slice(0, 1500) });
+$("#plAdd").onclick = () => {
+  if (!isPro()) return; const name = $("#plName").value.trim(), prompt = $("#plPrompt").value.trim();
+  if (!name || prompt.length < 10) return status("Give your plugin a name and some instructions.", "err");
+  const p = cleanPlugin({ emoji: $("#plEmoji").value.trim(), name, prompt }); plugState.custom.push(p); plugState.on.push(p.id); savePlugins();
+  $("#plName").value = $("#plPrompt").value = $("#plEmoji").value = ""; status(`🧩 Added "${p.name}".`);
+};
+$("#plImport").onchange = async e => { // plugins are just text instructions — no code runs, so importing is safe
+  if (!isPro()) return; const f = e.target.files[0]; e.target.value = ""; if (!f) return;
+  try { let j = JSON.parse(await f.text()); j = Array.isArray(j) ? j : j.plugins || [j]; const add = j.filter(p => p && p.name && p.prompt).slice(0, 50).map(cleanPlugin);
+    plugState.custom.push(...add); plugState.on.push(...add.map(p => p.id)); savePlugins(); status(`🧩 Imported ${add.length} plugin(s).`); }
+  catch { status("That file isn't a Floof plugin (.json).", "err"); }
+};
+$("#plExport").onclick = () => { if (!isPro() || !plugState.custom.length) return status("No custom plugins to export yet."); downloadCode(JSON.stringify({ floof: 1, plugins: plugState.custom.map(({ emoji, name, prompt }) => ({ emoji, name, prompt })) }, null, 2), "json"); };
+renderPro(); applyTheme(); refreshPro();
 if (ACCOUNT_KIND === "ares") { // Edu mode: Floof becomes a study tutor
   document.querySelector(".brand").insertAdjacentHTML("beforeend", '<span class="edubadge">📚 EDU</span>');
   $("#input").placeholder = "Ask a study question…";

@@ -95,3 +95,60 @@ begin
   return json_build_object('ok', true);
 end $$;
 grant execute on function public.mw_delete_account(text, text) to anon, authenticated;
+
+-- ===================== Floof Pro =====================
+alter table public.mw_accounts add column if not exists pro_until timestamptz;
+create table if not exists public.mw_codes (
+  code        text primary key,
+  months      int not null default 1,
+  created_at  timestamptz not null default now(),
+  used_by     text references public.mw_accounts(username) on delete set null,
+  used_at     timestamptz
+);
+alter table public.mw_codes enable row level security;
+revoke all on public.mw_codes from anon, authenticated;
+
+-- account status for a signed-in token (username + Pro end date)
+create or replace function public.mw_status(p_token text) returns json
+language sql security definer set search_path = public, extensions as $$
+  select coalesce((select json_build_object('ok', true, 'username', a.display_name, 'pro_until', a.pro_until)
+                   from mw_sessions s join mw_accounts a using (username)
+                   where s.token = p_token and s.expires_at > now()), json_build_object('error', 'signed out'));
+$$;
+
+-- redeem a Pro code (codes are made by the studio after someone pays)
+create or replace function public.mw_redeem(p_token text, p_code text) returns json
+language plpgsql security definer set search_path = public, extensions as $$
+declare u text; c mw_codes; newend timestamptz;
+begin
+  select username into u from mw_sessions where token = p_token and expires_at > now();
+  if u is null then return json_build_object('error', 'Please sign in again.'); end if;
+  select * into c from mw_codes where code = upper(trim(coalesce(p_code, ''))) for update;
+  if not found then perform pg_sleep(0.5); return json_build_object('error', 'That code isn''t valid.'); end if;
+  if c.used_by is not null then return json_build_object('error', 'That code has already been used.'); end if;
+  update mw_accounts set pro_until = greatest(coalesce(pro_until, now()), now()) + make_interval(months => c.months)
+    where username = u returning pro_until into newend;
+  update mw_codes set used_by = u, used_at = now() where code = c.code;
+  return json_build_object('ok', true, 'pro_until', newend);
+end $$;
+
+-- STUDIO ONLY (run in the SQL editor, never callable from the website):
+--   select * from public.mw_make_codes(5, 1);   -- 5 codes, 1 month each
+--   select public.mw_grant_pro('username', 1);  -- give someone 1 month directly
+create or replace function public.mw_make_codes(p_count int, p_months int default 1) returns setof text
+language plpgsql security definer set search_path = public, extensions as $$
+declare i int; c text;
+begin
+  for i in 1..least(greatest(p_count, 1), 200) loop
+    c := 'FLOOF-' || upper(substr(encode(extensions.gen_random_bytes(8), 'hex'), 1, 4)) || '-' || upper(substr(encode(extensions.gen_random_bytes(8), 'hex'), 1, 4));
+    insert into mw_codes(code, months) values (c, greatest(p_months, 1));
+    return next c;
+  end loop;
+end $$;
+create or replace function public.mw_grant_pro(p_username text, p_months int default 1) returns timestamptz
+language sql security definer set search_path = public as $$
+  update mw_accounts set pro_until = greatest(coalesce(pro_until, now()), now()) + make_interval(months => greatest(p_months, 1))
+  where username = lower(trim(p_username)) returning pro_until;
+$$;
+revoke all on function public.mw_make_codes(int, int), public.mw_grant_pro(text, int) from public, anon, authenticated;
+grant execute on function public.mw_status(text), public.mw_redeem(text, text) to anon, authenticated;
