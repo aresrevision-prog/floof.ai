@@ -101,6 +101,10 @@ a.chip{text-decoration:none;color:var(--accent)}
 .smart{margin:18px auto 0;max-width:460px;text-align:left;background:linear-gradient(160deg,rgba(61,220,132,.12),rgba(198,240,107,.05));border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px;color:var(--text)}
 .smart.sm{margin:10px 0 0;max-width:none}.smartrow{display:flex;gap:8px;flex-wrap:wrap}.smartrow button{flex:1;min-width:160px;display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left}
 .smartkey{display:flex;flex-direction:column;gap:8px}.smartkey[hidden]{display:none}
+.modal{position:fixed;inset:0;z-index:70;background:rgba(3,10,6,.8);backdrop-filter:blur(6px);display:none;place-items:center;padding:16px}.modal.on{display:grid}
+.modalbox{width:100%;max-width:640px;max-height:calc(100vh - 32px);overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:20px;display:flex;flex-direction:column;gap:10px}
+.privbody h3{margin:14px 0 4px;font-size:15px}.privbody ul{margin:0;padding-left:20px;font-size:14px;color:var(--dim)}.privbody li{margin:4px 0}.privbody b{color:var(--text)}
+#scrVid.mirror{transform:scaleX(-1)}
 .thumb{display:block;max-width:240px;border-radius:8px;border:1px solid var(--line);margin-bottom:6px}
 .srcs{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .chip{font-size:11px;padding:2px 8px;border-radius:99px;border:1px solid var(--line);color:var(--dim);background:var(--panel)}
@@ -173,7 +177,7 @@ form#form{padding:12px 16px 16px;border-top:1px solid var(--line)}
     </form>
     <div class="small" id="aAresLinks" style="text-align:center;display:none">No Ares account? <a href="https://ares-revision.vercel.app" target="_blank" rel="noopener" style="color:var(--accent)">Create one on Ares Revision ↗</a></div>
     <button type="button" id="aSwitch" class="linkbtn">No internet? Use a device-only account</button>
-    <div class="authfoot"><svg viewBox="0 0 100 100" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M50 5l39 22.5v45L50 95 11 72.5v-45z" stroke="#3ddc84" stroke-width="6" fill="#0d1f16"/><path d="M16 38l18 26 16-28 16 28 18-26" stroke="#3ddc84" stroke-width="8"/><path d="M28 68V31l22 24 22-24v37" stroke="#0d1f16" stroke-width="12.5"/><path d="M28 68V31l22 24 22-24v37" stroke="#3ddc84" stroke-width="7.5"/></svg><span>© MagicWinter Studio</span></div>
+    <div class="authfoot"><svg viewBox="0 0 100 100" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M50 5l39 22.5v45L50 95 11 72.5v-45z" stroke="#3ddc84" stroke-width="6" fill="#0d1f16"/><path d="M16 38l18 26 16-28 16 28 18-26" stroke="#3ddc84" stroke-width="8"/><path d="M28 68V31l22 24 22-24v37" stroke="#0d1f16" stroke-width="12.5"/><path d="M28 68V31l22 24 22-24v37" stroke="#3ddc84" stroke-width="7.5"/></svg><span>© MagicWinter Studio · <a href="#" class="privLink" style="color:var(--dim)">Privacy</a></span></div>
   </div>
 </div>
 <aside id="side">
@@ -216,10 +220,11 @@ form#form{padding:12px 16px 16px;border-top:1px solid var(--line)}
   <section class="view on" id="vChat">
     <div id="log"><div class="wrap" id="wrap"></div></div>
     <form id="form">
-      <div id="screenBar"><video id="scrVid" muted playsinline></video><div class="sp">Sharing your screen — open the question, then press Solve.</div><button type="button" class="go" id="scrSnap">📸 Solve</button><button type="button" id="scrStop">⏹ Stop</button></div>
+      <div id="screenBar"><video id="scrVid" muted playsinline></video><div class="sp" id="scrText">Sharing your screen — open the question, then press Solve.</div><button type="button" id="camFlip" hidden title="Switch camera">🔄</button><button type="button" class="go" id="scrSnap">📸 Solve</button><button type="button" id="scrStop">⏹ Stop</button></div>
       <div class="inrow">
         <button type="button" id="webBtn" class="tog" title="Web search (Wikipedia) — lets Floof AI look things up">🌐</button>
         <button type="button" id="scrBtn" class="tog" title="Share your screen and solve what's on it">🖥</button>
+        <button type="button" id="camBtn" class="tog" title="Use your camera — point it at a question, worksheet or object">📷</button>
         <label class="tog" title="Solve a picture/screenshot (or paste one with Ctrl+V)" style="cursor:pointer;border:1px solid var(--line);border-radius:10px">🖼<input type="file" id="imgIn" accept="image/*" hidden></label>
         <textarea id="input" rows="1" placeholder="Message Floof AI…"></textarea>
         <button id="send" class="go" type="submit">Send</button>
@@ -252,6 +257,7 @@ form#form{padding:12px 16px 16px;border-top:1px solid var(--line)}
       </div>
       <div class="card">
         <h3>👤 MagicWinter account</h3>
+        <div class="small"><a href="#" class="privLink" style="color:var(--accent)">🔒 Privacy notice</a> — what Floof stores and where it goes.</div>
         <div class="small">Signed in as <b id="accName" style="color:var(--text)"></b></div>
         <input type="password" id="pOld" placeholder="Current password" autocomplete="current-password">
         <input type="password" id="pNew" placeholder="New password (6+ characters)" autocomplete="new-password">
@@ -300,6 +306,42 @@ form#form{padding:12px 16px 16px;border-top:1px solid var(--line)}
   <pre id="artCode"></pre>
 </aside>
 
+<div id="priv" class="modal"><div class="modalbox">
+  <div class="row" style="justify-content:space-between"><h2 style="margin:0">🔒 Privacy notice</h2><button type="button" id="privX">✕</button></div>
+  <div class="privbody">
+  <p class="small">Floof AI by MagicWinter Studio · last updated 11 November 2026</p>
+  <h3>The short version</h3>
+  <ul><li>Most of Floof runs <b>inside your browser</b>. Your chats, notes, memory and settings stay on your device.</li>
+  <li>No ads, no tracking, no analytics, nothing sold.</li>
+  <li>Your camera and screen are only used when you turn them on, and only the frame you choose to solve is ever used.</li></ul>
+  <h3>Stored on your device (this browser only)</h3>
+  <ul><li>Chats, knowledge/notes, the grid, things Floof learns about you (Me tab), settings and any API keys you paste.</li>
+  <li>Downloaded tools: on-device brains, the dictionary, the text reader and Python.</li>
+  <li>Delete any time: delete chats, use <b>Forget everything</b> in the Me tab, <b>Reset downloads</b>, or clear this site's data in your browser.</li></ul>
+  <h3>Accounts</h3>
+  <ul><li><b>MagicWinter account:</b> your username, a one-way scrambled (bcrypt) copy of your password and sign-in tokens are kept on the studio's account server (Supabase). Your real password is never stored. Delete it in the Me tab.</li>
+  <li><b>Ares account (Edu mode):</b> your Ares username and password are checked by Ares Revision's own server. Floof doesn't store your Ares password.</li>
+  <li><b>Device-only account:</b> stays on this device, nothing is sent anywhere.</li></ul>
+  <h3>Camera 📷 and screen 🖥</h3>
+  <ul><li>Floof asks your browser first; you can stop at any time with ⏹. The live video is never recorded or uploaded.</li>
+  <li>When you press <b>📸 Solve</b>, only that one picture is used: it's read on your device, or — if you've chosen Gemini — sent to Google to be understood. A small thumbnail is kept in your chat.</li></ul>
+  <h3>Services Floof only uses when you choose them</h3>
+  <ul><li><b>Google Gemini / OpenRouter</b> (☁ brain): your messages, and photos you choose to solve, are sent to that company to get an answer, under their privacy policies. Google requires the key holder to be 18+.</li>
+  <li><b>Your own PC (Ollama):</b> stays on your network.</li>
+  <li><b>Wikipedia</b> (🌐 web and learning), <b>dictionaryapi.dev</b> (word meanings).</li>
+  <li><b>Downloads</b> from jsDelivr and Hugging Face (fonts, brains, dictionary, text reader, Python). These see an ordinary download request, like any website.</li></ul>
+  <h3>Children</h3>
+  <ul><li>Ares accounts use 📚 Edu mode: study-focused and age-appropriate answers.</li>
+  <li>Floof refuses to remember passwords, phone numbers, emails or addresses. Don't share private details with any AI.</li></ul>
+  <h3>Questions</h3>
+  <p class="small">Contact MagicWinter Studio through the studio website. © MagicWinter Studio. All rights reserved.</p>
+  </div></div></div>
+<div id="camAsk" class="modal"><div class="modalbox" style="max-width:420px">
+  <h2 style="margin:0">📷 Use your camera?</h2>
+  <p class="small">Point your camera at a question, worksheet or object, then press <b>📸 Solve</b>. Nothing is recorded — only the picture you snap is used, read on your device or sent to your chosen ☁ brain. You can stop any time.</p>
+  <div class="row"><button type="button" id="camNo">Cancel</button><button type="button" class="go" id="camYes" style="flex:1">Turn on camera</button></div>
+  <a href="#" class="privLink small" style="color:var(--dim)">Read the privacy notice</a>
+</div></div>
 <div id="crop"><div class="small" style="color:var(--text)">Drag a box around the question (or solve the whole picture)</div><div class="cropwrap" id="cropWrap"><canvas id="cropCan"></canvas><div id="cropRect"></div></div><div class="row"><button id="cropX">Cancel</button><button id="cropAll">Solve whole picture</button><button class="go" id="cropGo">Solve selection</button></div></div>
 <script>
 // ===================== MW GRID ENGINE (no dependencies) =====================
@@ -705,6 +747,10 @@ const idb = {
   async keys() { const db = await this.open(); return new Promise((ok, no) => { const q = db.transaction("kv").objectStore("kv").getAllKeys(); q.onsuccess = () => ok(q.result); q.onerror = () => no(q.error); }); }
 };
 // ---------- MagicWinter account: sign in before anything loads ----------
+// privacy notice must work on the sign-in screen too, so wire it up before sign-in
+document.addEventListener("click", e => { if (e.target.closest(".privLink")) { e.preventDefault(); $("#camAsk").classList.remove("on"); $("#priv").classList.add("on"); } });
+$("#privX").onclick = () => $("#priv").classList.remove("on");
+document.querySelectorAll(".modal").forEach(m => m.addEventListener("click", e => { if (e.target === m) m.classList.remove("on"); }));
 const ACCOUNT = await authGate();
 let chats = ls.get(KEY, []), cur = null;
 let docs = ls.get(DKEY, []), useStarter = ls.get(SKEY, true);
@@ -929,7 +975,7 @@ async function send(override, extra = {}) {
   try {
     const facts = hits.length ? "\n\nRelevant facts from the user's knowledge grid. Use them if they help answer, prefer them over your own memory, and don't mention the grid:\n" + hits.map((h, i) => `[${i + 1}] ${h.text}`).join("\n") : "";
     const guide = (cur.msgs.length > 2 ? "\n\nThis is an ongoing conversation: use everything said earlier in this chat (names, details, decisions, code) and answer in that context. Resolve words like 'it', 'that' or 'the code' from the previous messages." : "") + (ty.fixes.length ? `\n\nThe user's message has typos; they most likely meant: "${ty.text}".` : "") + `\n\nThe user's latest message is a ${u.type === "statement" ? "statement or request" : u.type + " question"}${keyTerms ? " about: " + keyTerms : ""}. Read the whole message carefully before answering, and answer every part of it.` + (info.type === "summary" ? " It is long: summarise its main points clearly, then offer to go deeper." : "")
-      + (extra.full ? " The user attached a screenshot of their screen: find the question(s) in it and solve them step by step, giving a clear final answer for each." : scr ? " It was read from the user's screen with OCR, so it may contain small reading errors. Find the question(s) on it and solve them step by step, giving a clear final answer for each." + (solved.length ? " Exact results already worked out (use these): " + solved.join("; ") : "") : "");
+      + (extra.full ? " The user attached a picture (a screenshot or a camera photo). If it shows questions, solve them step by step with a clear final answer for each; otherwise describe or explain what it shows and help with what they asked." : scr ? " It was read from the user's screen with OCR, so it may contain small reading errors. Find the question(s) on it and solve them step by step, giving a clear final answer for each." + (solved.length ? " Exact results already worked out (use these): " + solved.join("; ") : "") : "");
     const coding = CODEY.test(own);
     const tools = "\n\nCODE TOOLS: ```js blocks run in a sandbox (console.log prints). ```python blocks run real Python 3 in the browser (standard library only; no input() — set values in variables and print results). ```html blocks open as a live preview in a side panel." + (cloud.fix !== false ? " After you reply, your last runnable block is tested automatically; if it errors, you'll get the error to fix." : "")
       + (coding ? "\nWhen coding: first get the requirements straight, then give COMPLETE, working code — no placeholders, TODOs or '...'. Put a whole program in ONE block (for games, apps and web pages: one self-contained ```html file with inline CSS/JS; for GCSE-style tasks use ```python unless asked otherwise). Use clear names and brief comments. Handle edge cases and invalid input. After the code, explain in 2–4 short sentences how it works and how to run or change it. When fixing code, return the full corrected program, not just the changed lines." : "") + (calc ? `\n\nExact calculator result (use this number, don't recalculate): ${calc.expr} = ${calc.value}` : "") + (hits.some(h => h.title.startsWith("🌐")) ? "\nSome facts come from Wikipedia; mention the page name when you use them." : "");
@@ -1663,13 +1709,40 @@ let stream = null, tess = null;
 async function startShare() {
   if (!navigator.mediaDevices?.getDisplayMedia) { status("Screen sharing isn't available here — open Floof AI from your website (https) in Chrome.", "err"); return; }
   try {
-    stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 5 }, audio: false });
+    stopShare(); stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 5 }, audio: false });
+    $("#scrText").textContent = "Sharing your screen — open the question, then press Solve.";
     const v = $("#scrVid"); v.srcObject = stream; await v.play();
     stream.getVideoTracks()[0].onended = stopShare;
     $("#screenBar").classList.add("on"); $("#scrBtn").classList.add("on"); status("🖥 Sharing — open your question and press 📸 Solve.");
   } catch (e) { status(e.name === "NotAllowedError" ? "Screen share cancelled." : "Couldn't share screen: " + e.message, e.name === "NotAllowedError" ? "" : "err"); }
 }
-function stopShare() { stream?.getTracks().forEach(t => t.stop()); stream = null; $("#screenBar").classList.remove("on"); $("#scrBtn").classList.remove("on"); }
+function stopShare() { stream?.getTracks().forEach(t => t.stop()); stream = null; $("#screenBar").classList.remove("on"); $("#scrBtn").classList.remove("on"); $("#camBtn").classList.remove("on"); $("#camFlip").hidden = true; $("#scrVid").classList.remove("mirror"); }
+// ---------- camera: point it at a question or object ----------
+let camFacing = "environment";
+async function startCamera() {
+  if (!navigator.mediaDevices?.getUserMedia) { status("The camera isn't available here — open Floof from its website (https) in Chrome.", "err"); return; }
+  try {
+    stopShare();
+    stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: camFacing, width: { ideal: 1920 }, height: { ideal: 1080 } }, audio: false });
+    const v = $("#scrVid"); v.srcObject = stream; await v.play();
+    const tr = stream.getVideoTracks()[0]; tr.onended = stopShare;
+    const front = (tr.getSettings().facingMode || camFacing) === "user" || !tr.getSettings().facingMode && camFacing === "user";
+    v.classList.toggle("mirror", front);
+    $("#scrText").textContent = "Camera on — hold the question steady and press Solve. Nothing is recorded.";
+    $("#camFlip").hidden = false; $("#screenBar").classList.add("on"); $("#camBtn").classList.add("on"); status("📷 Camera on — point it at your question and press 📸 Solve.");
+  } catch (e) {
+    status(e.name === "NotAllowedError" ? "Camera blocked — allow it with the 🎥 icon in the address bar, then try again." : e.name === "NotFoundError" ? "No camera found on this device." : "Couldn't start the camera: " + e.message, "err");
+  }
+}
+$("#camBtn").onclick = () => {
+  if ($("#camBtn").classList.contains("on")) return stopShare();
+  if (ls.get("mwai.camok", false)) return startCamera();
+  $("#camAsk").classList.add("on");
+};
+$("#camYes").onclick = () => { ls.set("mwai.camok", true); $("#camAsk").classList.remove("on"); startCamera(); };
+$("#camNo").onclick = () => $("#camAsk").classList.remove("on");
+$("#camFlip").onclick = () => { camFacing = camFacing === "environment" ? "user" : "environment"; startCamera(); };
+
 function snapScreen() {
   const v = $("#scrVid"); if (!v.videoWidth) return;
   const c = document.createElement("canvas"); c.width = v.videoWidth; c.height = v.videoHeight; c.getContext("2d").drawImage(v, 0, 0); openCrop(c);
@@ -1712,7 +1785,7 @@ async function solveImage(canvas) {
     if (cloudReady() && PV[cloud.pv].vision) { // vision models see the picture directly — no OCR needed
       const sc = Math.min(1, 1568 / Math.max(canvas.width, canvas.height)), c = document.createElement("canvas"); c.width = canvas.width * sc; c.height = canvas.height * sc; c.getContext("2d").drawImage(canvas, 0, 0, c.width, c.height);
       const t = document.createElement("canvas"), ts = Math.min(1, 240 / canvas.width); t.width = canvas.width * ts; t.height = canvas.height * ts; t.getContext("2d").drawImage(canvas, 0, 0, t.width, t.height);
-      showView("vChat"); return send("📸 Solve the question on my screen.", { screen: true, img: t.toDataURL("image/jpeg", .6), full: c.toDataURL("image/jpeg", .85) });
+      showView("vChat"); return send(($("#camBtn").classList.contains("on") ? "📷 Help me with what my camera sees." : "📸 Solve the question on my screen."), { screen: true, img: t.toDataURL("image/jpeg", .6), full: c.toDataURL("image/jpeg", .85) });
     }
     busy = true; status("👁 Reading the screen…");
     const text = await ocr(canvas);
@@ -1723,7 +1796,7 @@ async function solveImage(canvas) {
     await send(text, { screen: true, img: t.toDataURL("image/jpeg", .6) });
   } catch (e) { busy = false; bar(0); status("Screen reading failed: " + (e.message || e), "err"); }
 }
-$("#scrBtn").onclick = () => stream ? stopShare() : startShare();
+$("#scrBtn").onclick = () => $("#scrBtn").classList.contains("on") ? stopShare() : startShare();
 $("#scrSnap").onclick = snapScreen;
 $("#scrStop").onclick = stopShare;
 async function imageFile(file) {
@@ -1802,8 +1875,13 @@ if (ACCOUNT_KIND === "ares") { // Edu mode: Floof becomes a study tutor
   document.querySelector(".brand").insertAdjacentHTML("beforeend", '<span class="edubadge">📚 EDU</span>');
   $("#input").placeholder = "Ask a study question…";
 }
-if (ACCOUNT_KIND === "mw") { // change password on the MagicWinter account server
-  $("#accDel").style.display = "none";
+if (ACCOUNT_KIND === "mw") { // change password / delete on the MagicWinter account server
+  $("#accDel").onclick = async () => {
+    const pw = prompt("Type your password to permanently delete your MagicWinter account (it stops working in every studio app). Chats on this device are kept until you delete them."); if (pw == null) return;
+    let j; try { j = await mwRpc("mw_delete_account", { p_username: ACCOUNT, p_password: pw }); } catch { return alert("Can't reach the account server."); }
+    if (!j.ok) return alert(/switched on|schema|function/i.test(j.error || "") ? "Account deletion needs the latest magicwinter-accounts.sql run in Supabase." : (j.error || "Couldn't delete it."));
+    alert("Your MagicWinter account has been deleted."); $("#signOut").click();
+  };
   $("#pChange").onclick = async () => {
     const msg = t => $("#pMsg").textContent = t;
     if ($("#pNew").value.length < 6) return msg("New password needs at least 6 characters.");

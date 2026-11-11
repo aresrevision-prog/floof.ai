@@ -84,3 +84,14 @@ $$;
 
 grant execute on function public.mw_signup(text, text), public.mw_login(text, text),
   public.mw_change_password(text, text, text), public.mw_whoami(text) to anon, authenticated;
+
+-- delete your own account (needs the password)
+create or replace function public.mw_delete_account(p_username text, p_password text) returns json
+language plpgsql security definer set search_path = public, extensions as $$
+declare r json := mw_login(p_username, p_password);
+begin
+  if (r->>'ok') is null then return json_build_object('error', 'Wrong password — nothing deleted.'); end if;
+  delete from mw_accounts where username = lower(trim(p_username));
+  return json_build_object('ok', true);
+end $$;
+grant execute on function public.mw_delete_account(text, text) to anon, authenticated;
