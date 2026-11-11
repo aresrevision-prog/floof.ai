@@ -292,7 +292,7 @@ form#form{padding:12px 16px 16px;border-top:1px solid var(--line)}
         <div class="small" id="lLog"></div>
       </div>
       <div class="card" style="grid-column:1/-1">
-        <div class="row" style="justify-content:space-between"><h3>Your knowledge</h3><button id="kClearWeb" style="font-size:12px;padding:4px 10px">Remove web pages</button></div>
+        <div class="row" style="justify-content:space-between"><h3>Your knowledge</h3><div class="row"><button id="kResort" style="font-size:12px;padding:4px 10px">🗂 Re-sort everything</button><button id="kRestore" style="font-size:12px;padding:4px 10px">↩ Restore destroyed points</button><button id="kClearWeb" style="font-size:12px;padding:4px 10px">Remove web pages</button></div></div>
         <div id="kDocs" style="display:flex;flex-direction:column;gap:6px"></div>
       </div>
     </div></div>
@@ -352,6 +352,7 @@ form#form{padding:12px 16px 16px;border-top:1px solid var(--line)}
 const MW = (() => {
   const D = 64, WIN = 3, NZ = 6;
   const SENT = /(?:[^.!?\n]|\.(?=\d)|(?<=\b[A-Z])\.|(?<=\b(?:Mr|Mrs|Ms|Dr|St|Prof|vs|etc))\.)+[.!?]*/g;
+  const MAXSEC = 64; // sector numbers can grow: Floof creates new ones for new topics
   const SECTORS = ["?", "Maths", "Science", "History", "English", "Geography", "Computing", "General"];
   const COLORS = ["#8fb29b", "#5fb3ff", "#3ddc84", "#ffb35c", "#ff7ab6", "#c6f06b", "#b18cff", "#e9f5ec"];
   const STOP = new Set("a an the and or but if of to in on at by for with from as is are was were be been being it its this that these those i you he she we they me him her us them my your his our their what which who whom how why when where do does did done have has had not no yes so than then there here can could will would should may might must shall about into over under up down out off just also very more most such only own same too s t each other any all some get got make made use used using one two explain explains tell tells thing things describe define meaning know please whats what's give".split(" "));
@@ -400,17 +401,29 @@ const MW = (() => {
   const dot = (a, b) => { let s = 0; for (let i = 0; i < D; i++) s += a[i] * b[i]; return s; };
   const argmax = (arr, from = 1) => { let b = from; for (let i = from; i < arr.length; i++) if (arr[i] > arr[b]) b = i; return arr[b] > 0 ? b : 7; };
 
+  function sectorScores(G, text) { // how strongly a text belongs to each sector (0..1 shares) + its most telling words
+    const sc = new Float32Array(MAXSEC), kw = new Map();
+    if (!G) return { sc, share: 0, best: 7, kw: [] };
+    for (const t of tokens(text)) {
+      const v = G.vocab.get(t.s);
+      if (v && v.n < G.chunks.length * .3) for (let k = 1; k < SECTORS.length; k++) sc[k] += v.sec[k] / v.n * v.idf;
+      if (t.w.length > 3 && !/^\d+$/.test(t.w)) kw.set(t.w, (kw.get(t.w) || 0) + (v ? v.idf : 4));
+    }
+    let tot = 0; for (let k = 1; k < SECTORS.length; k++) tot += sc[k];
+    const best = argmax(sc);
+    return { sc, best, share: tot ? sc[best] / tot : 0, strength: tot, kw: [...kw.entries()].sort((a, b) => b[1] - a[1]).map(e => e[0]) };
+  }
   function guessSector(G, text) {
     if (!G) return 7;
-    const sc = new Float32Array(8);
-    for (const t of tokens(text)) { const v = G.vocab.get(t.s); if (v && v.n < G.chunks.length * .3) for (let k = 1; k < 8; k++) sc[k] += v.sec[k] / v.n * v.idf; }
+    const sc = new Float32Array(MAXSEC);
+    for (const t of tokens(text)) { const v = G.vocab.get(t.s); if (v && v.n < G.chunks.length * .3) for (let k = 1; k < SECTORS.length; k++) sc[k] += v.sec[k] / v.n * v.idf; }
     return argmax(sc);
   }
 
   function build(docs) {
     const t0 = performance.now();
     const vocab = new Map(), chunks = [];
-    const get = (t) => { let v = vocab.get(t.s); if (!v) { v = { s: t.s, w: t.w, n: 0, df: 0, sec: new Float32Array(8), vec: new Float32Array(D) }; vocab.set(t.s, v); } return v; };
+    const get = (t) => { let v = vocab.get(t.s); if (!v) { v = { s: t.s, w: t.w, n: 0, df: 0, sec: new Float32Array(MAXSEC), vec: new Float32Array(D) }; vocab.set(t.s, v); } return v; };
     for (const d of docs) for (const text of chunkText(d.text)) {
       const toks = tokens(text); if (!toks.length) continue;
       const c = { doc: d, text, sector: d.sector || 7, toks: toks.map(t => t.s), tf: new Map(), vec: new Float32Array(D) };
@@ -457,8 +470,8 @@ const MW = (() => {
     const qs = [...new Set(tokens(query).map(t => t.s))];
     const known = qs.filter(s => G.vocab.has(s));
     if (!known.length) return { hits: [], sector: 0 };
-    const sc = new Float32Array(8);
-    for (const s of known) { const v = G.vocab.get(s); for (let j = 1; j < 8; j++) sc[j] += v.sec[j] / v.n * v.idf; }
+    const sc = new Float32Array(MAXSEC);
+    for (const s of known) { const v = G.vocab.get(s); for (let j = 1; j < SECTORS.length; j++) sc[j] += v.sec[j] / v.n * v.idf; }
     const qsec = sectorFilter || argmax(sc);
     const qv = queryVec(G, known), k1 = 1.2, b = .75;
     const scored = [];
@@ -569,7 +582,7 @@ const MW = (() => {
     return sc.sort((a, b) => b.sc - a.sc).slice(0, n).sort((a, b) => a.i - b.i).map(o => sents[o.i]);
   }
 
-  return { D, SECTORS, COLORS, tokens, stem, build, search, neighbours, project, guessSector, chunkText, analyze, isFollowUp, bestSentences, summarize, splitSentences };
+  return { D, MAXSEC, SECTORS, COLORS, sectorScores, tokens, stem, build, search, neighbours, project, guessSector, chunkText, analyze, isFollowUp, bestSentences, summarize, splitSentences };
 })();
 
 const STARTER = [
@@ -762,8 +775,31 @@ const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;"
 const secChip = n => `<span class="dot" style="background:${COLORS[n]}"></span>`;
 
 // ---------- grid build ----------
+// ---------- destroyed points: words (and the facts that mention them) removed from the grid ----------
+let blocked = ls.get("mwai.blocked", { words: [], sents: [] });
+const hashS = t => { let h = 0; for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) | 0; return String(h); };
+function cleanDoc(d) {
+  if (!blocked.words.length && !blocked.sents.length) return d;
+  const bw = new Set(blocked.words), bs = new Set(blocked.sents);
+  const keep = (d.text.replace(/\s+/g, " ").match(/(?:[^.!?\n]|\.(?=\d))+[.!?]*/g) || []).filter(x => { x = x.trim(); return x && !bs.has(hashS(x)) && !MW.tokens(x).some(t => bw.has(t.s)); });
+  return { ...d, text: keep.join(" ").trim() };
+}
+const knowledge = (extra = []) => (useStarter ? STARTER : []).concat(docs, extra).map(cleanDoc).filter(d => d.text);
+function relatedFacts(stem) { // every sentence in your knowledge that uses this word
+  const out = [];
+  for (const d of (useStarter ? STARTER : []).concat(docs)) for (const x of (cleanDoc(d).text.match(/(?:[^.!?\n]|\.(?=\d))+[.!?]*/g) || [])) if (MW.tokens(x).some(t => t.s === stem)) out.push({ text: x.trim(), title: d.title });
+  return out;
+}
+function destroyPoint(v) {
+  const facts = relatedFacts(v.s);
+  if (!confirm(`💥 Destroy "${v.w}"?\n\nThis removes the point and ${facts.length} fact${facts.length === 1 ? "" : "s"} that mention it, so Floof stops giving those answers:\n\n` + facts.slice(0, 6).map(f => "• " + f.text.slice(0, 90)).join("\n") + (facts.length > 6 ? `\n…and ${facts.length - 6} more` : "") + "\n\nYou can undo this in Knowledge → Restore destroyed points.")) return;
+  blocked.words.push(v.s); for (const f of facts) blocked.sents.push(hashS(f.text));
+  blocked.words = [...new Set(blocked.words)]; blocked.sents = [...new Set(blocked.sents)];
+  ls.set("mwai.blocked", blocked); chatGridCache = { key: "", G: null }; rebuild();
+  status(`💥 Destroyed "${v.w}" and ${facts.length} related fact${facts.length === 1 ? "" : "s"}.`);
+}
 function rebuild() {
-  const all = (useStarter ? STARTER : []).concat(docs);
+  const all = knowledge();
   G = MW.build(all);
   PTS = MW.project(G); gridVer++;
   view.k = 1; view.x = 0; view.y = 0; sel = null;
@@ -837,7 +873,7 @@ function chatGrid() { // global knowledge + anything long you pasted + what you'
   const cd = convoDoc();
   if (!cur || (!(cur.docs || []).length && !cd)) return G;
   const key = cur.id + ":" + (cur.docs || []).length + ":" + (cd ? cd.text.length : 0) + ":" + gridVer;
-  if (chatGridCache.key !== key) chatGridCache = { key, G: MW.build((useStarter ? STARTER : []).concat(docs, (cur.docs || []).map(d => ({ ...d, chat: true })), cd ? [cd] : [])) };
+  if (chatGridCache.key !== key) chatGridCache = { key, G: MW.build(knowledge((cur.docs || []).map(d => ({ ...d, chat: true })).concat(cd ? [cd] : []))) };
   return chatGridCache.G;
 }
 const CTX = 8192, CHAR_BUDGET = 17000;
@@ -1429,6 +1465,8 @@ function renderInfo() {
     <div class="nbrs">${nb.map(([u, s]) => `<button data-s="${esc(u.s)}">${secChip(u.sector)} ${esc(u.w)} <span class="small">${(s * 100 | 0)}%</span></button>`).join("")}</div>
     <div class="small">Its 64 coordinates</div>
     <div class="coords">${[...sel.vec].map(x => `<div title="${x.toFixed(3)}" style="height:${Math.max(2, Math.abs(x) / maxAbs * 54)}px;${x < 0 ? "background:var(--accent2);opacity:.75" : ""}"></div>`).join("")}</div>`;
+  box.insertAdjacentHTML("beforeend", `<button id="gdestroy" style="margin-top:10px;width:100%;color:var(--err);border-color:rgba(255,122,138,.4)">💥 Destroy this point (${relatedFacts(sel.s).length} related facts)</button>`);
+  $("#gdestroy").onclick = () => destroyPoint(sel);
   $("#gx").onclick = () => select(null);
   box.querySelectorAll(".nbrs button").forEach(b => b.onclick = () => select(G.vocab.get(b.dataset.s)));
 }
@@ -1477,15 +1515,72 @@ function renderStats() {
   $("#kDocs").querySelectorAll(".x").forEach(b => b.onclick = () => { docs.splice(+b.dataset.i, 1); saveDocs(); rebuild(); });
 }
 function saveDocs() { idb.set(DKEY, docs).catch(() => { if (!ls.set(DKEY, docs)) status("Browser storage is full — remove some knowledge.", "err"); }); }
-function addDoc(title, text, sector) {
-  text = text.trim(); if (!text) return;
-  const sec = +sector || MW.guessSector(G, text);
-  docs.push({ title: (title || text.slice(0, 40)).trim(), text, sector: sec });
-  saveDocs(); rebuild(); status(`Added "${docs.at(-1).title}" → sector ${sec} (${SECTORS[sec]})`);
+// ---------- sorting: put new knowledge in the right sector, or make a new one ----------
+let customSectors = ls.get("mwai.sectors", []); // [{name}] — sector numbers 8, 9, 10…
+function applySectors() {
+  SECTORS.length = 8; COLORS.length = 8;
+  customSectors.forEach((c, i) => { SECTORS.push(c.name); COLORS.push(`hsl(${(i * 67 + 20) % 360} 75% 66%)`); });
+  renderLegend();
+  $("#kSector").innerHTML = `<option value="0">Sector: let Floof sort it</option>` + SECTORS.slice(1).map((n, i) => `<option value="${i + 1}">Sector ${i + 1} · ${esc(n)}</option>`).join("");
 }
-$("#kSector").innerHTML = `<option value="0">Sector: auto-detect</option>` + SECTORS.slice(1).map((n, i) => `<option value="${i + 1}">Sector ${i + 1} · ${n}</option>`).join("");
+function sectorFor(name) { // reuse a sector with this name, or create it
+  const n = name.trim().replace(/\s+/g, " ").slice(0, 24); const i = SECTORS.findIndex(x => x.toLowerCase() === n.toLowerCase());
+  if (i > 0) return i;
+  if (SECTORS.length >= MW.MAXSEC) return 7;
+  customSectors.push({ name: n[0].toUpperCase() + n.slice(1) }); ls.set("mwai.sectors", customSectors); applySectors();
+  return SECTORS.length - 1;
+}
+async function nameTopic(text, kw) { // a short subject name: the brain if there is one, otherwise the most telling word
+  if (cloudReady()) {
+    try { let out = ""; await cloudStream("Reply with ONLY a 1-3 word school-subject or topic name (Title Case) for the text. No punctuation.", [{ role: "user", content: text.slice(0, 3000) }], t => out += t);
+      out = out.replace(/[^\w &'-]/g, "").trim().split(/\s+/).slice(0, 3).join(" "); if (out.length > 2) return out; } catch {}
+  }
+  return (kw[0] || "Topic").replace(/^\w/, c => c.toUpperCase());
+}
+const HINTS = { // subject words that strongly point to the built-in sectors
+  1: "algebra equation fraction percentage ratio angle triangle circle area volume graph gradient probability statistics mean median integer prime factor multiple formula calculate solve expand factorise simultaneous quadratic pythagoras trigonometry sine cosine tangent vector matrix decimal",
+  2: "cell cells enzyme enzymes protein dna gene genes chromosome organism photosynthesis respiration atom atoms molecule element compound reaction acid alkali electron proton neutron energy force velocity acceleration current voltage resistance wave magnet ecosystem evolution bacteria virus hormone nerve blood heart lungs plant plants chemical temperature catalyst",
+  3: "war king queen empire revolution treaty battle century medieval tudor norman roman victorian parliament monarchy dictator nazi soviet cold civil rights historian source empire colony",
+  4: "poem poetry novel play character theme metaphor simile shakespeare author writer narrator stanza quotation language persuasive essay grammar punctuation sentence paragraph tone imagery",
+  5: "river rivers mountain volcano earthquake tectonic plate climate weather rainfall ecosystem rainforest desert population urban rural migration erosion coast glacier map continent country settlement",
+  6: "algorithm program programming code python javascript variable loop function array binary computer cpu memory network internet database software hardware data byte bit cyber encryption html css"
+};
+const HINTSET = Object.fromEntries(Object.entries(HINTS).map(([k, v]) => [k, new Set(v.split(" ").map(w => MW.stem(w)))]));
+async function sortDoc(text, useBrain = true) { // → { sector, made }
+  const r = MW.sectorScores(G, text), words = text.split(/\s+/).length;
+  const toks = MW.tokens(text), hit = {}; let tot = 0;
+  for (const [k, set] of Object.entries(HINTSET)) { hit[k] = toks.filter(t => set.has(t.s)).length; tot += hit[k]; }
+  const hb = Object.keys(hit).sort((a, b) => hit[b] - hit[a])[0];
+  if (hit[hb] >= 2 && hit[hb] / Math.max(1, tot) >= .5 && hit[hb] / toks.length >= .06) return { sector: +hb, made: false }; // clearly a school subject
+  const cover = toks.filter(t => { const v = G.vocab.get(t.s); return v && v.sector === r.best && v.n < G.chunks.length * .3; }).length / Math.max(1, toks.length);
+  const fits = r.best !== 7 && r.share >= .45 && cover >= .2; // enough of its words genuinely belong to that sector
+  if (fits || words < 25) return { sector: fits ? r.best : 7, made: false };
+  const before = SECTORS.length, name = useBrain ? await nameTopic(text, r.kw) : (r.kw[0] || "Topic").replace(/^\w/, c => c.toUpperCase());
+  const sec = sectorFor(name); return { sector: sec, made: SECTORS.length > before };
+}
+async function addDoc(title, text, sector) {
+  text = text.trim(); if (!text) return;
+  let sec = +sector, made = false;
+  if (!sec) { status("🗂 Sorting…"); ({ sector: sec, made } = await sortDoc(text)); }
+  docs.push({ title: (title || text.slice(0, 40)).trim(), text, sector: sec });
+  saveDocs(); rebuild(); status(`🗂 Added "${docs.at(-1).title}" → ${made ? "new " : ""}sector ${sec} · ${SECTORS[sec]}`);
+}
+async function resortAll() {
+  if (!docs.length) return status("Nothing to sort yet — add some knowledge first.");
+  if (!confirm(`Re-sort all ${docs.length} of your notes and pages into sectors?`)) return;
+  const old = docs; docs = []; rebuild(); // judge each note against the starter pack + the others already sorted
+  let n = 0; for (const d of old) { const { sector } = await sortDoc(d.text, false); docs.push({ ...d, sector }); n++; status(`🗂 Sorting ${n}/${old.length}…`); }
+  // drop custom sectors nothing uses any more
+  const used = new Set(docs.map(d => d.sector)), keep = customSectors.map((c, i) => used.has(8 + i));
+  const remap = new Map(); let j = 8; customSectors.forEach((c, i) => { if (keep[i]) remap.set(8 + i, j++); });
+  customSectors = customSectors.filter((c, i) => keep[i]); docs = docs.map(d => d.sector >= 8 ? { ...d, sector: remap.get(d.sector) || 7 } : d);
+  ls.set("mwai.sectors", customSectors); applySectors(); saveDocs(); rebuild(); status(`🗂 Re-sorted ${old.length} notes into ${new Set(docs.map(d => d.sector)).size} sectors.`);
+}
+applySectors();
 $("#kAdd").onclick = () => { addDoc($("#kTitle").value, $("#kText").value, $("#kSector").value); $("#kTitle").value = $("#kText").value = ""; };
 $("#kFile").onchange = async e => { for (const f of e.target.files) addDoc(f.name.replace(/\.\w+$/, ""), await f.text(), $("#kSector").value); e.target.value = ""; };
+$("#kResort").onclick = resortAll;
+$("#kRestore").onclick = () => { const n = blocked.words.length; if (!n) return status("No destroyed points to restore."); if (!confirm(`Bring back ${n} destroyed point${n > 1 ? "s" : ""} and their facts?`)) return; blocked = { words: [], sents: [] }; ls.set("mwai.blocked", blocked); chatGridCache = { key: "", G: null }; rebuild(); status("↩ Restored."); };
 $("#kStarter").onchange = e => { useStarter = e.target.checked; ls.set(SKEY, useStarter); rebuild(); };
 $("#kTest").addEventListener("input", e => {
   const q = e.target.value.trim(); if (!q) { $("#kHits").innerHTML = ""; return; }
@@ -1830,7 +1925,7 @@ function cleanWiki(t) {
 let learnedNames = [];
 function learnPages(pages) { // add to permanent knowledge, skipping pages already known
   const have = new Set(docs.map(d => d.url)); learnedNames = [];
-  for (const p of pages) if (p.url && !have.has(p.url) && p.text.length > 80) { docs.push({ title: p.title, text: p.text, url: p.url, web: true, sector: MW.guessSector(G, p.text) }); have.add(p.url); learnedNames.push(p.title.slice(3)); }
+  for (const p of pages) if (p.url && !have.has(p.url) && p.text.length > 80) { { const r = MW.sectorScores(G, p.text); docs.push({ title: p.title, text: p.text, url: p.url, web: true, sector: r.share >= .45 && r.best !== 7 ? r.best : sectorFor(p.title.replace(/^🌐\s*/, "").split(/[ (,]/)[0]) }); } have.add(p.url); learnedNames.push(p.title.slice(3)); }
   return learnedNames.length;
 }
 async function wikiArticle(title) {
