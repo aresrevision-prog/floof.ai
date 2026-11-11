@@ -227,6 +227,7 @@ form#form{padding:12px 16px 16px;border-top:1px solid var(--line)}
         <button type="button" id="webBtn" class="tog" title="Web search (Wikipedia) — lets Floof AI look things up">🌐</button>
         <button type="button" id="scrBtn" class="tog" title="Share your screen and solve what's on it">🖥</button>
         <button type="button" id="camBtn" class="tog" title="Use your camera — point it at a question, worksheet or object">📷</button>
+        <button type="button" id="coderBtn" class="tog" title="Coder mode: Floof's best coding setup">💻</button>
         <label class="tog" title="Solve a picture/screenshot (or paste one with Ctrl+V)" style="cursor:pointer;border:1px solid var(--line);border-radius:10px">🖼<input type="file" id="imgIn" accept="image/*" hidden></label>
         <textarea id="input" rows="1" placeholder="Message Floof AI…"></textarea>
         <button id="send" class="go" type="submit">Send</button>
@@ -237,6 +238,7 @@ form#form{padding:12px 16px 16px;border-top:1px solid var(--line)}
 
   <section class="view" id="vGrid">
     <div class="gtool">
+      <div class="tabs" id="gMode"><button type="button" data-m="topics" class="on">🗂 Topics</button><button type="button" data-m="map">🧭 64-D map</button></div>
       <input type="search" id="gfind" placeholder="Find a word…">
       <div class="legend" id="legend"></div>
     </div>
@@ -803,7 +805,7 @@ function destroyPoint(v) {
 function rebuild() {
   const all = knowledge();
   G = MW.build(all);
-  PTS = MW.project(G); gridVer++;
+  PTS = MW.project(G); layoutTopics(); gridVer++;
   view.k = 1; view.x = 0; view.y = 0; sel = null;
   renderStats(); drawGrid(); renderInfo();
 }
@@ -1020,11 +1022,18 @@ async function send(override, extra = {}) {
     const facts = hits.length ? "\n\nRelevant facts from the user's knowledge grid. Use them if they help answer, prefer them over your own memory, and don't mention the grid:\n" + hits.map((h, i) => `[${i + 1}] ${h.text}`).join("\n") : "";
     const guide = (cur.msgs.length > 2 ? "\n\nThis is an ongoing conversation: use everything said earlier in this chat (names, details, decisions, code) and answer in that context. Resolve words like 'it', 'that' or 'the code' from the previous messages." : "") + (ty.fixes.length ? `\n\nThe user's message has typos; they most likely meant: "${ty.text}".` : "") + `\n\nThe user's latest message is a ${u.type === "statement" ? "statement or request" : u.type + " question"}${keyTerms ? " about: " + keyTerms : ""}. Read the whole message carefully before answering, and answer every part of it.` + (info.type === "summary" ? " It is long: summarise its main points clearly, then offer to go deeper." : "")
       + (extra.full ? " The user attached a picture (a screenshot or a camera photo). If it shows questions, solve them step by step with a clear final answer for each; otherwise describe or explain what it shows and help with what they asked." : scr ? " It was read from the user's screen with OCR, so it may contain small reading errors. Find the question(s) on it and solve them step by step, giving a clear final answer for each." + (solved.length ? " Exact results already worked out (use these): " + solved.join("; ") : "") : "");
-    const coding = CODEY.test(own);
+    const coding = coderOn || CODEY.test(own);
     const tools = "\n\nCODE TOOLS: ```js blocks run in a sandbox (console.log prints). ```python blocks run real Python 3 in the browser (standard library only; no input() — set values in variables and print results). ```html blocks open as a live preview in a side panel." + (cloud.fix !== false ? " After you reply, your last runnable block is tested automatically; if it errors, you'll get the error to fix." : "")
       + (coding ? "\nWhen coding: first get the requirements straight, then give COMPLETE, working code — no placeholders, TODOs or '...'. Put a whole program in ONE block (for games, apps and web pages: one self-contained ```html file with inline CSS/JS; for GCSE-style tasks use ```python unless asked otherwise). Use clear names and brief comments. Handle edge cases and invalid input. After the code, explain in 2–4 short sentences how it works and how to run or change it. When fixing code, return the full corrected program, not just the changed lines." : "") + (calc ? `\n\nExact calculator result (use this number, don't recalculate): ${calc.expr} = ${calc.value}` : "") + (hits.some(h => h.title.startsWith("🌐")) ? "\nSome facts come from Wikipedia; mention the page name when you use them." : "");
     const edu = ACCOUNT_KIND === "ares" ? "\n\n📚 EDU MODE (signed in with a school Ares Revision account): act as a patient GCSE study tutor. Keep everything educational and age-appropriate. Explain step by step and check understanding; for homework or exam questions, guide them to the answer and show the method rather than only giving the final answer. Coding is fine when it's for learning. If asked for something unrelated to learning (e.g. just for fun or entertainment), kindly steer back to studying." : "";
-    const sys = SYSTEM + edu + memoryPrompt() + guide + tools + facts;
+    const coder = coderOn ? `\n\n💻 CODER MODE — you are a senior software engineer pair-programming with the user. Work like this:
+1. If the request is unclear, make sensible assumptions and state them in one line (don't stall with questions).
+2. Briefly plan (2–5 bullet points: structure, data, key functions).
+3. Write the COMPLETE program in ONE code block — production quality: no placeholders, no TODOs, no "rest stays the same". Games/apps/sites = one self-contained \`\`\`html (inline CSS+JS, works offline, keyboard + touch controls, a restart, a score/state display). Scripts/GCSE tasks = \`\`\`python. Validate inputs, handle edge cases, avoid globals leaking, use clear names and short comments.
+4. Before sending, mentally run it: check every variable is defined, every function is called with the right arguments, brackets balance, and there are no infinite loops.
+5. After the code: how to use it (1–3 lines) and 2–3 ideas to extend it.
+When fixing: find the root cause, explain it in one line, and return the FULL corrected program.` : "";
+    const sys = SYSTEM + edu + memoryPrompt() + guide + tools + coder + (coderOn ? "" : facts);
     let t = 0; const onT = d => { reply += d; const now = performance.now(); if (now - t > 50) { out.innerHTML = md(reply); scroll(); t = now; } };
     if (cloudReady()) {
       const hist = [];
@@ -1039,7 +1048,7 @@ async function send(override, extra = {}) {
       const history = fitHistory(cur.msgs, sys.length);
       const stream = await engine.chat.completions.create({
         messages: [{ role: "system", content: sys }, ...history],
-        stream: true, temperature: CODEY.test(own) ? 0.3 : 0.6, max_tokens: /Coder/.test(loadedModel) ? 3072 : 1536,
+        stream: true, temperature: coderOn ? 0.2 : CODEY.test(own) ? 0.3 : 0.6, max_tokens: /Coder/.test(loadedModel) ? 4096 : coderOn ? 3072 : 1536,
         extra_body: loadedModel.startsWith("Qwen3") ? { enable_thinking: false } : undefined
       });
       for await (const chunk of stream) onT(chunk.choices[0]?.delta?.content || "");
@@ -1077,7 +1086,7 @@ async function send(override, extra = {}) {
     busy = false; $("#send").disabled = false; $("#stop").hidden = true; scroll(); input.focus();
   }
   // self-testing loop: run the code it just wrote (JS, Python or HTML); if it crashes, send the error back to be fixed
-  if ((cloudReady() || engine) && cloud.fix !== false && (extra.depth || 0) < 3 && !stopLoop) {
+  if ((cloudReady() || engine) && (cloud.fix !== false || coderOn) && (extra.depth || 0) < 3 && !stopLoop) {
     const pres = [...out.querySelectorAll("pre[data-lang]")].filter(p => /^(js|javascript|python|py|html)$/.test(p.dataset.lang));
     const pre = pres.at(-1);
     if (pre) {
@@ -1353,7 +1362,8 @@ const CODEY = /\b(code|coding|program|script|function|class|bug|debug|error|exce
 async function cloudStream(sys, msgs, onText) {
   const pv = cloud.pv, last = msgs.at(-1)?.content || "";
   let first = curModel();
-  if (pv === "openrouter" && typeof last === "string" && CODEY.test(last) && !cloud.model.openrouter) { const c = modelList.find(m => /coder|devstral|codestral/i.test(m.id)); if (c) first = c.id; } // coding question → coding model
+  if (pv === "gemini" && coderOn && !cloud.model.gemini) { const pro = modelList.find(m => /-pro/.test(m.id)); if (pro) first = pro.id; } // coder mode: strongest Gemini first (falls back if its free limit is used)
+  if (pv === "openrouter" && typeof last === "string" && (coderOn || CODEY.test(last)) && !cloud.model.openrouter) { const c = modelList.find(m => /coder|devstral|codestral/i.test(m.id)); if (c) first = c.id; } // coding question → coding model
   const order = [first, ...modelList.map(m => m.id).filter(id => id !== first)].slice(0, pv === "ollama" ? 1 : 4);
   let got = false, lastUsage = null; const wrap = t => { if (t && t.trim()) got = true; onText(t); };
   const tries = order.length === 1 ? [order[0], order[0]] : order; // one model? try it twice
@@ -1443,6 +1453,27 @@ const can = $("#gcan"), ctx = can.getContext("2d");
 const view = { x: 0, y: 0, k: 1 }; let sel = null, hidden = new Set(), hover = null;
 function size() { const r = can.getBoundingClientRect(), d = devicePixelRatio || 1; can.width = r.width * d; can.height = r.height * d; ctx.setTransform(d, 0, 0, d, 0, 0); return r; }
 function toScreen(p, r) { const S = Math.min(r.width, r.height) * .44 * view.k; return [r.width / 2 + view.x + p.x * S, r.height / 2 + view.y - p.y * S]; }
+// ---------- topic view: each topic is a hub, with its words gathered around it ----------
+let gridMode = ls.get("mwai.gridmode", "topics"), TPTS = [], HUBS = [];
+function layoutTopics() {
+  const groups = new Map();
+  for (const p of PTS) { if (!groups.has(p.v.sector)) groups.set(p.v.sector, []); groups.get(p.v.sector).push(p); }
+  const secs = [...groups.keys()].sort((a, b) => a - b), K = secs.length, maxN = Math.max(1, ...[...groups.values()].map(g => g.length));
+  const ringR = K <= 1 ? 0 : K <= 3 ? .5 : .66;
+  HUBS = []; TPTS = [];
+  secs.forEach((sec, i) => {
+    const g = groups.get(sec), a = -Math.PI / 2 + i * 2 * Math.PI / Math.max(1, K);
+    const hx = ringR * Math.cos(a), hy = -ringR * Math.sin(a);
+    const room = K <= 1 ? .85 : Math.min(.42, Math.sin(Math.PI / K) * ringR * .92);
+    const rad = Math.min(room, .1 + .3 * Math.sqrt(g.length / maxN));
+    HUBS.push({ sector: sec, x: hx, y: hy, r: rad, n: g.length });
+    // keep each word's 64-D neighbourhood: its position inside the topic comes from the map, squeezed into the topic's circle
+    let mx = 0, my = 0; for (const p of g) { mx += p.x / g.length; my += p.y / g.length; }
+    let d = 1e-9; for (const p of g) d = Math.max(d, Math.hypot(p.x - mx, p.y - my));
+    g.sort((a, b) => b.v.n - a.v.n).forEach((p, j) => TPTS.push({ v: p.v, rank: j, x: hx + (p.x - mx) / d * rad * .9, y: hy + (p.y - my) / d * rad * .9 }));
+  });
+}
+const curPts = () => gridMode === "topics" ? TPTS : PTS;
 function drawGrid() {
   if (!$("#vGrid").classList.contains("on")) return;
   const r = size(); ctx.clearRect(0, 0, r.width, r.height);
@@ -1454,21 +1485,30 @@ function drawGrid() {
   ctx.stroke();
   if (!PTS.length) { ctx.fillStyle = "#8fb29b"; ctx.font = "14px system-ui"; ctx.fillText("Add knowledge to grow the grid.", 20, 30); return; }
   const nb = sel ? new Map(MW.neighbours(G, sel.s, 10).map(([u, s]) => [u, s])) : null;
-  const pos = new Map();
-  for (const p of PTS) pos.set(p.v, toScreen(p, r));
+  const pos = new Map(), P = curPts(), S = Math.min(r.width, r.height) * .44 * view.k;
+  for (const p of P) pos.set(p.v, toScreen(p, r));
+  if (gridMode === "topics") for (const h of HUBS) { // topic bubbles + names
+    if (hidden.has(h.sector)) continue;
+    const [x, y] = toScreen(h, r), rr = h.r * S;
+    ctx.globalAlpha = .1; ctx.fillStyle = COLORS[h.sector]; ctx.beginPath(); ctx.arc(x, y, rr, 0, 7); ctx.fill();
+    ctx.globalAlpha = .45; ctx.strokeStyle = COLORS[h.sector]; ctx.lineWidth = 1.5; ctx.stroke(); ctx.globalAlpha = 1; ctx.lineWidth = 1;
+    ctx.fillStyle = COLORS[h.sector]; ctx.font = `800 ${Math.max(12, Math.min(20, rr / 5))}px Syne, system-ui`; ctx.textAlign = "center";
+    ctx.fillText(`${h.sector} · ${SECTORS[h.sector] || "?"}`, x, y - rr - 8);
+    ctx.font = "11px system-ui"; ctx.fillStyle = "rgba(233,245,236,.55)"; ctx.fillText(`${h.n} words`, x, y + rr + 15); ctx.textAlign = "start";
+  }
   if (sel && pos.has(sel)) { // lines to true 64-D neighbours
     const [sx, sy] = pos.get(sel); ctx.strokeStyle = "rgba(198,240,107,.5)";
     for (const u of nb.keys()) if (pos.has(u)) { const [x, y] = pos.get(u); ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(x, y); ctx.stroke(); }
   }
   const labelN = Math.min(140, Math.round(45 * view.k));
-  PTS.forEach((p, i) => {
+  P.forEach((p, i) => {
     if (hidden.has(p.v.sector)) return;
     const [x, y] = pos.get(p.v); if (x < -20 || y < -20 || x > r.width + 20 || y > r.height + 20) return;
     const on = p.v === sel || (nb && nb.has(p.v));
     ctx.globalAlpha = sel && !on ? .35 : 1;
     ctx.fillStyle = COLORS[p.v.sector]; ctx.beginPath(); ctx.arc(x, y, on ? 5 : 2.6 + Math.min(2.5, Math.log(p.v.n) * .5), 0, 7); ctx.fill();
     if (p.v === sel) { ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.stroke(); ctx.lineWidth = 1; }
-    if (on || i < labelN || p.v === hover) {
+    if (on || p.v === hover || (gridMode === "topics" ? p.rank < Math.round(4 * view.k * view.k) : i < labelN)) {
       ctx.fillStyle = on ? "#e9f5ec" : "rgba(233,245,236,.7)"; ctx.font = (on ? "600 13px" : "11px") + " system-ui";
       ctx.fillText(p.v.w, x + 6, y - 4);
     }
@@ -1477,7 +1517,7 @@ function drawGrid() {
 }
 function nearestPt(mx, my) {
   const r = can.getBoundingClientRect(); let best = null, bd = 14 * 14;
-  for (const p of PTS) { if (hidden.has(p.v.sector)) continue; const [x, y] = toScreen(p, r); const d = (x - mx) ** 2 + (y - my) ** 2; if (d < bd) { bd = d; best = p.v; } }
+  for (const p of curPts()) { if (hidden.has(p.v.sector)) continue; const [x, y] = toScreen(p, r); const d = (x - mx) ** 2 + (y - my) ** 2; if (d < bd) { bd = d; best = p.v; } }
   return best;
 }
 function select(v) {
@@ -1520,7 +1560,9 @@ can.addEventListener("pointermove", e => {
   if (h !== hover) { hover = h; drawGrid(); }
   if (h) { tip.style.display = "block"; tip.style.left = e.offsetX + 12 + "px"; tip.style.top = e.offsetY + 12 + "px"; tip.innerHTML = `${secChip(h.sector)} <b>${esc(h.w)}</b> · sector ${h.sector}`; } else tip.style.display = "none";
 });
-const endDrag = e => { pointers.delete(e.pointerId); if (drag && !drag.moved && pointers.size === 0) select(nearestPt(e.offsetX, e.offsetY)); if (pointers.size === 0) { drag = null; can.classList.remove("drag"); } };
+function hubAt(mx, my) { if (gridMode !== "topics") return null; const r = can.getBoundingClientRect(), S = Math.min(r.width, r.height) * .44 * view.k; return HUBS.find(h => { const [x, y] = toScreen(h, r); return !hidden.has(h.sector) && Math.hypot(x - mx, y - my) < h.r * S; }) || null; }
+function zoomHub(h) { const r = can.getBoundingClientRect(); view.k = Math.min(10, Math.max(1.6, .5 / h.r)); const S = Math.min(r.width, r.height) * .44 * view.k; view.x = -h.x * S; view.y = h.y * S; drawGrid(); status(`🗂 ${h.sector} · ${SECTORS[h.sector]} — ${h.n} words. Click a word to inspect or destroy it.`); }
+const endDrag = e => { pointers.delete(e.pointerId); if (drag && !drag.moved && pointers.size === 0) { const w = nearestPt(e.offsetX, e.offsetY), h = !w && hubAt(e.offsetX, e.offsetY); if (h) zoomHub(h); else select(w); } if (pointers.size === 0) { drag = null; can.classList.remove("drag"); } };
 can.addEventListener("pointerup", endDrag); can.addEventListener("pointercancel", endDrag);
 can.addEventListener("pointerleave", () => { $("#gtip").style.display = "none"; });
 can.addEventListener("wheel", e => {
@@ -1532,11 +1574,15 @@ $("#gfind").addEventListener("keydown", e => {
   if (e.key !== "Enter") return;
   const t = MW.tokens(e.target.value)[0]; const v = t && G.vocab.get(t.s);
   if (!v) { status(`"${e.target.value}" isn't on the grid yet.`, "err"); return; }
-  const p = PTS.find(p => p.v === v);
+  const p = curPts().find(p => p.v === v);
   if (p) { const r = can.getBoundingClientRect(); view.k = Math.max(view.k, 2.5); const S = Math.min(r.width, r.height) * .44 * view.k; view.x = -p.x * S; view.y = p.y * S; }
   select(v); status(`Found "${v.w}" — sector ${v.sector} (${SECTORS[v.sector]})`);
 });
 new ResizeObserver(() => drawGrid()).observe($("#gwrap"));
+function setGridMode(m) { gridMode = m; ls.set("mwai.gridmode", m); $("#gMode").querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.m === m)); view.k = 1; view.x = view.y = 0; drawGrid();
+  $(".ghint").textContent = m === "topics" ? "Each bubble is a topic, with its words gathered around it (close words have similar meanings). Click a bubble to zoom in · drag to pan · scroll/pinch to zoom." : "Each dot = a word in 64 dimensions, squashed to 2D. Colour = sector. Drag to pan · scroll/pinch to zoom · click a word."; }
+$("#gMode").querySelectorAll("button").forEach(b => b.onclick = () => setGridMode(b.dataset.m));
+setGridMode(gridMode);
 
 // ---------- knowledge view ----------
 function renderStats() {
@@ -1624,10 +1670,10 @@ $("#kTest").addEventListener("input", e => {
 // ---------- wiring ----------
 function showView(id) {
   document.querySelectorAll(".view").forEach(v => v.classList.toggle("on", v.id === id));
-  document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("on", b.dataset.v === id));
+  document.querySelectorAll(".tabs button[data-v]").forEach(b => b.classList.toggle("on", b.dataset.v === id));
   if (id === "vGrid") drawGrid();
 }
-document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => showView(b.dataset.v));
+document.querySelectorAll(".tabs button[data-v]").forEach(b => b.onclick = () => showView(b.dataset.v));
 function autosize() { const t = $("#input"); t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 180) + "px"; }
 $("#input").addEventListener("input", autosize);
 $("#input").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } });
@@ -1999,6 +2045,23 @@ $("#acctMe").onclick = () => { $("#acctMenu").classList.remove("on"); showView("
 $("#acctOut").onclick = () => $("#signOut").click();
 $("#signOut").onclick = () => { try { for (const k of [SESS, MWSESS, ARESSESS]) { localStorage.removeItem(k); sessionStorage.removeItem(k); } } catch {} location.reload(); };
 $("#accName").insertAdjacentHTML("afterend", ACCOUNT_KIND === "mw" ? " <span class='small'>· MagicWinter account (works in every studio app)</span>" : ACCOUNT_KIND === "ares" ? " <span class='small'>· Ares account · 📚 Edu mode</span>" : " <span class='small'>· device-only account</span>");
+// ---------- 💻 Coder mode: everything turned up for coding ----------
+let coderOn = ls.get("mwai.coder", false);
+function setCoder(on) {
+  coderOn = on; ls.set("mwai.coder", on); $("#coderBtn").classList.toggle("on", on);
+  document.querySelector(".brand .coderbadge")?.remove();
+  if (on) document.querySelector(".brand").insertAdjacentHTML("beforeend", '<span class="edubadge coderbadge" style="background:linear-gradient(135deg,#3ddc84,#c6f06b)">💻 CODER</span>');
+  $("#input").placeholder = on ? "Describe what to build or paste code to fix…" : (ACCOUNT_KIND === "ares" ? "Ask a study question…" : "Message Floof AI…");
+}
+$("#coderBtn").onclick = () => {
+  setCoder(!coderOn);
+  if (!coderOn) return status("💻 Coder mode off.");
+  const tip = cloudReady() ? (cloud.pv === "openrouter" ? "using a coding model" : cloud.pv === "gemini" ? "using the strongest Gemini" : "using your PC's model")
+    : engine ? (/Coder/.test(loadedModel) ? "using the on-device Coder brain" : "tip: load 💻 Coder Pro in the sidebar for better on-device code")
+    : "needs a brain — tap ⚡ Free Gemini on a new chat";
+  status("💻 Coder mode on — planning, full programs, auto-testing & fixing; " + tip + ".", cloudReady() || engine ? "" : "err");
+};
+setCoder(coderOn);
 if (ACCOUNT_KIND === "ares") { // Edu mode: Floof becomes a study tutor
   document.querySelector(".brand").insertAdjacentHTML("beforeend", '<span class="edubadge">📚 EDU</span>');
   $("#input").placeholder = "Ask a study question…";
