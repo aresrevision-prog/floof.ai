@@ -16,6 +16,8 @@
   };
   const getKeys = () => parseKeys(window.Floof.getKey(KEY_ID));
   const modelCache = {};
+  let modelCacheSignature = "";
+  let cachedProviders = [];
   const endpoint = {
     openai: "https://api.openai.com/v1",
     anthropic: "https://api.anthropic.com/v1",
@@ -76,6 +78,8 @@
   }
 
   async function discover(keys) {
+    const signature = ["openai","anthropic","xai"].map(id => id + ":" + (keys[id] || "")).join("|");
+    if (signature === modelCacheSignature && cachedProviders.length) return cachedProviders.slice();
     const jobs = [];
     if (keys.openai) jobs.push(jsonRequest(endpoint.openai + "/models", { headers: authHeaders.openai(keys.openai) }, "OpenAI")
       .then(d => { const id=pickOpenAI(d); if(id) modelCache.openai=id; else throw new Error("No compatible OpenAI chat model was returned."); }));
@@ -89,6 +93,8 @@
       const failed = results.find(r => r.status === "rejected");
       throw new Error(failed?.reason?.message || "Add at least one provider API key below to activate Floof.");
     }
+    modelCacheSignature = signature;
+    cachedProviders = available.slice();
     return available;
   }
 
