@@ -98,6 +98,9 @@ a.chip{text-decoration:none;color:var(--accent)}
 .acctmenu.on{display:block}.acctmenu .who{padding:6px 8px 8px;border-bottom:1px solid var(--line);margin-bottom:4px;display:flex;flex-direction:column;font-size:12px;color:var(--dim)}.acctmenu .who b{color:var(--text);font-size:14px}
 .acctmenu button{display:block;width:100%;text-align:left;border:0;background:none;padding:8px;border-radius:8px}.acctmenu button:hover{background:var(--panel2)}
 @media(max-width:720px){#acctNm{display:none}}
+.smart{margin:18px auto 0;max-width:460px;text-align:left;background:linear-gradient(160deg,rgba(61,220,132,.12),rgba(198,240,107,.05));border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:8px;color:var(--text)}
+.smart.sm{margin:10px 0 0;max-width:none}.smartrow{display:flex;gap:8px;flex-wrap:wrap}.smartrow button{flex:1;min-width:160px;display:flex;flex-direction:column;align-items:flex-start;gap:2px;text-align:left}
+.smartkey{display:flex;flex-direction:column;gap:8px}.smartkey[hidden]{display:none}
 .thumb{display:block;max-width:240px;border-radius:8px;border:1px solid var(--line);margin-bottom:6px}
 .srcs{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .chip{font-size:11px;padding:2px 8px;border-radius:99px;border:1px solid var(--line);color:var(--dim);background:var(--panel)}
@@ -172,7 +175,7 @@ form#form{padding:12px 16px 16px;border-top:1px solid var(--line)}
   </div>
 </div>
 <aside id="side">
-  <div class="brand"><div class="logo"><svg viewBox="0 0 100 100" aria-hidden="true"><defs><radialGradient id="fg" cx="38%" cy="32%" r="75%"><stop offset="0" stop-color="#ffffff"/><stop offset=".55" stop-color="#d8f7e6"/><stop offset="1" stop-color="#3ddc84"/></radialGradient></defs><path d="M83.0 50.0 A7.6 7.6 0 0 1 79.7 64.3 A7.6 7.6 0 0 1 70.6 75.8 A7.6 7.6 0 0 1 57.3 82.2 A7.6 7.6 0 0 1 42.7 82.2 A7.6 7.6 0 0 1 29.4 75.8 A7.6 7.6 0 0 1 20.3 64.3 A7.6 7.6 0 0 1 17.0 50.0 A7.6 7.6 0 0 1 20.3 35.7 A7.6 7.6 0 0 1 29.4 24.2 A7.6 7.6 0 0 1 42.7 17.8 A7.6 7.6 0 0 1 57.3 17.8 A7.6 7.6 0 0 1 70.6 24.2 A7.6 7.6 0 0 1 79.7 35.7 A7.6 7.6 0 0 1 83.0 50.0Z" fill="url(#fg)" stroke="#3ddc84" stroke-width="3" stroke-linejoin="round"/><ellipse cx="39" cy="50" rx="5.5" ry="7" fill="#07130d"/><ellipse cx="61" cy="50" rx="5.5" ry="7" fill="#07130d"/><circle cx="41" cy="47" r="2" fill="#fff"/><circle cx="63" cy="47" r="2" fill="#fff"/><ellipse cx="31" cy="60" rx="5" ry="3" fill="#ff9fc4" opacity=".7"/><ellipse cx="69" cy="60" rx="5" ry="3" fill="#ff9fc4" opacity=".7"/><path d="M45 61q5 5 10 0" stroke="#07130d" stroke-width="2.6" fill="none" stroke-linecap="round"/></svg></div>Floof AI</div>
+  <div class="brand"><div class="logo"><svg viewBox="0 0 100 100" aria-hidden="true"><path d="M83.0 50.0 A7.6 7.6 0 0 1 79.7 64.3 A7.6 7.6 0 0 1 70.6 75.8 A7.6 7.6 0 0 1 57.3 82.2 A7.6 7.6 0 0 1 42.7 82.2 A7.6 7.6 0 0 1 29.4 75.8 A7.6 7.6 0 0 1 20.3 64.3 A7.6 7.6 0 0 1 17.0 50.0 A7.6 7.6 0 0 1 20.3 35.7 A7.6 7.6 0 0 1 29.4 24.2 A7.6 7.6 0 0 1 42.7 17.8 A7.6 7.6 0 0 1 57.3 17.8 A7.6 7.6 0 0 1 70.6 24.2 A7.6 7.6 0 0 1 79.7 35.7 A7.6 7.6 0 0 1 83.0 50.0Z" fill="#d8f7e6" stroke="#3ddc84" stroke-width="3" stroke-linejoin="round"/><ellipse cx="42" cy="38" rx="17" ry="12" fill="#fff" opacity=".75"/><ellipse cx="39" cy="50" rx="5.5" ry="7" fill="#07130d"/><ellipse cx="61" cy="50" rx="5.5" ry="7" fill="#07130d"/><circle cx="41" cy="47" r="2" fill="#fff"/><circle cx="63" cy="47" r="2" fill="#fff"/><ellipse cx="31" cy="60" rx="5" ry="3" fill="#ff9fc4" opacity=".7"/><ellipse cx="69" cy="60" rx="5" ry="3" fill="#ff9fc4" opacity=".7"/><path d="M45 61q5 5 10 0" stroke="#07130d" stroke-width="2.6" fill="none" stroke-linecap="round"/></svg></div>Floof AI</div>
   <button id="newChat">+ New chat</button>
   <div id="chats"></div>
   <label class="small" for="model">Brain (optional — the grid answers without one)</label>
@@ -764,6 +767,7 @@ function renderLog() {
   if (!cur || !cur.msgs.length) {
     w.innerHTML = `<div id="empty"><div class="logo">${LOGO}</div><h2 style="margin:0;color:var(--text)">Floof AI</h2><div>Your own private AI with a 64-D knowledge grid.</div><div class="sugs">
       ${["How do plants make food?", "What caused World War 1?", "What is the quadratic formula?", "Explain the fetch-decode-execute cycle"].map(s => `<button type="button">${s}</button>`).join("")}</div></div>`;
+    if (!engine && !cloudReady()) w.querySelector("#empty").insertAdjacentHTML("beforeend", SMART_CARD());
     w.querySelectorAll(".sugs button").forEach(b => b.onclick = () => { $("#input").value = b.textContent; send(); });
     return;
   }
@@ -875,6 +879,13 @@ async function send(override, extra = {}) {
     else if (!hits.length && newMem.length && !calc && !scr && info.type === "statement") reply = "Got it — I'll remember that.";
     if (newMem.length) u.mem = newMem;
     const nm = memName();
+    const tl = ty.text.toLowerCase().replace(/[!?.]+$/, "").trim();
+    if (!reply) reply = /^(thanks|thank you|ty|cheers|thx)\b/.test(tl) ? "You're welcome! 😊"
+      : /^how are (you|u)|^how's it going|^you ok|^wyd|^what'?s up/.test(tl) ? "I'm good, thanks — a bit fluffy as always. What are we working on?"
+      : /^(who|what) are (you|u)|^what'?s your name|^your name/.test(tl) ? "I'm **Floof AI**, made by MagicWinter Studio. I've got a 64-D knowledge grid, a 274k-word dictionary, a calculator, Python and code running, screen solving and web lookups."
+      : /^what can (you|u) do|^help$|^how do (i|you) use/.test(tl) ? "I can answer from my knowledge grid, look things up (🌐), solve maths, read your screen (🖥), run code, define words, and learn about you. With a free brain (☁ Gemini) I can chat about anything and write full programs."
+      : /^(bye|goodbye|see (ya|you)|cya|gn|good night)\b/.test(tl) ? "Bye! Come back any time. ☁️"
+      : /^(lol|haha+|lmao|xd)$/.test(tl) ? "😄" : "";
     if (reply) {}
     else if (/^(hi|hello|hey|yo|hiya|good (morning|afternoon|evening))\b[\s!.]*$/i.test(text)) reply = `Hi${nm ? " " + nm : ""}! What can I help you with?`;
     else if (calc) reply = `\`${calc.expr}\` = **${calc.value}**`;
@@ -891,6 +902,7 @@ async function send(override, extra = {}) {
       reply = best.length ? best.join(" ") : `I understood that (${u.type}), but I don't know it yet. ` + (webOn ? "The web didn't have it either — try rewording, or load a brain (left panel) for open chat." : "Turn on 🌐 web so I can look it up, add notes in **Knowledge**, or load a brain (left panel) for open chat.");
     }
     out.classList.remove("cursor"); out.innerHTML = md(reply) + srcHTML(src, u);
+    if (!nudged && !/^Hi|Got it|I won't remember/.test(reply)) { nudged = true; out.insertAdjacentHTML("beforeend", SMART_CARD(true)); }
     cur.msgs.push({ role: "assistant", content: reply, src, u }); save(); scroll(); if (scr) status("Done ✓"); return;
   }
 
@@ -1221,6 +1233,26 @@ async function cloudStream(sys, msgs, onText) {
     }
   }
 }
+// ---------- "make Floof smart": one-tap setup of a real thinking brain ----------
+let nudged = false;
+function SMART_CARD(small) {
+  return `<div class="smart${small ? " sm" : ""}"><b>${small ? "Want real understanding?" : "🧠 Make Floof smart"}</b>
+  <div class="small">${small ? "Right now Floof only looks things up in its grid. Give it a free brain so it can understand anything, chat and code:" : "Floof is in <b>basic mode</b> — it can only look things up. Give it a free brain so it actually understands you:"}</div>
+  <div class="smartrow"><button type="button" class="go" data-smart="gemini">⚡ Free Gemini <span class="small" style="color:#07130d">best · 1 min</span></button><button type="button" data-smart="device">💻 Download a brain <span class="small">no key · ~1 GB</span></button></div>
+  <div class="smartkey" hidden><div class="small">1. <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:var(--accent)">Open Google AI Studio ↗</a> → <b>Create API key</b> (free, no card; account holder must be 18+)<br>2. Paste it here:</div><div class="row"><input type="password" placeholder="AIza…" autocomplete="off"><button type="button" class="go" data-smart="save">Use it</button></div></div></div>`;
+}
+document.addEventListener("click", async e => {
+  const b = e.target.closest("[data-smart]"); if (!b) return;
+  const card = b.closest(".smart");
+  if (b.dataset.smart === "gemini") { card.querySelector(".smartkey").hidden = false; card.querySelector("input").focus(); }
+  if (b.dataset.smart === "save") {
+    const k = card.querySelector("input").value.trim(); if (k.length < 20) return status("That doesn't look like a Gemini key (it starts with AIza).", "err");
+    cloud.pv = "gemini"; cloud.keys.gemini = k; saveCloud(); showPv();
+    card.innerHTML = "<b>✓ Gemini brain connected</b><div class='small'>Floof now understands properly. Ask away!</div>";
+  }
+  if (b.dataset.smart === "device") { card.innerHTML = "<b>Downloading a brain…</b><div class='small'>Watch the bar at the top. It's only slow the first time.</div>"; $("#model").value = "Qwen3-1.7B"; loadModel(); }
+});
+
 // ---------- brain loading ----------
 async function diagnose() {
   const hosts = { "cdn.jsdelivr.net": "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.88/package.json", "huggingface.co": "https://huggingface.co/api/models/mlc-ai/Qwen2.5-1.5B-Instruct-q4f16_1-MLC", "raw.githubusercontent.com": "https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/README.md" };
