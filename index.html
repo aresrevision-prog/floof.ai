@@ -580,15 +580,21 @@ async function migrateOldData(id) { // first account on this device inherits any
 let SESSION_NAME = "", ARES_USER = false, ACCOUNT_KIND = "device";
 const ARESSESS = "mw.ares";
 const mwEmail = u => u.toLowerCase() + "@accounts.magicwinter.app";
+async function authFetch(path, opts) { // try the account server directly, then this site's own /auth/v1 route (for school networks that block it)
+  const bases = [ARES]; if (/^https?:$/.test(location.protocol)) bases.push(location.origin);
+  let last; for (const b of bases) { try { const r = await fetch(b + path, opts); if (r.status === 404 && b !== ARES) continue; return r; } catch (e) { last = e; } }
+  throw last || new Error("network");
+}
 async function mwAuth(kind, username, password) { // MagicWinter accounts: Supabase Auth, username-based (no emails sent)
-  const url = kind === "up" ? ARES + "/auth/v1/signup" : ARES + "/auth/v1/token?grant_type=password";
+  const url = kind === "up" ? "/auth/v1/signup" : "/auth/v1/token?grant_type=password";
   const body = kind === "up" ? { email: mwEmail(username), password, data: { username } } : { email: mwEmail(username), password };
   try {
-    const r = await fetch(url, { method: "POST", headers: { "Content-Type": "application/json", apikey: ARES_KEY }, body: JSON.stringify(body) });
+    const r = await authFetch(url, { method: "POST", headers: { "Content-Type": "application/json", apikey: ARES_KEY }, body: JSON.stringify(body) });
     let j = {}; try { j = await r.json(); } catch {}
     const msg = j.msg || j.error_description || j.message || j.error || "";
     if (r.ok && j.access_token) return { ok: true, user: j.user?.user_metadata?.username || username, token: j.access_token };
-    if (r.ok && kind === "up") return { error: "Account made, but sign-in is waiting on email confirmation — the studio needs to switch that off in Supabase." };
+    if (r.ok && kind === "up") { const again = await mwAuth("in", username, password); return again.ok ? again : { error: "Account made, but it's waiting on email confirmation — the studio needs to switch \"Confirm email\" off in Supabase." }; }
+    if (/email not confirmed/i.test(msg)) return { error: "This account is waiting on email confirmation — the studio needs to switch \"Confirm email\" off in Supabase." };
     if (/already registered|already exists/i.test(msg)) return { error: "That username is taken." };
     if (/invalid login|invalid_credentials|invalid grant/i.test(msg + (j.error_code || ""))) return { error: "Wrong username or password.", bad: true };
     if (/signups? not allowed|disabled/i.test(msg)) return { error: "New accounts are switched off right now." };
@@ -777,16 +783,24 @@ function renderLog() {
 const scroll = () => { const l = $("#log"); l.scrollTop = l.scrollHeight; };
 
 let gridVer = 0, chatGridCache = { key: "", G: null };
-function chatGrid() { // global knowledge + anything long you pasted into this chat
-  if (!cur || !cur.docs || !cur.docs.length) return G;
-  const key = cur.id + ":" + cur.docs.length + ":" + gridVer;
-  if (chatGridCache.key !== key) chatGridCache = { key, G: MW.build((useStarter ? STARTER : []).concat(docs, cur.docs.map(d => ({ ...d, chat: true })))) };
+const CONVO = "💬 This conversation";
+function convoDoc() { // things you've told Floof in this chat (statements, not questions) become searchable facts
+  if (!cur) return null;
+  const said = cur.msgs.slice(0, -1).filter(m => m.role === "user" && !m.img && m.content.length < 600 && !/\?\s*$/.test(m.content.trim()) && !/^(what|who|when|where|why|how|which|is|are|can|could|do|does|did|define|explain|tell me)\b/i.test(m.content.trim()))
+    .map(m => m.content.trim().replace(/([^.!?])$/, "$1."));
+  return said.length ? { title: CONVO, text: said.join(" "), sector: 7, chat: true, convo: true } : null;
+}
+function chatGrid() { // global knowledge + anything long you pasted + what you've said in this chat
+  const cd = convoDoc();
+  if (!cur || (!(cur.docs || []).length && !cd)) return G;
+  const key = cur.id + ":" + (cur.docs || []).length + ":" + (cd ? cd.text.length : 0) + ":" + gridVer;
+  if (chatGridCache.key !== key) chatGridCache = { key, G: MW.build((useStarter ? STARTER : []).concat(docs, (cur.docs || []).map(d => ({ ...d, chat: true })), cd ? [cd] : [])) };
   return chatGridCache.G;
 }
 const CTX = 8192, CHAR_BUDGET = 17000;
-function fitHistory(msgs, extraChars, total = CHAR_BUDGET) { // newest first until the budget is used
-  let budget = total - extraChars; const out = [];
-  for (let i = msgs.length - 1; i >= 0; i--) {
+function fitHistory(msgs, extraChars, total = CHAR_BUDGET) { // newest first until the budget is used; older turns get summarised
+  let budget = total - extraChars; const out = []; let i;
+  for (i = msgs.length - 1; i >= 0; i--) {
     let c = msgs[i].content;
     if (c.length > budget) {
       if (i !== msgs.length - 1) break;
@@ -794,7 +808,12 @@ function fitHistory(msgs, extraChars, total = CHAR_BUDGET) { // newest first unt
       c = c.slice(0, half) + "\n\n[…middle of a long message shortened. Key points from it:\n" + MW.summarize(chatGrid(), c, 6).join(" ") + "]\n\n" + c.slice(-half);
     }
     budget -= c.length; out.unshift({ role: msgs[i].role, content: c });
-    if (budget < 500) break;
+    if (budget < 500) { i--; break; }
+  }
+  const dropped = msgs.slice(0, Math.max(0, i + 1));
+  if (dropped.length && out.length) { // keep the gist of the earlier conversation
+    const gist = MW.summarize(chatGrid(), dropped.map(m => (m.role === "user" ? "User: " : "You: ") + m.content.replace(/```[\s\S]*?```/g, "[code]")).join("\n"), 8).join(" ").slice(0, 1800);
+    if (gist) out[0] = { ...out[0], content: "[Earlier in this conversation (summary): " + gist + "]\n\n" + out[0].content };
   }
   return out;
 }
@@ -877,6 +896,7 @@ async function send(override, extra = {}) {
     let reply;
     if (/\bmy (password|passcode|pin|address|phone|bank|card)\b/i.test(text)) reply = "I won't remember that — it's private. Keep passwords and personal details to yourself. 🔒";
     else if (!hits.length && newMem.length && !calc && !scr && info.type === "statement") reply = "Got it — I'll remember that.";
+    else if (!calc && !scr && info.type === "statement" && /^(my|our|i|i'm|i am|i've|i have|we|we're)\b/i.test(ty.text.trim())) reply = newMem.length ? "Got it — I'll remember that." : "Got it — I'll keep that in mind for this chat. Ask me about it any time.";
     if (newMem.length) u.mem = newMem;
     const nm = memName();
     const tl = ty.text.toLowerCase().replace(/[!?.]+$/, "").trim();
@@ -899,7 +919,7 @@ async function send(override, extra = {}) {
       reply = `Read all **${words} words** and added them to this chat's grid, so you can ask me about any part of it.\n\n**Main points:**\n` + pts.map(p => "- " + p).join("\n");
     } else {
       const best = MW.bestSentences(CG2, query, hits, info.type, info.type === "list" || info.type === "compare" ? 4 : 3, own);
-      reply = best.length ? best.join(" ") : `I understood that (${u.type}), but I don't know it yet. ` + (webOn ? "The web didn't have it either — try rewording, or load a brain (left panel) for open chat." : "Turn on 🌐 web so I can look it up, add notes in **Knowledge**, or load a brain (left panel) for open chat.");
+      reply = best.length ? (hits[0]?.title === CONVO ? "Earlier you told me: " : "") + best.join(" ") : `I understood that (${u.type}), but I don't know it yet. ` + (webOn ? "The web didn't have it either — try rewording, or load a brain (left panel) for open chat." : "Turn on 🌐 web so I can look it up, add notes in **Knowledge**, or load a brain (left panel) for open chat.");
     }
     out.classList.remove("cursor"); out.innerHTML = md(reply) + srcHTML(src, u);
     if (!nudged && !/^Hi|Got it|I won't remember/.test(reply)) { nudged = true; out.insertAdjacentHTML("beforeend", SMART_CARD(true)); }
@@ -911,7 +931,7 @@ async function send(override, extra = {}) {
   let reply = "";
   try {
     const facts = hits.length ? "\n\nRelevant facts from the user's knowledge grid. Use them if they help answer, prefer them over your own memory, and don't mention the grid:\n" + hits.map((h, i) => `[${i + 1}] ${h.text}`).join("\n") : "";
-    const guide = (ty.fixes.length ? `\n\nThe user's message has typos; they most likely meant: "${ty.text}".` : "") + `\n\nThe user's latest message is a ${u.type === "statement" ? "statement or request" : u.type + " question"}${keyTerms ? " about: " + keyTerms : ""}. Read the whole message carefully before answering, and answer every part of it.` + (info.type === "summary" ? " It is long: summarise its main points clearly, then offer to go deeper." : "")
+    const guide = (cur.msgs.length > 2 ? "\n\nThis is an ongoing conversation: use everything said earlier in this chat (names, details, decisions, code) and answer in that context. Resolve words like 'it', 'that' or 'the code' from the previous messages." : "") + (ty.fixes.length ? `\n\nThe user's message has typos; they most likely meant: "${ty.text}".` : "") + `\n\nThe user's latest message is a ${u.type === "statement" ? "statement or request" : u.type + " question"}${keyTerms ? " about: " + keyTerms : ""}. Read the whole message carefully before answering, and answer every part of it.` + (info.type === "summary" ? " It is long: summarise its main points clearly, then offer to go deeper." : "")
       + (extra.full ? " The user attached a screenshot of their screen: find the question(s) in it and solve them step by step, giving a clear final answer for each." : scr ? " It was read from the user's screen with OCR, so it may contain small reading errors. Find the question(s) on it and solve them step by step, giving a clear final answer for each." + (solved.length ? " Exact results already worked out (use these): " + solved.join("; ") : "") : "");
     const coding = CODEY.test(own);
     const tools = "\n\nCODE TOOLS: ```js blocks run in a sandbox (console.log prints). ```python blocks run real Python 3 in the browser (standard library only; no input() — set values in variables and print results). ```html blocks open as a live preview in a side panel." + (cloud.fix !== false ? " After you reply, your last runnable block is tested automatically; if it errors, you'll get the error to fix." : "")
