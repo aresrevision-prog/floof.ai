@@ -116,6 +116,26 @@
   }
 
   async function askProvider(provider, key, model, system, messages, signal) {
+    if (provider === "xai") {
+      const input = [
+        {role:"system",content:system},
+        ...messages.map(m => ({
+          role:m.role,
+          content:m.img
+            ? [{type:"input_text",text:m.content||"Please inspect this image carefully."},{type:"input_image",image_url:m.img}]
+            : m.content
+        }))
+      ];
+      const data = await jsonRequest(endpoint.xai + "/responses", {
+        method:"POST", signal, headers:{"content-type":"application/json",...authHeaders.xai(key)},
+        body:JSON.stringify({model,input,store:false,max_output_tokens:4096,reasoning:{effort:"high"}})
+      }, "Grok");
+      if (typeof data.output_text === "string" && data.output_text.trim()) return data.output_text.trim();
+      const parts=(data.output||[]).flatMap(item => item.content||[]).filter(part => part.type==="output_text" && part.text);
+      const answer=parts.map(part=>part.text).join("\n").trim();
+      if(answer) return answer;
+      throw new Error("Grok returned an empty response.");
+    }
     if (provider === "anthropic") {
       const body = {
         model, max_tokens: 4096, system,
