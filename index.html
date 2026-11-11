@@ -173,7 +173,7 @@ form#form{padding:12px 16px 16px;border-top:1px solid var(--line)}
   <div class="authbox">
     <div class="logo" id="authLogo" style="width:76px;height:76px;margin:0 auto"></div>
     <h2><span>Floof</span> AI</h2>
-    <div class="kind" id="aKind"><button type="button" data-k="mw" class="on"><svg viewBox="0 0 100 100" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:15px;height:15px;vertical-align:-3px"><path d="M50 5l39 22.5v45L50 95 11 72.5v-45z" stroke="#3ddc84" stroke-width="7" fill="#0d1f16"/><path d="M28 68V31l22 24 22-24v37" stroke="#3ddc84" stroke-width="9"/></svg> MagicWinter</button><button type="button" data-k="ares">📚 Ares (Edu)</button></div>
+    <div class="kind" id="aKind"><button type="button" data-k="mw" class="on"><svg viewBox="0 0 100 100" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="width:15px;height:15px;vertical-align:-3px"><path d="M50 5l39 22.5v45L50 95 11 72.5v-45z" stroke="#3ddc84" stroke-width="7" fill="#0d1f16"/><path d="M28 68V31l22 24 22-24v37" stroke="#3ddc84" stroke-width="9"/></svg> MagicWinter</button><button type="button" data-k="ares">🦉 Ares (Athena)</button></div>
     <div class="small" id="aSub" style="text-align:center"></div>
     <div class="tabs" id="aTabs" style="align-self:center"><button id="aTabIn" class="on" type="button">Sign in</button><button id="aTabUp" type="button">Create account</button></div>
     <form id="aForm" autocomplete="on">
@@ -271,12 +271,13 @@ form#form{padding:12px 16px 16px;border-top:1px solid var(--line)}
         <div class="row" style="justify-content:space-between"><h3>⭐ Floof Pro</h3><span id="proState" class="small"></span></div>
         <div class="small">Support MagicWinter Studio and unlock extras — <b style="color:var(--text)">£5</b>. Pro is linked to your MagicWinter account.</div>
         <ul class="small" style="margin:0;padding-left:18px">
+          <li>☁ Floof Cloud: the strongest model first, more backups, and priority when it's busy</li>
           <li>🧩 Make your own plugins, and import/export them</li>
           <li>🎨 Full theme editor: any colours, fonts and an aurora background</li>
           <li>💬 Keep 500 chats instead of 50</li>
           <li>⭐ Pro badge, and new features first</li>
         </ul>
-        <div class="small" style="font-size:11px">Everything else in Floof stays free for everyone. Floof has no shared server, so Pro doesn't make answers faster — the free brains are the same for all.</div>
+        <div class="small" style="font-size:11px">Everything else in Floof stays free for everyone, including Floof Cloud.</div>
         <div class="row" id="proBuyRow"><a id="proBuy" class="go" target="_blank" rel="noopener" style="padding:8px 14px;border-radius:10px;text-decoration:none;font-weight:700">Get Pro — £5</a></div>
         <div class="row"><input type="text" id="proCode" placeholder="Have a code? FLOOF-XXXX-XXXX" autocomplete="off"><button id="proRedeem">Redeem</button></div>
         <div class="small" id="proMsg"></div>
@@ -645,6 +646,7 @@ const STARTER = [
 
 <script type="module">
 const $ = s => document.querySelector(s);
+const OWL = '<svg viewBox="0 0 100 100" aria-hidden="true"><path d="M50 4 88 18v30c0 24-16 40-38 48C28 88 12 72 12 48V18z" fill="#1d2b4f" stroke="#c9d3e6" stroke-width="5"/><path d="M30 34q20-14 40 0l-4 6q-16-10-32 0z" fill="#c9d3e6"/><circle cx="38" cy="50" r="11" fill="#e9eef8"/><circle cx="62" cy="50" r="11" fill="#e9eef8"/><circle cx="38" cy="51" r="5.5" fill="#0d1630"/><circle cx="62" cy="51" r="5.5" fill="#0d1630"/><circle cx="40" cy="49" r="1.8" fill="#fff"/><circle cx="64" cy="49" r="1.8" fill="#fff"/><path d="M45 62l5 8 5-8z" fill="#f2c14e"/><path d="M28 72q22 14 44 0" stroke="#c9d3e6" stroke-width="3" fill="none" stroke-linecap="round"/></svg>';
 const SYSTEM = "You are Floof AI, the friendly, sharp assistant made by MagicWinter Studio. Be clear, concise and helpful. Use markdown code blocks for code. If you are unsure, say so instead of guessing.";
 const KEY = "mwai.chats.v1", MKEY = "mwai.model", CKEY = "mwai.cache", DKEY = "mwai.docs.v1", SKEY = "mwai.starter";
 const LOGO = document.querySelector(".brand .logo").innerHTML;
@@ -734,7 +736,7 @@ function authGate() {
     $("#authLogo").innerHTML = document.querySelector(".brand .logo").innerHTML;
     let kind = "mw", tab = "in", fails = 0, lockUntil = 0;
     const SUB = { mw: "One account for every <b style='color:var(--text)'>MagicWinter Studio</b> app — Floof AI, Frontline, the studio site and more. Full Floof, all features.",
-      ares: "Sign in with your <b style='color:var(--text)'>Ares Revision</b> account for <b style='color:var(--text)'>📚 Edu mode</b> — Floof becomes your study tutor.",
+      ares: "Sign in with your <b style='color:var(--text)'>Ares Revision</b> account for <b style='color:var(--text)'>🦉 Athena mode</b> — Athena, the Ares study tutor, runs on Ares' own servers. No key needed.",
       device: "A device-only account works offline, but only on this browser." };
     const paint = () => {
       $("#aKind").style.display = kind === "device" ? "none" : "";
@@ -894,7 +896,7 @@ function bubble(role, text, src, u, img, auto) {
     $("#wrap").appendChild(m); return m;
   }
   const m = document.createElement("div"); m.className = "msg " + (role === "user" ? "user" : "ai");
-  m.innerHTML = `<div class="av">${role === "user" ? "🙂" : LOGO}</div><div class="body"></div>`;
+  m.innerHTML = `<div class="av">${role === "user" ? "🙂" : (window.__athena ? OWL : LOGO)}</div><div class="body"></div>`;
   const b = m.querySelector(".body");
   if (role === "user") { b.textContent = text; if (img) { const im = new Image(); im.src = img; im.className = "thumb"; b.prepend(im); } } else { b.innerHTML = md(text) + srcHTML(src, u); decorateArtifacts(b, false); }
   $("#wrap").appendChild(m); return b;
@@ -904,7 +906,7 @@ function renderLog() {
   if (!cur || !cur.msgs.length) {
     w.innerHTML = `<div id="empty"><div class="logo">${LOGO}</div><h2 style="margin:0;color:var(--text)">Floof AI</h2><div>Your own private AI with a 64-D knowledge grid.</div><div class="sugs">
       ${["How do plants make food?", "What caused World War 1?", "What is the quadratic formula?", "Explain the fetch-decode-execute cycle"].map(s => `<button type="button">${s}</button>`).join("")}</div></div>`;
-    if (!engine && !cloudReady()) w.querySelector("#empty").insertAdjacentHTML("beforeend", SMART_CARD());
+    if (!engine && !cloudReady() && ACCOUNT_KIND === "device") w.querySelector("#empty").insertAdjacentHTML("beforeend", SMART_CARD());
     w.querySelectorAll(".sugs button").forEach(b => b.onclick = () => { $("#input").value = b.textContent; send(); });
     return;
   }
@@ -1069,7 +1071,7 @@ async function send(override, extra = {}) {
     const coding = coderOn || CODEY.test(own);
     const tools = "\n\nCODE TOOLS: ```js blocks run in a sandbox (console.log prints). ```python blocks run real Python 3 in the browser (standard library only; no input() — set values in variables and print results). ```html blocks open as a live preview in a side panel." + (cloud.fix !== false ? " After you reply, your last runnable block is tested automatically; if it errors, you'll get the error to fix." : "")
       + (coding ? "\nWhen coding: first get the requirements straight, then give COMPLETE, working code — no placeholders, TODOs or '...'. Put a whole program in ONE block (for games, apps and web pages: one self-contained ```html file with inline CSS/JS; for GCSE-style tasks use ```python unless asked otherwise). Use clear names and brief comments. Handle edge cases and invalid input. After the code, explain in 2–4 short sentences how it works and how to run or change it. When fixing code, return the full corrected program, not just the changed lines." : "") + (calc ? `\n\nExact calculator result (use this number, don't recalculate): ${calc.expr} = ${calc.value}` : "") + (hits.some(h => h.title.startsWith("🌐")) ? "\nSome facts come from Wikipedia; mention the page name when you use them." : "");
-    const edu = ACCOUNT_KIND === "ares" ? "\n\n📚 EDU MODE (signed in with a school Ares Revision account): act as a patient GCSE study tutor. Keep everything educational and age-appropriate. Explain step by step and check understanding; for homework or exam questions, guide them to the answer and show the method rather than only giving the final answer. Coding is fine when it's for learning. If asked for something unrelated to learning (e.g. just for fun or entertainment), kindly steer back to studying." : "";
+    const edu = ACCOUNT_KIND === "ares" ? "\n\n🦉 ATHENA MODE: you are Athena, the friendly, wise GCSE study tutor from Ares Revision (running inside Floof AI). The student signed in with their school Ares account. Keep everything educational and age-appropriate. Explain step by step, use exam-style language and mark-scheme tips, and check understanding with a quick question. For homework or exam questions, guide them to the answer and show the method rather than only giving the final answer. If asked for something unrelated to learning, kindly steer back to studying." : "";
     const coder = coderOn ? `\n\n💻 CODER MODE — you are a senior software engineer pair-programming with the user. Work like this:
 1. If the request is unclear, make sensible assumptions and state them in one line (don't stall with questions).
 2. Briefly plan (2–5 bullet points: structure, data, key functions).
@@ -1453,7 +1455,7 @@ async function diagnose() {
   return bad;
 }
 function updateMode() {
-  if (cloudReady()) { $("#modeNote").textContent = `☁ ${$("#pv").selectedOptions[0].text.split("—")[0].trim()} (${curModel() || "…"}): smart answers & coding${cloud.pv === "ollama" ? " on your PC, free & private" : " for free"}. Grid, web & screen still feed it.`; return; }
+  if (cloudReady()) { $("#modeNote").textContent = `☁ ${$("#pv").selectedOptions[0].text.split("—")[0].replace(/^☁\s*/, "").trim()} (${curModel() || "…"}): smart answers & coding${cloud.pv === "ollama" ? " on your PC, free & private" : " for free"}. Grid, web & screen still feed it.`; return; }
   $("#modeNote").textContent = engine ? "Brain + grid: the grid finds facts, the brain writes the answer. Can still make mistakes." : "Grid mode: answers come straight from your knowledge. Load a brain for written answers.";
 }
 async function loadModel() {
@@ -1727,15 +1729,44 @@ $("#load").onclick = loadModel;
 let stopLoop = false;
 $("#stop").onclick = () => { stopLoop = true; abortCtl?.abort(); engine?.interruptGenerate(); };
 function showPv() {
-  const pv = cloud.pv; $("#pv").value = pv; $("#cKey").style.display = pv ? "" : "none";
+  const pv = cloud.pv; $("#pv").value = pv; $("#cKey").style.display = pv && !PV[pv]?.nokey ? "" : "none";
   $("#cKey").placeholder = pv ? PV[pv].ph : ""; if (pv && !cloud.keys[pv] && PV[pv].def) cloud.keys[pv] = PV[pv].def; $("#cKey").value = pv ? cloud.keys[pv] || "" : ""; $("#cKey").type = pv === "ollama" ? "text" : "password"; $("#pvHelp").innerHTML = pv ? PV[pv].help : "Pick Gemini or OpenRouter for a free, much smarter brain.";
   $("#cFix").checked = cloud.fix !== false; refreshModels();
 }
 $("#pv").onchange = () => { cloud.pv = $("#pv").value; saveCloud(); showPv(); };
+// ---------- server brains: no key needed ----------
+const FLOOF_API = /floofai\.vercel\.app$/.test(location.host) ? "/api/chat" : "https://floofai.vercel.app/api/chat";
+const ARES_AI = "https://ares-revision.vercel.app/api/ai";
+async function postJSON(url, body, signal) {
+  const r = await fetch(url, { method: "POST", signal, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  let j = {}; try { j = await r.json(); } catch {}
+  if (!r.ok) { const e = new Error(j.error || "Server error " + r.status); e.quota = r.status === 503 || r.status === 429; throw e; }
+  return j;
+}
+window.Floof.addProvider({ id: "floof", label: "☁ Floof Cloud — free, no key", ph: "", nokey: true, ok: () => ACCOUNT_KIND === "mw", vision: true,
+  help: "The studio's own AI server — nothing to set up. Free for MagicWinter accounts; ⭐ Pro gets the strongest model first and priority when it's busy.",
+  list: async () => [{ id: "auto", name: isPro() ? "⭐ Floof Cloud Pro (auto)" : "Floof Cloud (auto)" }],
+  stream: async ({ sys, msgs, onText, signal }) => {
+    const j = await postJSON(FLOOF_API, { token: mwToken(), system: sys, messages: msgs, maxTokens: 8192 }, signal);
+    if (j.text) onText(j.text); const u = j.usage || {};
+    return { in: u.promptTokenCount || 0, out: u.candidatesTokenCount || 0, model: "Floof Cloud · " + (j.via || "") + (j.pro ? " ⭐" : ""), finish: j.finish || "" };
+  } });
+window.Floof.addProvider({ id: "athena", label: "🦉 Athena — Ares servers, no key", ph: "", nokey: true, ok: () => ACCOUNT_KIND === "ares", vision: false,
+  help: "Athena runs on Ares Revision's own AI server — nothing to set up for Ares accounts.",
+  list: async () => [{ id: "athena", name: "Athena (Ares)" }],
+  stream: async ({ sys, msgs, onText, signal }) => { // Ares' server takes one prompt, so the chat is written out as a script
+    const convo = msgs.slice(-16).map(m => (m.role === "user" ? "Student: " : "Athena: ") + String(m.content).slice(0, 6000)).join("\n\n");
+    const j = await postJSON(ARES_AI, { prompt: sys.slice(0, 12000) + "\n\n--- Conversation so far ---\n" + convo + "\n\nAthena:", maxTokens: 2500 }, signal);
+    if (j.text) onText(j.text.replace(/^\s*Athena:\s*/i, ""));
+    return { in: 0, out: 0, model: "Athena · Ares servers" };
+  } });
+if (!cloud.pv || !PV[cloud.pv]) { cloud.pv = ACCOUNT_KIND === "ares" ? "athena" : ACCOUNT_KIND === "mw" ? "floof" : ""; saveCloud(); } // server brains by default
+if (ACCOUNT_KIND !== "mw") $("#pv").querySelector('option[value="floof"]')?.remove();
+if (ACCOUNT_KIND !== "ares") $("#pv").querySelector('option[value="athena"]')?.remove();
+showPv();
 $("#cKey").onchange = () => { cloud.keys[cloud.pv] = $("#cKey").value.trim(); saveCloud(); refreshModels(); };
 $("#cModel").onchange = () => { cloud.model[cloud.pv] = $("#cModel").value; saveCloud(); };
 $("#cFix").onchange = () => { cloud.fix = $("#cFix").checked; saveCloud(); };
-showPv();
 $("#newChat").onclick = () => { cur = null; renderChats(); renderLog(); showView("vChat"); $("#input").focus(); $("#side").classList.remove("open"); };
 $("#menuBtn").onclick = () => $("#side").classList.toggle("open");
 $("#reset").onclick = async () => {
@@ -2204,9 +2235,13 @@ $("#plImport").onchange = async e => { // plugins are just text instructions —
 };
 $("#plExport").onclick = () => { if (!isPro() || !plugState.custom.length) return status("No custom plugins to export yet."); downloadCode(JSON.stringify({ floof: 1, plugins: plugState.custom.map(({ emoji, name, prompt }) => ({ emoji, name, prompt })) }, null, 2), "json"); };
 renderPro(); applyTheme(); refreshPro();
-if (ACCOUNT_KIND === "ares") { // Edu mode: Floof becomes a study tutor
-  document.querySelector(".brand").insertAdjacentHTML("beforeend", '<span class="edubadge">📚 EDU</span>');
-  $("#input").placeholder = "Ask a study question…";
+if (ACCOUNT_KIND === "ares") { // 🦉 Athena mode: the Ares study tutor, on Ares' servers
+  window.__athena = true;
+  document.querySelector(".brand").insertAdjacentHTML("beforeend", '<span class="edubadge" style="background:linear-gradient(135deg,#c9d3e6,#8fb8ff)">🦉 ATHENA</span>');
+  document.querySelector(".brand .logo").innerHTML = OWL; document.querySelector(".brand").childNodes.forEach(n => { if (n.nodeType === 3 && /Floof AI/.test(n.textContent)) n.textContent = "Athena"; });
+  $("#input").placeholder = "Ask Athena a study question…";
+  if (!ls.get("mwai.theme", null)) { theme = { ...theme, a: "#8fb8ff", b: "#e0e7f5" }; saveTheme(); }
+  try { renderLog(); } catch {}
 }
 if (ACCOUNT_KIND === "mw") { // change password / delete on the MagicWinter account server
   $("#accDel").onclick = async () => {
