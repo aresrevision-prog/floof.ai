@@ -1,0 +1,5 @@
+{
+  "rewrites": [
+    { "source": "/functions/v1/:path*", "destination": "https://lakjmdyzuqrwcncxybcw.supabase.co/functions/v1/:path*" }
+  ]
+}

@@ -1,0 +1,1566 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Floof AI</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A//www.w3.org/2000/svg%22%20viewBox%3D%220%200%20100%20100%22%3E%3Cdefs%3E%3CradialGradient%20id%3D%22fg%22%20cx%3D%2238%25%22%20cy%3D%2232%25%22%20r%3D%2275%25%22%3E%3Cstop%20offset%3D%220%22%20stop-color%3D%22%23ffffff%22/%3E%3Cstop%20offset%3D%22.55%22%20stop-color%3D%22%23d8f7e6%22/%3E%3Cstop%20offset%3D%221%22%20stop-color%3D%22%233ddc84%22/%3E%3C/radialGradient%3E%3C/defs%3E%3Cpath%20d%3D%22M83.0%2050.0%20A7.6%207.6%200%200%201%2079.7%2064.3%20A7.6%207.6%200%200%201%2070.6%2075.8%20A7.6%207.6%200%200%201%2057.3%2082.2%20A7.6%207.6%200%200%201%2042.7%2082.2%20A7.6%207.6%200%200%201%2029.4%2075.8%20A7.6%207.6%200%200%201%2020.3%2064.3%20A7.6%207.6%200%200%201%2017.0%2050.0%20A7.6%207.6%200%200%201%2020.3%2035.7%20A7.6%207.6%200%200%201%2029.4%2024.2%20A7.6%207.6%200%200%201%2042.7%2017.8%20A7.6%207.6%200%200%201%2057.3%2017.8%20A7.6%207.6%200%200%201%2070.6%2024.2%20A7.6%207.6%200%200%201%2079.7%2035.7%20A7.6%207.6%200%200%201%2083.0%2050.0Z%22%20fill%3D%22url%28%23fg%29%22%20stroke%3D%22%233ddc84%22%20stroke-width%3D%223%22%20stroke-linejoin%3D%22round%22/%3E%3Cellipse%20cx%3D%2239%22%20cy%3D%2250%22%20rx%3D%225.5%22%20ry%3D%227%22%20fill%3D%22%2307130d%22/%3E%3Cellipse%20cx%3D%2261%22%20cy%3D%2250%22%20rx%3D%225.5%22%20ry%3D%227%22%20fill%3D%22%2307130d%22/%3E%3Ccircle%20cx%3D%2241%22%20cy%3D%2247%22%20r%3D%222%22%20fill%3D%22%23fff%22/%3E%3Ccircle%20cx%3D%2263%22%20cy%3D%2247%22%20r%3D%222%22%20fill%3D%22%23fff%22/%3E%3Cellipse%20cx%3D%2231%22%20cy%3D%2260%22%20rx%3D%225%22%20ry%3D%223%22%20fill%3D%22%23ff9fc4%22%20opacity%3D%22.7%22/%3E%3Cellipse%20cx%3D%2269%22%20cy%3D%2260%22%20rx%3D%225%22%20ry%3D%223%22%20fill%3D%22%23ff9fc4%22%20opacity%3D%22.7%22/%3E%3Cpath%20d%3D%22M45%2061q5%205%2010%200%22%20stroke%3D%22%2307130d%22%20stroke-width%3D%222.6%22%20fill%3D%22none%22%20stroke-linecap%3D%22round%22/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=Manrope:wght@400;600;700&display=swap">
+<style>
+:root{--bg:#07130d;--panel:#0d1f16;--panel2:#12291d;--line:#21452f;--text:#e9f5ec;--dim:#8fb29b;--accent:#3ddc84;--accent2:#c6f06b;--err:#ff7a8a}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--text);font:15px/1.55 "Manrope",system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+h1,h2,h3,.brand{font-family:"Syne","Manrope",system-ui,sans-serif;letter-spacing:.01em}
+body{display:flex;overflow:hidden}
+button,select,textarea,input{font:inherit;color:inherit}
+button{cursor:pointer;border:1px solid var(--line);background:var(--panel2);border-radius:10px;padding:8px 12px}
+button:hover{border-color:var(--accent)}
+button:disabled{opacity:.45;cursor:not-allowed}
+input[type=text],input[type=search],input[type=password],select,textarea.box{width:100%;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:8px 10px;outline:none}
+input:focus,textarea.box:focus,select:focus{border-color:var(--accent)}
+#side{width:250px;overflow:auto;background:var(--panel);border-right:1px solid var(--line);display:flex;flex-direction:column;padding:14px;gap:10px;flex-shrink:0}
+.brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:18px}
+.logo{width:36px;height:36px;flex-shrink:0;filter:drop-shadow(0 0 6px rgba(61,220,132,.35))}.logo svg{width:100%;height:100%;display:block}
+#chats{flex:1;min-height:60px;overflow:auto;display:flex;flex-direction:column;gap:4px}
+.chat{display:flex;align-items:center;gap:6px;padding:8px 10px;border-radius:8px;cursor:pointer;color:var(--dim);white-space:nowrap;overflow:hidden}
+.chat span{flex:1;overflow:hidden;text-overflow:ellipsis}
+.chat.on,.chat:hover{background:var(--panel2);color:var(--text)}
+.chat .x{border:0;background:none;padding:0 4px;opacity:.5}
+.chat .x:hover{opacity:1;color:var(--err)}
+.small{font-size:12px;color:var(--dim)}
+main{flex:1;display:flex;flex-direction:column;min-width:0}
+header{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--line)}
+#menuBtn{display:none}
+.tabs{display:flex;gap:4px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:3px}
+.tabs button{border:0;background:none;padding:6px 12px;border-radius:9px;color:var(--dim)}
+.tabs button.on{background:var(--panel2);color:var(--accent)}
+#status{flex:1;font-size:13px;color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+#status.err{color:var(--err)}
+#bar{height:3px;background:var(--line)}
+#barFill{height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .2s}
+.view{display:none;flex:1;min-height:0;flex-direction:column}
+.view.on{display:flex}
+#log{flex:1;overflow:auto;padding:20px 16px}
+.wrap{max-width:780px;margin:0 auto;display:flex;flex-direction:column;gap:14px}
+.msg{display:flex;gap:10px}
+.msg .av{width:30px;height:30px;border-radius:8px;flex-shrink:0;display:grid;place-items:center;font-size:15px;background:var(--panel2)}
+.msg.ai .av{background:none}.msg.ai .av svg{width:30px;height:30px}
+.msg .body{min-width:0;flex:1;padding-top:3px;overflow-wrap:anywhere}
+.msg.user .body{background:var(--panel2);border:1px solid var(--line);padding:8px 12px;border-radius:12px}
+.body pre{background:#030a06;border:1px solid var(--line);border-radius:10px;padding:10px;overflow:auto;position:relative}
+.body code{font-family:ui-monospace,Consolas,monospace;font-size:13px}
+.body :not(pre)>code{background:var(--panel2);padding:1px 5px;border-radius:5px}
+.body p{margin:0 0 8px}.body p:last-child{margin:0}
+.cbtns{position:absolute;top:6px;right:6px;display:flex;gap:4px}.cbtns button{font-size:11px;padding:2px 8px}.body pre{padding-top:30px}
+.runout{background:#030a06;border:1px dashed var(--line);border-radius:10px;padding:8px 10px;margin:-2px 0 8px;font:12px/1.5 ui-monospace,Consolas,monospace;white-space:pre-wrap}
+.runout .e{color:var(--err)}.runout .w{color:var(--accent2)}.runout .tools{display:flex;gap:6px;margin-top:6px;font-family:system-ui}.runout .tools button{font-size:11px;padding:2px 8px}
+.preview{width:100%;height:320px;border:1px solid var(--line);border-radius:10px;background:#fff;margin:-2px 0 8px;display:block}
+.tog{padding:6px 9px;font-size:16px;line-height:1;opacity:.55}.tog.on{opacity:1;border-color:var(--accent);background:var(--panel2)}
+a.chip{text-decoration:none;color:var(--accent)}
+#screenBar{max-width:780px;margin:0 auto 8px;display:none;gap:10px;align-items:center;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:8px}
+#screenBar.on{display:flex}#screenBar video{height:64px;border-radius:8px;background:#000;max-width:120px}#screenBar .sp{flex:1;font-size:12px;color:var(--dim)}
+#crop{position:fixed;inset:0;background:rgba(3,10,6,.92);z-index:20;display:none;flex-direction:column;align-items:center;justify-content:center;gap:12px;padding:16px}
+#crop.on{display:flex}.cropwrap{position:relative;max-width:100%;touch-action:none;cursor:crosshair}
+#cropCan{max-width:100%;max-height:calc(100vh - 120px);display:block;border:1px solid var(--line);border-radius:8px}
+#cropRect{position:absolute;border:2px solid var(--accent);background:rgba(61,220,132,.15);display:none;pointer-events:none}
+#art{width:48%;min-width:340px;max-width:900px;border-left:1px solid var(--line);background:var(--panel);display:none;flex-direction:column}
+#art.on{display:flex}#art.full{position:fixed;inset:0;width:auto;max-width:none;z-index:30}
+.arthead{display:flex;align-items:center;gap:6px;padding:8px 10px;border-bottom:1px solid var(--line)}
+.arthead .t{flex:1;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.arthead button{padding:4px 9px;font-size:13px}
+.arthead .tabs button{padding:4px 10px}
+#artFrame{flex:1;border:0;background:#fff;width:100%}
+#artCode{flex:1;margin:0;overflow:auto;padding:12px;background:#030a06;font:12px/1.5 ui-monospace,Consolas,monospace;white-space:pre;display:none}
+.artcard{display:flex;align-items:center;gap:10px;border:1px solid var(--line);background:var(--panel2);border-radius:12px;padding:10px 12px;margin:8px 0;cursor:pointer}
+.artcard:hover{border-color:var(--accent)}.artcard b{display:block}.artcard .small{font-size:11px}
+@media(max-width:900px){#art.on{position:fixed;inset:0;width:auto;max-width:none;min-width:0;z-index:30}}
+#auth{position:fixed;inset:0;z-index:60;background:radial-gradient(1200px 600px at 15% -10%,rgba(61,220,132,.18),transparent 60%),radial-gradient(900px 500px at 110% 110%,rgba(198,240,107,.12),transparent 60%),#07130d;display:grid;place-items:center;padding:16px;overflow:auto}
+#auth.hide{display:none}#authSnow{position:fixed;inset:0;pointer-events:none}
+.authtop{position:fixed;top:0;left:0;right:0;display:flex;align-items:center;justify-content:space-between;padding:16px max(16px,4vw);z-index:1}
+.mwbrand{display:flex;align-items:center;gap:10px;font:800 17px "Syne",system-ui,sans-serif;color:var(--text);text-decoration:none}.mwbrand svg{width:34px;height:34px;filter:drop-shadow(0 0 6px rgba(61,220,132,.4))}
+.authtop a.back{color:var(--dim);text-decoration:none;font-size:13px;border:1px solid var(--line);border-radius:99px;padding:6px 12px;background:rgba(13,31,22,.6)}.authtop a.back:hover{color:var(--text);border-color:var(--accent)}
+.authbox{position:relative;z-index:1;width:100%;max-width:380px;background:linear-gradient(160deg,rgba(18,41,29,.92),rgba(13,31,22,.92));border:1px solid var(--line);border-radius:22px;padding:26px;display:flex;flex-direction:column;gap:12px;box-shadow:0 30px 80px rgba(0,0,0,.45),0 0 0 1px rgba(61,220,132,.06) inset;backdrop-filter:blur(8px)}
+.authbox h2{font:800 30px/1 "Syne",system-ui,sans-serif;text-align:center;margin:4px 0 0}
+.authbox h2 span{background:linear-gradient(100deg,var(--accent),var(--accent2));-webkit-background-clip:text;background-clip:text;color:transparent}
+.authbox .eyebrow{font:600 11px ui-monospace,Consolas,monospace;letter-spacing:.14em;text-transform:uppercase;color:var(--accent);text-align:center}
+.authbox input{padding:11px 12px}
+.authbox .go{padding:11px;font-size:15px}
+.mwapps{display:flex;justify-content:center;gap:6px;flex-wrap:wrap}.mwapps span{font-size:11px;color:var(--dim);border:1px solid var(--line);border-radius:99px;padding:3px 9px}
+.linkbtn{background:none;border:0;color:var(--dim);font-size:12px;text-decoration:underline;padding:2px;align-self:center}.linkbtn:hover{color:var(--text)}
+.authfoot{display:flex;justify-content:center;gap:8px;align-items:center;font-size:11px;color:var(--dim)}.authfoot svg{width:16px;height:16px}
+#aForm{display:flex;flex-direction:column;gap:10px}
+.thumb{display:block;max-width:240px;border-radius:8px;border:1px solid var(--line);margin-bottom:6px}
+.srcs{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.chip{font-size:11px;padding:2px 8px;border-radius:99px;border:1px solid var(--line);color:var(--dim);background:var(--panel)}
+.chip b{font-weight:700}
+.cursor::after{content:"▍";color:var(--accent);animation:b 1s steps(1) infinite}@keyframes b{50%{opacity:0}}
+#empty{text-align:center;color:var(--dim);margin-top:10vh}
+#empty .logo{width:84px;height:84px;margin:0 auto 14px}
+.sugs{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:16px}
+.sugs button{font-size:13px}
+form#form{padding:12px 16px 16px;border-top:1px solid var(--line)}
+.inrow{max-width:780px;margin:0 auto;display:flex;gap:8px;align-items:flex-end;background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:8px}
+#input{flex:1;resize:none;border:0;background:none;outline:none;max-height:180px;padding:6px}
+.go{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#07130d;border:0;font-weight:700}
+.note{font-size:11px;color:var(--dim);text-align:center;margin-top:6px}
+/* grid view */
+.gtool{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--line)}
+.gtool input{max-width:220px}
+.legend{display:flex;flex-wrap:wrap;gap:6px}
+.legend button{font-size:12px;padding:3px 9px;border-radius:99px;display:flex;gap:6px;align-items:center}
+.legend button.off{opacity:.35}
+.dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+.gwrap{flex:1;position:relative;min-height:0}
+#gcan{position:absolute;inset:0;width:100%;height:100%;cursor:grab;touch-action:none}
+#gcan.drag{cursor:grabbing}
+#ginfo{position:absolute;right:12px;top:12px;width:290px;max-height:calc(100% - 24px);overflow:auto;background:rgba(13,31,22,.94);border:1px solid var(--line);border-radius:12px;padding:12px;display:none}
+#ginfo h3{margin:0 0 2px;font-size:20px}
+.nbrs{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.nbrs button{font-size:12px;padding:3px 9px}
+.coords{display:grid;grid-template-columns:repeat(64,1fr);gap:1px;height:56px;align-items:center;margin-top:6px}
+.coords div{background:var(--accent);border-radius:1px;align-self:center}
+#gtip{position:absolute;pointer-events:none;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:3px 8px;font-size:12px;display:none;white-space:nowrap}
+.ghint{position:absolute;left:12px;bottom:10px;font-size:11px;color:var(--dim)}
+/* knowledge */
+.kn{flex:1;overflow:auto;padding:16px}
+.kgrid{max-width:900px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.card h3{margin:0;font-size:16px}
+.row{display:flex;gap:8px;align-items:center}
+.doc{display:flex;gap:8px;align-items:center;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--panel2)}
+.doc span{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.doc .x{border:0;background:none;padding:0 4px}
+.hit{border:1px solid var(--line);border-radius:10px;padding:8px 10px;background:var(--panel2);font-size:13px}
+.hit .m{font-size:11px;color:var(--dim);margin-bottom:4px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;text-align:center}
+.stats b{display:block;font-size:20px;color:var(--accent);font-variant-numeric:tabular-nums}
+.stats div{background:var(--panel2);border-radius:10px;padding:8px 4px;font-size:11px;color:var(--dim)}
+@media(max-width:820px){.kgrid{grid-template-columns:1fr}#ginfo{width:auto;left:12px;top:auto;bottom:12px;max-height:45%}}
+@media(max-width:720px){#side{position:fixed;inset:0 auto 0 0;z-index:5;transform:translateX(-100%);transition:transform .2s}#side.open{transform:none}#menuBtn{display:block}.tabs button{padding:6px 9px}}
+</style>
+</head>
+<body>
+<div id="auth">
+  <canvas id="authSnow"></canvas>
+  <div class="authtop"><a class="mwbrand" href="/" id="mwHome"><svg viewBox="0 0 100 100" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M50 5l39 22.5v45L50 95 11 72.5v-45z" stroke="#3ddc84" stroke-width="6" fill="#0d1f16"/><path d="M16 38l18 26 16-28 16 28 18-26" stroke="#3ddc84" stroke-width="8"/><path d="M28 68V31l22 24 22-24v37" stroke="#0d1f16" stroke-width="12.5"/><path d="M28 68V31l22 24 22-24v37" stroke="#3ddc84" stroke-width="7.5"/></svg>MagicWinter Studio</a><a class="back" href="/" id="mwBack">← Back to site</a></div>
+  <div class="authbox">
+    <div class="logo" id="authLogo" style="width:76px;height:76px;margin:0 auto"></div>
+    <div class="eyebrow">MagicWinter account</div>
+    <h2><span>Floof</span> AI</h2>
+    <div class="small" id="aSub" style="text-align:center;margin-bottom:4px">Use your <b style="color:var(--text)">Ares Revision</b> username and password — one account for every MagicWinter app.</div>
+    <div class="mwapps" id="aApps"><span>📚 Ares Revision</span><span>🎖️ Frontline</span><span>☁️ Floof AI</span><span>❄ MagicWinter</span></div>
+    <div class="tabs" id="aTabs" style="align-self:center;display:none"><button id="aTabIn" class="on" type="button">Sign in</button><button id="aTabUp" type="button">Create account</button></div>
+    <form id="aForm" autocomplete="on">
+      <input type="text" id="aUser" placeholder="Username" autocomplete="username" maxlength="20" required>
+      <div class="row"><input type="password" id="aPass" placeholder="Password" autocomplete="current-password" required><button type="button" id="aShow" title="Show password" style="padding:8px 10px">👁</button></div>
+      <input type="password" id="aPass2" placeholder="Confirm password" autocomplete="new-password" style="display:none">
+      <label class="row small" style="cursor:pointer"><input type="checkbox" id="aKeep" checked> Keep me signed in on this device</label>
+      <div id="aErr" class="small" style="color:var(--err);min-height:18px"></div>
+      <button class="go" id="aGo" type="submit" style="width:100%">Sign in</button>
+    </form>
+    <div class="small" id="aAresLinks" style="text-align:center">No account? <a href="https://ares-revision.vercel.app" target="_blank" rel="noopener" style="color:var(--accent)">Create one free on Ares Revision ↗</a></div>
+    <button type="button" id="aSwitch" class="linkbtn">No internet? Use a device-only account</button>
+    <div class="authfoot"><svg viewBox="0 0 100 100" fill="none" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M50 5l39 22.5v45L50 95 11 72.5v-45z" stroke="#3ddc84" stroke-width="6" fill="#0d1f16"/><path d="M16 38l18 26 16-28 16 28 18-26" stroke="#3ddc84" stroke-width="8"/><path d="M28 68V31l22 24 22-24v37" stroke="#0d1f16" stroke-width="12.5"/><path d="M28 68V31l22 24 22-24v37" stroke="#3ddc84" stroke-width="7.5"/></svg><span>© MagicWinter Studio</span></div>
+  </div>
+</div>
+<aside id="side">
+  <div class="brand"><div class="logo"><svg viewBox="0 0 100 100" aria-hidden="true"><defs><radialGradient id="fg" cx="38%" cy="32%" r="75%"><stop offset="0" stop-color="#ffffff"/><stop offset=".55" stop-color="#d8f7e6"/><stop offset="1" stop-color="#3ddc84"/></radialGradient></defs><path d="M83.0 50.0 A7.6 7.6 0 0 1 79.7 64.3 A7.6 7.6 0 0 1 70.6 75.8 A7.6 7.6 0 0 1 57.3 82.2 A7.6 7.6 0 0 1 42.7 82.2 A7.6 7.6 0 0 1 29.4 75.8 A7.6 7.6 0 0 1 20.3 64.3 A7.6 7.6 0 0 1 17.0 50.0 A7.6 7.6 0 0 1 20.3 35.7 A7.6 7.6 0 0 1 29.4 24.2 A7.6 7.6 0 0 1 42.7 17.8 A7.6 7.6 0 0 1 57.3 17.8 A7.6 7.6 0 0 1 70.6 24.2 A7.6 7.6 0 0 1 79.7 35.7 A7.6 7.6 0 0 1 83.0 50.0Z" fill="url(#fg)" stroke="#3ddc84" stroke-width="3" stroke-linejoin="round"/><ellipse cx="39" cy="50" rx="5.5" ry="7" fill="#07130d"/><ellipse cx="61" cy="50" rx="5.5" ry="7" fill="#07130d"/><circle cx="41" cy="47" r="2" fill="#fff"/><circle cx="63" cy="47" r="2" fill="#fff"/><ellipse cx="31" cy="60" rx="5" ry="3" fill="#ff9fc4" opacity=".7"/><ellipse cx="69" cy="60" rx="5" ry="3" fill="#ff9fc4" opacity=".7"/><path d="M45 61q5 5 10 0" stroke="#07130d" stroke-width="2.6" fill="none" stroke-linecap="round"/></svg></div>Floof AI</div>
+  <button id="newChat">+ New chat</button>
+  <div id="chats"></div>
+  <label class="small" for="model">Brain (optional — the grid answers without one)</label>
+  <select id="model">
+    <option value="SmolLM2-360M-Instruct">⚡ Tiny — fastest (~0.4 GB)</option>
+    <option value="Llama-3.2-1B-Instruct">🌨 Light — quick (~0.9 GB)</option>
+    <option value="Qwen2.5-1.5B-Instruct" selected>❄ Balanced — recommended (~1.1 GB)</option>
+    <option value="Qwen3-1.7B">🧠 Smart — better reasoning (~1.3 GB)</option>
+    <option value="Llama-3.2-3B-Instruct">🏔 Big — smartest, slow (~2.3 GB)</option>
+    <option value="Qwen2.5-Coder-1.5B-Instruct">💻 Coder — code specialist (~1.2 GB)</option>
+    <option value="Qwen2.5-Coder-7B-Instruct">💻 Coder Pro — best on-device coding, needs strong GPU (~5 GB)</option>
+  </select>
+  <button id="load">Load brain</button>
+  <button id="reset" style="font-size:12px">Reset downloads</button>
+  <div style="border-top:1px solid var(--line);padding-top:10px;display:flex;flex-direction:column;gap:8px">
+    <label class="small" for="pv" style="color:var(--text)">☁ Smarter brain (free)</label>
+    <select id="pv"><option value="">Off — on-device only</option><option value="gemini">Google Gemini — free</option><option value="openrouter">OpenRouter — free models</option><option value="ollama">Local PC (Ollama) — free, private</option></select>
+    <input type="password" id="cKey" placeholder="API key" autocomplete="off">
+    <select id="cModel"></select>
+    <label class="row small" style="cursor:pointer"><input type="checkbox" id="cFix" checked> Auto-test &amp; fix code</label>
+    <div class="small" id="pvHelp" style="font-size:11px"></div>
+  </div>
+  <div class="row small" style="border-top:1px solid var(--line);padding-top:10px"><span style="flex:1;overflow:hidden;text-overflow:ellipsis">👤 <b id="whoami" style="color:var(--text)"></b></span><button id="signOut" style="font-size:12px;padding:4px 10px">Sign out</button></div>
+  <a href="/" id="mwSide" class="mwbrand" style="font-size:12px;gap:8px;opacity:.85"><svg viewBox="0 0 100 100" fill="none" stroke-linecap="round" stroke-linejoin="round" style="width:20px;height:20px" aria-hidden="true"><path d="M50 5l39 22.5v45L50 95 11 72.5v-45z" stroke="#3ddc84" stroke-width="6" fill="#0d1f16"/><path d="M16 38l18 26 16-28 16 28 18-26" stroke="#3ddc84" stroke-width="8"/><path d="M28 68V31l22 24 22-24v37" stroke="#0d1f16" stroke-width="12.5"/><path d="M28 68V31l22 24 22-24v37" stroke="#3ddc84" stroke-width="7.5"/></svg>MagicWinter Studio ↗</a>
+</aside>
+<main>
+  <header>
+    <button id="menuBtn">☰</button>
+    <div class="tabs"><button data-v="vChat" class="on">Chat</button><button data-v="vGrid">Grid</button><button data-v="vKnow">Knowledge</button><button data-v="vMe">Me</button></div>
+    <div id="status">Grid ready — chat now, or load a brain for full answers.</div>
+    <button id="stop" hidden>■ Stop</button>
+  </header>
+  <div id="bar"><div id="barFill"></div></div>
+
+  <section class="view on" id="vChat">
+    <div id="log"><div class="wrap" id="wrap"></div></div>
+    <form id="form">
+      <div id="screenBar"><video id="scrVid" muted playsinline></video><div class="sp">Sharing your screen — open the question, then press Solve.</div><button type="button" class="go" id="scrSnap">📸 Solve</button><button type="button" id="scrStop">⏹ Stop</button></div>
+      <div class="inrow">
+        <button type="button" id="webBtn" class="tog" title="Web search (Wikipedia) — lets Floof AI look things up">🌐</button>
+        <button type="button" id="scrBtn" class="tog" title="Share your screen and solve what's on it">🖥</button>
+        <label class="tog" title="Solve a picture/screenshot (or paste one with Ctrl+V)" style="cursor:pointer;border:1px solid var(--line);border-radius:10px">🖼<input type="file" id="imgIn" accept="image/*" hidden></label>
+        <textarea id="input" rows="1" placeholder="Message Floof AI…"></textarea>
+        <button id="send" class="go" type="submit">Send</button>
+      </div>
+      <div class="note" id="modeNote">Grid mode: answers come straight from your knowledge. Load a brain for written answers.</div>
+    </form>
+  </section>
+
+  <section class="view" id="vGrid">
+    <div class="gtool">
+      <input type="search" id="gfind" placeholder="Find a word…">
+      <div class="legend" id="legend"></div>
+    </div>
+    <div class="gwrap" id="gwrap">
+      <canvas id="gcan"></canvas>
+      <div id="gtip"></div>
+      <div id="ginfo"></div>
+      <div class="ghint">Each dot = a word in 64 dimensions, squashed to 2D. Colour = sector. Drag to pan · scroll/pinch to zoom · click a word.</div>
+    </div>
+  </section>
+
+  <section class="view" id="vMe">
+    <div class="kn"><div class="kgrid" style="grid-template-columns:1fr">
+      <div class="card">
+        <div class="row" style="justify-content:space-between"><h3>💾 What Floof AI knows about you</h3><label class="row small" style="cursor:pointer"><input type="checkbox" id="mOn"> Learn about me</label></div>
+        <div class="small">It picks up things you mention (your name, year, subjects, what you like or find hard, upcoming tests) and uses them to tailor answers. Saved only in this browser. It never keeps passwords, phone numbers, emails or addresses. In chat you can say <b>"remember that…"</b>, <b>"what do you know about me?"</b> or <b>"forget…"</b>.</div>
+        <div class="row"><input type="text" id="mAdd" placeholder="Add something yourself, e.g. I'm doing triple science"><button class="go" id="mAddBtn">Add</button></div>
+        <div id="mList" style="display:flex;flex-direction:column;gap:6px"></div>
+        <div class="row"><button id="mClear" style="font-size:12px">Forget everything</button></div>
+      </div>
+      <div class="card">
+        <h3>👤 MagicWinter account</h3>
+        <div class="small">Signed in as <b id="accName" style="color:var(--text)"></b></div>
+        <input type="password" id="pOld" placeholder="Current password" autocomplete="current-password">
+        <input type="password" id="pNew" placeholder="New password (6+ characters)" autocomplete="new-password">
+        <input type="password" id="pNew2" placeholder="Confirm new password" autocomplete="new-password">
+        <div class="row"><button class="go" id="pChange">Change password</button><button id="accDel" style="font-size:12px;margin-left:auto;color:var(--err)">Delete account</button></div>
+        <div class="small" id="pMsg"></div>
+      </div>
+    </div></div>
+  </section>
+
+  <section class="view" id="vKnow">
+    <div class="kn"><div class="kgrid">
+      <div class="card">
+        <h3>Add knowledge</h3>
+        <input type="text" id="kTitle" placeholder="Title (e.g. Biology notes)">
+        <select id="kSector"></select>
+        <textarea class="box" id="kText" rows="8" placeholder="Paste notes, facts, revision content…"></textarea>
+        <div class="row"><button class="go" id="kAdd">Add to grid</button><label class="small" style="cursor:pointer;border:1px solid var(--line);border-radius:10px;padding:8px 10px">📄 Upload .txt/.md<input type="file" id="kFile" accept=".txt,.md,text/plain" multiple hidden></label></div>
+      </div>
+      <div class="card">
+        <h3>The grid</h3>
+        <div class="stats" id="kStats"></div>
+        <label class="row small" style="cursor:pointer"><input type="checkbox" id="kStarter"> Include starter GCSE pack</label>
+        <h3 style="margin-top:4px">Test a search</h3>
+        <input type="search" id="kTest" placeholder="e.g. how do plants make food">
+        <div id="kHits" style="display:flex;flex-direction:column;gap:6px"></div>
+      </div>
+      <div class="card" style="grid-column:1/-1">
+        <h3>🌐 Grow the grid from the internet</h3>
+        <div class="row"><input type="text" id="lTopic" placeholder="Topic — e.g. Volcanoes, Romeo and Juliet, Cold War"><select id="lCount" style="width:auto"><option value="3">3 pages</option><option value="6" selected>6 pages</option><option value="12">12 pages</option></select><button class="go" id="lGo">Learn</button></div>
+        <label class="row small" style="cursor:pointer"><input type="checkbox" id="lAuto"> Auto-learn: keep every web page the AI reads, so the grid grows as you chat</label>
+        <div class="small" id="lLog"></div>
+      </div>
+      <div class="card" style="grid-column:1/-1">
+        <div class="row" style="justify-content:space-between"><h3>Your knowledge</h3><button id="kClearWeb" style="font-size:12px;padding:4px 10px">Remove web pages</button></div>
+        <div id="kDocs" style="display:flex;flex-direction:column;gap:6px"></div>
+      </div>
+    </div></div>
+  </section>
+</main>
+<aside id="art">
+  <div class="arthead"><span class="t" id="artTitle">Preview</span>
+    <div class="tabs"><button id="artTP" class="on">Preview</button><button id="artTC">Code</button></div>
+    <button id="artReload" title="Restart">⟳</button><button id="artFull" title="Fullscreen">⤢</button><button id="artDl" title="Download file">⬇</button><button id="artX" title="Close">✕</button></div>
+  <iframe id="artFrame" sandbox="allow-scripts allow-modals allow-pointer-lock allow-forms allow-popups"></iframe>
+  <pre id="artCode"></pre>
+</aside>
+
+<div id="crop"><div class="small" style="color:var(--text)">Drag a box around the question (or solve the whole picture)</div><div class="cropwrap" id="cropWrap"><canvas id="cropCan"></canvas><div id="cropRect"></div></div><div class="row"><button id="cropX">Cancel</button><button id="cropAll">Solve whole picture</button><button class="go" id="cropGo">Solve selection</button></div></div>
+<script>
+// ===================== MW GRID ENGINE (no dependencies) =====================
+// Every word becomes a point in 64-D space, learned by "random indexing":
+// each word gets a fixed random fingerprint; a word's position = the sum of the
+// fingerprints of the words it appears next to. Words used in similar contexts
+// end up near each other. Each word also carries a sector number (1-7).
+const MW = (() => {
+  const D = 64, WIN = 3, NZ = 6;
+  const SENT = /(?:[^.!?\n]|\.(?=\d)|(?<=\b[A-Z])\.|(?<=\b(?:Mr|Mrs|Ms|Dr|St|Prof|vs|etc))\.)+[.!?]*/g;
+  const SECTORS = ["?", "Maths", "Science", "History", "English", "Geography", "Computing", "General"];
+  const COLORS = ["#8fb29b", "#5fb3ff", "#3ddc84", "#ffb35c", "#ff7ab6", "#c6f06b", "#b18cff", "#e9f5ec"];
+  const STOP = new Set("a an the and or but if of to in on at by for with from as is are was were be been being it its this that these those i you he she we they me him her us them my your his our their what which who whom how why when where do does did done have has had not no yes so than then there here can could will would should may might must shall about into over under up down out off just also very more most such only own same too s t each other any all some get got make made use used using one two explain explains tell tells thing things describe define meaning know please whats what's give".split(" "));
+  function stem(w) {
+    if (/^\d+$/.test(w)) return w;
+    if (w.length > 4 && w.endsWith("ies")) w = w.slice(0, -3) + "y";
+    else if (w.length > 5 && w.endsWith("ing")) w = w.slice(0, -3);
+    else if (w.length > 4 && w.endsWith("ed")) w = w.slice(0, -2);
+    else if (w.length > 4 && /(ch|sh|x|ss|zz)es$/.test(w)) w = w.slice(0, -2);
+    else if (w.length > 3 && w.endsWith("s") && !/(ss|us|is)$/.test(w)) w = w.slice(0, -1);
+    if (w.length > 3 && w.endsWith("e")) w = w.slice(0, -1);
+    return w;
+  }
+  const ALIAS = { ww1: "first world war", wwi: "first world war", ww2: "second world war", wwii: "second world war", maths: "maths", math: "maths", cs: "computer science", ai: "artificial intelligence" };
+  function tokens(text) {
+    const out = [];
+    text = text.toLowerCase().replace(/\b(ww1|wwi|ww2|wwii|math|cs|ai)\b/g, m => ALIAS[m]);
+    for (const m of text.matchAll(/[a-z0-9]+(?:'[a-z]+)?/g)) {
+      let w = m[0].replace(/'s$/, "");
+      if (w.length < 2 || STOP.has(w)) continue;
+      out.push({ s: stem(w), w });
+    }
+    return out;
+  }
+  function hash(str) { let h = 2166136261; for (let i = 0; i < str.length; i++) { h ^= str.charCodeAt(i); h = Math.imul(h, 16777619); } return h >>> 0; }
+  const idxCache = new Map();
+  function fingerprint(s) { // sparse random ±1 vector, same every time for the same word
+    let f = idxCache.get(s); if (f) return f;
+    let a = hash(s); const rnd = () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+    const pos = new Int8Array(NZ), sign = new Int8Array(NZ);
+    for (let k = 0; k < NZ; k++) { pos[k] = Math.floor(rnd() * D); sign[k] = rnd() < .5 ? -1 : 1; }
+    f = { pos, sign }; idxCache.set(s, f); return f;
+  }
+  function chunkText(text, max = 45) {
+    const sents = text.replace(/\s+/g, " ").match(SENT) || [];
+    const chunks = []; let cur = [], n = 0;
+    for (const s of sents) {
+      const c = s.trim().split(" ").length; if (!s.trim()) continue;
+      if (n + c > max && cur.length) { chunks.push(cur.join(" ")); cur = []; n = 0; }
+      cur.push(s.trim()); n += c;
+    }
+    if (cur.length) chunks.push(cur.join(" "));
+    return chunks;
+  }
+  const norm = v => { let s = 0; for (let i = 0; i < D; i++) s += v[i] * v[i]; s = Math.sqrt(s) || 1; for (let i = 0; i < D; i++) v[i] /= s; return v; };
+  const dot = (a, b) => { let s = 0; for (let i = 0; i < D; i++) s += a[i] * b[i]; return s; };
+  const argmax = (arr, from = 1) => { let b = from; for (let i = from; i < arr.length; i++) if (arr[i] > arr[b]) b = i; return arr[b] > 0 ? b : 7; };
+
+  function guessSector(G, text) {
+    if (!G) return 7;
+    const sc = new Float32Array(8);
+    for (const t of tokens(text)) { const v = G.vocab.get(t.s); if (v && v.n < G.chunks.length * .3) for (let k = 1; k < 8; k++) sc[k] += v.sec[k] / v.n * v.idf; }
+    return argmax(sc);
+  }
+
+  function build(docs) {
+    const t0 = performance.now();
+    const vocab = new Map(), chunks = [];
+    const get = (t) => { let v = vocab.get(t.s); if (!v) { v = { s: t.s, w: t.w, n: 0, df: 0, sec: new Float32Array(8), vec: new Float32Array(D) }; vocab.set(t.s, v); } return v; };
+    for (const d of docs) for (const text of chunkText(d.text)) {
+      const toks = tokens(text); if (!toks.length) continue;
+      const c = { doc: d, text, sector: d.sector || 7, toks: toks.map(t => t.s), tf: new Map(), vec: new Float32Array(D) };
+      for (const t of toks) { const v = get(t); v.n++; v.sec[c.sector]++; if (t.w.length < v.w.length) v.w = t.w; c.tf.set(t.s, (c.tf.get(t.s) || 0) + 1); }
+      for (const s of c.tf.keys()) vocab.get(s).df++;
+      chunks.push(c);
+    }
+    // learn positions from context
+    for (const c of chunks) {
+      const t = c.toks;
+      for (let i = 0; i < t.length; i++) {
+        const V = vocab.get(t[i]).vec;
+        const self = fingerprint(t[i]); for (let k = 0; k < NZ; k++) V[self.pos[k]] += self.sign[k] * .3;
+        for (let j = Math.max(0, i - WIN); j <= Math.min(t.length - 1, i + WIN); j++) {
+          if (j === i) continue;
+          const f = fingerprint(t[j]), wt = 1 / Math.abs(i - j);
+          for (let k = 0; k < NZ; k++) V[f.pos[k]] += f.sign[k] * wt;
+        }
+      }
+    }
+    const N = chunks.length || 1, mean = new Float32Array(D);
+    for (const v of vocab.values()) { norm(v.vec); for (let i = 0; i < D; i++) mean[i] += v.vec[i] / vocab.size; }
+    for (const v of vocab.values()) {
+      for (let i = 0; i < D; i++) v.vec[i] -= mean[i] * .8; norm(v.vec);
+      v.idf = Math.log(1 + (N - v.df + .5) / (v.df + .5));
+      v.sector = argmax(v.sec);
+    }
+    let total = 0;
+    for (const c of chunks) {
+      c.len = c.toks.length; total += c.len;
+      for (const [s, n] of c.tf) { const v = vocab.get(s); const w = v.idf * (1 + Math.log(n)); for (let i = 0; i < D; i++) c.vec[i] += v.vec[i] * w; }
+      norm(c.vec);
+    }
+    return { vocab, chunks, avg: total / N || 1, ms: Math.round(performance.now() - t0) };
+  }
+
+  function queryVec(G, qs) {
+    const q = new Float32Array(D); let any = false;
+    for (const s of qs) { const v = G.vocab.get(s); if (v) { any = true; for (let i = 0; i < D; i++) q[i] += v.vec[i] * v.idf; } }
+    return any ? norm(q) : null;
+  }
+
+  function search(G, query, k = 3, sectorFilter = 0) {
+    const qs = [...new Set(tokens(query).map(t => t.s))];
+    const known = qs.filter(s => G.vocab.has(s));
+    if (!known.length) return { hits: [], sector: 0 };
+    const sc = new Float32Array(8);
+    for (const s of known) { const v = G.vocab.get(s); for (let j = 1; j < 8; j++) sc[j] += v.sec[j] / v.n * v.idf; }
+    const qsec = sectorFilter || argmax(sc);
+    const qv = queryVec(G, known), k1 = 1.2, b = .75;
+    const scored = [];
+    let maxBm = 0;
+    for (const c of G.chunks) {
+      if (sectorFilter && c.sector !== sectorFilter) continue;
+      let bm = 0;
+      for (const s of known) { const tf = c.tf.get(s); if (tf) bm += G.vocab.get(s).idf * (tf * (k1 + 1)) / (tf + k1 * (1 - b + b * c.len / G.avg)); }
+      const cos = qv ? Math.max(0, dot(qv, c.vec)) : 0;
+      if (bm > maxBm) maxBm = bm;
+      scored.push({ c, bm, cos });
+    }
+    for (const h of scored) { h.score = (maxBm ? h.bm / maxBm : 0) * .65 + h.cos * .35; if (h.c.sector === qsec) h.score *= 1.1; if (h.c.doc.chat) h.score *= 1.25; }
+    scored.sort((a, b) => b.score - a.score);
+    const top = scored[0] ? scored[0].score : 0;
+    const hits = scored.filter(h => h.bm > 0 && h.score > .3 && h.score > top * .55).slice(0, k)
+      .map(h => ({ text: h.c.text, title: h.c.doc.title, sector: h.c.sector, score: h.score }));
+    return { hits, sector: qsec };
+  }
+
+  function neighbours(G, s, k = 8) {
+    const v = G.vocab.get(s); if (!v) return [];
+    const out = [];
+    for (const u of G.vocab.values()) if (u !== v && u.n > 1) out.push([u, dot(v.vec, u.vec)]);
+    return out.sort((a, b) => b[1] - a[1]).slice(0, k);
+  }
+
+  function project(G, max = 700) { // PCA: top-2 directions of the 64-D cloud
+    let words = [...G.vocab.values()].filter(v => v.n > 1);
+    if (words.length < 150) words = [...G.vocab.values()];
+    words = words.sort((a, b) => b.n - a.n).slice(0, max);
+    if (words.length < 3) return [];
+    const mean = new Float32Array(D);
+    for (const w of words) for (let i = 0; i < D; i++) mean[i] += w.vec[i] / words.length;
+    const X = words.map(w => w.vec.map((x, i) => x - mean[i]));
+    const comps = [];
+    for (let c = 0; c < 2; c++) {
+      let p = new Float32Array(D).map((_, i) => Math.sin(i * 7.1 + c * 3.3) + .01);
+      for (let it = 0; it < 40; it++) {
+        const np = new Float32Array(D);
+        for (const x of X) { let d = 0; for (let i = 0; i < D; i++) d += x[i] * p[i]; for (let i = 0; i < D; i++) np[i] += x[i] * d; }
+        for (const q of comps) { const d = dot(np, q); for (let i = 0; i < D; i++) np[i] -= d * q[i]; }
+        p = norm(np);
+      }
+      comps.push(p);
+    }
+    const pts = words.map((w, i) => ({ v: w, x: dot(X[i], comps[0]), y: dot(X[i], comps[1]) }));
+    let m = 1e-9; for (const p of pts) m = Math.max(m, Math.abs(p.x), Math.abs(p.y));
+    for (const p of pts) { p.x /= m; p.y /= m; }
+    return pts;
+  }
+
+  // ---------- understanding ----------
+  const splitSentences = text => (text.replace(/\s+/g, " ").match(SENT) || []).map(x => x.trim()).filter(x => x.split(" ").length > 2);
+  const TYPES = { who: "who", when: "when", where: "where", why: "why / cause", howmany: "how many", how: "how", what: "what is", list: "list", compare: "compare", summary: "summary", question: "question", statement: "statement" };
+  function analyze(text, wordCount) {
+    const t = text.toLowerCase().trim();
+    let type = wordCount > 120 ? "summary"
+      : /\b(summari[sz]e|summary|tl;?dr|main points|key points)\b/.test(t) ? "summary"
+      : /^(who|whom|whose)\b|\bwho (was|is|wrote|invented|made|discovered)\b/.test(t) ? "who"
+      : /^when\b|\bwhat (year|date)\b|\bwhich year\b/.test(t) ? "when"
+      : /^where\b/.test(t) ? "where"
+      : /^why\b|\bcaus|\breason/.test(t) ? "why"
+      : /^how (many|much)\b/.test(t) ? "howmany"
+      : /^how\b/.test(t) ? "how"
+      : /\b(compare|difference|versus|vs)\b/.test(t) ? "compare"
+      : /^(what|what's|define|explain|describe)\b|\bmeaning of\b/.test(t) ? "what"
+      : /^(list|name|give)\b/.test(t) ? "list"
+      : /\?$/.test(t) ? "question" : "statement";
+    return { type, label: TYPES[type], terms: tokens(text) };
+  }
+  const FOLLOW = /\b(it|its|they|them|their|this|that|those|these|he|she|his|her|him|there|then|what about|how about|tell me more|more about it|why is that)\b/i;
+  const isFollowUp = (text, terms) => terms.length <= 3 && FOLLOW.test(text);
+  const BONUS = {
+    when: /\b(1[0-9]{3}|20[0-9]{2})\b|\b(january|february|march|april|may|june|july|august|september|october|november|december|century)\b/i,
+    who: /\b[A-Z][a-z]+ (?:[A-Z]\.? ?)*[A-Z][a-z]+\b|\bby [A-Z]/,
+    howmany: /\d/, where: /\b(in|at) [A-Z]/,
+    why: /\b(because|caus|due to|trigger|lead to|led to|result|so that|reason)/i,
+    what: /\b(is|are|means|called)\b/i, how: /\b(by|using|through|turn|process|cycle|follows|when)\b/i
+  };
+  function sentScore(G, sent, prev, qset, focus, type) {
+    const st = new Set(tokens(sent).map(t => t.s)), pt = new Set(prev ? tokens(prev).map(t => t.s) : []); let sc = 0, tot = 0;
+    for (const s of qset) { const v = G.vocab.get(s); const w = (v ? v.idf : 1) * (focus.has(s) ? 2 : 1); tot += w; if (st.has(s)) sc += w; else if (pt.has(s)) sc += w * .4; }
+    sc = tot ? sc / tot : 0;
+    if (sc > 0 && BONUS[type] && BONUS[type].test(sent)) sc += .35;
+    return sc;
+  }
+  function bestSentences(G, query, hits, type, n = 3, focusText = query) {
+    const qset = new Set(tokens(query).map(t => t.s)), focus = new Set(tokens(focusText).map(t => t.s));
+    const cand = [], seen = new Set();
+    const top = hits[0] && hits[0].sector;
+    hits.forEach((h, hi) => { if (h.sector !== top && !/list|compare/.test(type)) return; const ss = splitSentences(h.text); ss.forEach((x, i) => { if (seen.has(x)) return; seen.add(x); cand.push({ x, sc: sentScore(G, x, ss[i - 1], qset, focus, type) + h.score * .3 - hi * .02 }); }); });
+    cand.sort((a, b) => b.sc - a.sc);
+    if (!cand.length || cand[0].sc < .25) return [];
+    return cand.filter(c => c.sc >= cand[0].sc * .72 && c.sc > .3).slice(0, n).map(c => c.x);
+  }
+  function sentVec(G, sent) {
+    const q = new Float32Array(D); let any = false;
+    for (const t of tokens(sent)) { const v = G.vocab.get(t.s); if (v) { any = true; for (let i = 0; i < D; i++) q[i] += v.vec[i] * v.idf; } }
+    return any ? norm(q) : null;
+  }
+  function summarize(G, text, n = 5) { // pick the most central sentences, keep original order
+    const sents = splitSentences(text); if (sents.length <= n) return sents;
+    const vecs = sents.map(x => sentVec(G, x)), c = new Float32Array(D);
+    for (const v of vecs) if (v) for (let i = 0; i < D; i++) c[i] += v[i];
+    norm(c);
+    const sc = sents.map((x, i) => ({ i, sc: (vecs[i] ? dot(vecs[i], c) : 0) + (i === 0 ? .15 : 0) + Math.min(.1, x.split(" ").length / 300) }));
+    return sc.sort((a, b) => b.sc - a.sc).slice(0, n).sort((a, b) => a.i - b.i).map(o => sents[o.i]);
+  }
+
+  return { D, SECTORS, COLORS, tokens, stem, build, search, neighbours, project, guessSector, chunkText, analyze, isFollowUp, bestSentences, summarize, splitSentences };
+})();
+
+const STARTER = [
+ { title: "Maths essentials", sector: 1, text: "Pythagoras' theorem says that in a right-angled triangle a squared plus b squared equals c squared, where c is the hypotenuse, the longest side opposite the right angle. Trigonometry uses SOHCAHTOA: sine equals opposite over hypotenuse, cosine equals adjacent over hypotenuse, and tangent equals opposite over adjacent. The area of a circle is pi times the radius squared and the circumference is two times pi times the radius. The quadratic formula solves ax squared plus bx plus c equals zero: x equals negative b plus or minus the square root of b squared minus 4ac, all divided by 2a. A straight line has the equation y equals mx plus c, where m is the gradient and c is the y-intercept. The gradient is the change in y divided by the change in x. Probability is always between 0 and 1, and the probabilities of all possible outcomes add up to 1. The mean is the total divided by how many values there are, the median is the middle value when ordered, the mode is the most common value and the range is the largest value minus the smallest. A prime number has exactly two factors, 1 and itself. The interior angles of a polygon with n sides add up to n minus 2 times 180 degrees." },
+ { title: "Biology, chemistry, physics", sector: 2, text: "Photosynthesis is how plants make their own food. Plants use light energy to turn carbon dioxide and water into glucose and oxygen. It happens in the chloroplasts, which contain the green pigment chlorophyll that absorbs light. Aerobic respiration releases energy from glucose using oxygen, producing carbon dioxide and water, and it happens in the mitochondria. Anaerobic respiration in muscles happens without oxygen and produces lactic acid. Animal cells have a nucleus, cell membrane, cytoplasm, mitochondria and ribosomes. Plant cells also have a cell wall, chloroplasts and a permanent vacuole. Atoms contain protons, neutrons and electrons. Protons have a charge of plus one and neutrons have no charge, and both are in the nucleus. Electrons have a charge of minus one and orbit in shells. The group number in the periodic table tells you how many electrons are in the outer shell. Speed equals distance divided by time. Force equals mass times acceleration. Voltage equals current times resistance. Power equals energy transferred divided by time. Kinetic energy equals one half times mass times velocity squared. Energy cannot be created or destroyed, only transferred." },
+ { title: "History key events", sector: 3, text: "The Battle of Hastings in 1066 saw William of Normandy defeat King Harold Godwinson, beginning the Norman conquest of England. Elizabeth I reigned from 1558 to 1603, and the Spanish Armada was defeated in 1588. The First World War lasted from 1914 to 1918. It was triggered by the assassination of Archduke Franz Ferdinand in Sarajevo in June 1914. Its long-term causes are remembered as MAIN: militarism, alliances, imperialism and nationalism. The Treaty of Versailles in 1919 blamed Germany for the war through the war guilt clause, made it pay reparations of 6.6 billion pounds and limited its army to 100,000 men. The Second World War began in September 1939 when Germany invaded Poland, and ended in 1945. D-Day, the Allied invasion of Normandy, took place on 6 June 1944. The Holocaust was the Nazi genocide of six million Jewish people. The Cold War was a rivalry between the USA and the USSR. The Berlin Wall was built in 1961 and fell in 1989." },
+ { title: "English literature and language", sector: 4, text: "Macbeth by William Shakespeare explores ambition, guilt and the supernatural. The witches predict that Macbeth will be king, and Lady Macbeth persuades him to murder King Duncan. An Inspector Calls by J.B. Priestley was written in 1945 but set in 1912. It explores social responsibility through the Birling family and the death of Eva Smith. A Christmas Carol by Charles Dickens, published in 1843, follows Ebenezer Scrooge's redemption and criticises the treatment of the poor. Strange Case of Dr Jekyll and Mr Hyde by Robert Louis Stevenson, from 1886, explores the duality of human nature. Romeo and Juliet by Shakespeare is a tragedy about young love, fate and family conflict. Language techniques include metaphor, simile, personification, alliteration, onomatopoeia and rhetorical questions. A strong analytical paragraph makes a point, gives evidence such as a quotation, then explains and analyses the writer's methods and effects." },
+ { title: "Geography essentials", sector: 5, text: "Tectonic plates meet at plate boundaries. At destructive boundaries, an oceanic plate sinks beneath a continental plate in subduction, causing volcanoes and earthquakes. At constructive boundaries plates move apart, as at the Mid-Atlantic Ridge. At conservative boundaries plates slide past each other, as at the San Andreas Fault. The water cycle includes evaporation, condensation, precipitation, infiltration and surface runoff. Climate change is caused by greenhouse gases such as carbon dioxide and methane trapping heat. Human causes include burning fossil fuels and deforestation. Rivers erode through hydraulic action, abrasion, attrition and solution. River landforms include meanders, oxbow lakes, waterfalls and gorges. Tropical rainforests have very high biodiversity and layers called the emergent layer, canopy, under canopy and shrub layer. Urbanisation is the growth of the proportion of people living in towns and cities." },
+ { title: "Computer science essentials", sector: 6, text: "Computers store data in binary, which is base 2. Eight bits make one byte. The CPU follows the fetch-decode-execute cycle. Inside the CPU are the arithmetic logic unit, the control unit, registers and cache. Clock speed is measured in gigahertz. RAM is volatile memory that loses its data when power is off, while ROM is non-volatile. A linear search checks each item in turn. A binary search repeatedly halves a sorted list. Sorting algorithms include bubble sort, insertion sort and merge sort. The three programming constructs are sequence, selection using if statements, and iteration using loops. A LAN covers a small area and a WAN covers a large area. Websites use HTML for structure, CSS for style and JavaScript for behaviour. Cyber security threats include phishing, malware, brute force attacks and SQL injection." },
+ { title: "About Floof AI", sector: 7, text: "Floof AI is made by MagicWinter Studio, an independent studio established in 2025 that makes browser games and apps. Floof AI runs fully on your device. Its knowledge grid places every word at a point in 64 dimensions, so words with similar meanings sit near each other, and every word carries a sector number for its subject. When you ask a question, the grid finds the closest knowledge and hands it to the brain to write the answer." }
+];
+</script>
+
+<script type="module">
+const $ = s => document.querySelector(s);
+const SYSTEM = "You are Floof AI, the friendly, sharp assistant made by MagicWinter Studio. Be clear, concise and helpful. Use markdown code blocks for code. If you are unsure, say so instead of guessing.";
+const KEY = "mwai.chats.v1", MKEY = "mwai.model", CKEY = "mwai.cache", DKEY = "mwai.docs.v1", SKEY = "mwai.starter";
+const LOGO = document.querySelector(".brand .logo").innerHTML;
+const { SECTORS, COLORS } = MW;
+let webllm, engine = null, loadedModel = null, busy = false;
+let NS = ""; // per-account prefix, set after sign-in
+const AKEY = "mwai.accounts", SESS = "mwai.session", MWSESS = "mw.session";
+const ARES = "https://lakjmdyzuqrwcncxybcw.supabase.co", ARES_KEY = "sb_publishable__m0zTZ3-ThJVk0pktI65Ag_yDFPPD5s";
+async function aresLogin(username, password) { // same login server Ares Revision uses
+  const bases = [ARES]; if (/^https?:$/.test(location.protocol)) bases.push(location.origin);
+  let last = { network: true };
+  for (const base of bases) {
+    try {
+      const ctl = new AbortController(), t = setTimeout(() => ctl.abort(), 15000);
+      const r = await fetch(base + "/functions/v1/login", { method: "POST", signal: ctl.signal, headers: { "Content-Type": "application/json", apikey: ARES_KEY }, body: JSON.stringify({ username, password }) });
+      clearTimeout(t); let j = {}; try { j = await r.json(); } catch {}
+      if (r.status === 404 && base !== ARES) continue;
+      return { ok: r.ok && !!j.token, status: r.status, ...j };
+    } catch { last = { network: true }; }
+  }
+  return last;
+}
+const accounts = () => { try { return JSON.parse(localStorage.getItem(AKEY)) || {}; } catch { return {}; } };
+const setAccounts = a => localStorage.setItem(AKEY, JSON.stringify(a));
+const toB64 = buf => btoa(String.fromCharCode(...new Uint8Array(buf))), fromB64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+async function hashPw(pw, salt) { // PBKDF2-SHA256, 150k rounds — the password itself is never stored
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(pw), "PBKDF2", false, ["deriveBits"]);
+  return toB64(await crypto.subtle.deriveBits({ name: "PBKDF2", salt: fromB64(salt), iterations: 150000, hash: "SHA-256" }, key, 256));
+}
+const sameHash = (a, b) => a.length === b.length && [...a].reduce((d, c, i) => d | (c.charCodeAt(0) ^ b.charCodeAt(i)), 0) === 0;
+async function migrateOldData(id) { // first account on this device inherits any data from before accounts existed
+  const pre = "u:" + id + ":";
+  for (let i = localStorage.length - 1; i >= 0; i--) { const k = localStorage.key(i); if (k && k.startsWith("mwai.") && k !== AKEY && k !== SESS) { localStorage.setItem(pre + k, localStorage.getItem(k)); localStorage.removeItem(k); } }
+  try { const ks = (await idb.keys()).filter(k => typeof k === "string" && k.startsWith("mwai.")); const vals = await Promise.all(ks.map(k => idb.get(k)));
+    await idb.raw(st => ks.forEach((k, i) => { st.put(vals[i], pre + k); st.delete(k); })); } catch {}
+}
+let SESSION_NAME = "", ARES_USER = false;
+function getSession() {
+  for (const st of [sessionStorage, localStorage]) { try { const v = JSON.parse(st.getItem(MWSESS)); if (v && v.user && (!v.until || v.until > Date.now())) { SESSION_NAME = v.user; ARES_USER = true; return "ares:" + v.user.toLowerCase(); } } catch {} }
+  for (const st of [sessionStorage, localStorage]) { try { const v = JSON.parse(st.getItem(SESS)); if (v && v.id && !v.id.startsWith("__") && (!v.until || v.until > Date.now()) && accounts()[v.id]) return v.id; } catch {} }
+  return null;
+}
+// where "Back to site" goes: the MagicWinter site that sent you here (remembered), or "/" when Floof lives at /floof/ on that site
+const MW_SITE_DEFAULT = ""; // set to your MagicWinter site address, e.g. "https://your-site.vercel.app/"
+let SITE_URL = /\/floof\/?/i.test(location.pathname) ? "/" : MW_SITE_DEFAULT;
+try { const r = document.referrer && new URL(document.referrer); if (r && r.origin !== location.origin && /magicwinter|magic-winter/i.test(r.host)) localStorage.setItem("mw.site", r.origin + "/"); if (!SITE_URL) SITE_URL = localStorage.getItem("mw.site") || ""; } catch {}
+document.querySelectorAll("#mwHome,#mwBack,#mwSide").forEach(a => { if (SITE_URL) a.href = SITE_URL; else if (a.id === "mwHome") a.removeAttribute("href"); else a.style.display = "none"; });
+function snow() { // gentle snowfall, matches the MagicWinter site
+  const c = $("#authSnow"), g = c.getContext("2d"); let W, H; const fl = Array.from({ length: 70 }, () => ({ x: Math.random(), y: Math.random(), r: Math.random() * 1.8 + .6, v: Math.random() * .4 + .15, d: Math.random() * 6 }));
+  const fit = () => { W = c.width = innerWidth; H = c.height = innerHeight; }; fit(); addEventListener("resize", fit);
+  (function f(t) { if ($("#auth").classList.contains("hide")) return; g.clearRect(0, 0, W, H); g.fillStyle = "rgba(233,245,236,.55)";
+    for (const p of fl) { p.y += p.v / H * 3; if (p.y > 1) p.y = 0; g.beginPath(); g.arc((p.x + Math.sin(t / 2000 + p.d) * .01) * W, p.y * H, p.r, 0, 7); g.fill(); } requestAnimationFrame(f); })(0);
+}
+function authGate() {
+  return new Promise(resolve => {
+    const done = async id => {
+      // data from before accounts existed (or before signing up on the site) goes to the first account that signs in here
+      const accs = accounts(); if (!accs.__migrated && localStorage.getItem("mwai.chats.v1") !== null) { await migrateOldData(id); accs.__migrated = 1; setAccounts(accs); }
+      NS = "u:" + id + ":"; $("#auth").classList.add("hide"); resolve(ARES_USER ? SESSION_NAME : accounts()[id].name);
+    };
+    const s = getSession(); if (s) return done(s);
+    snow();
+    $("#authLogo").innerHTML = document.querySelector(".brand .logo").innerHTML;
+    let mode = "ares", fails = 0, lockUntil = 0;
+    const setMode = m => { mode = m; const ar = m === "ares";
+      ["#aSub", "#aApps", "#aAresLinks"].forEach(q => $(q).style.display = ar ? "" : "none"); $("#aTabs").style.display = ar ? "none" : "";
+      $("#aSwitch").textContent = ar ? "No internet? Use a device-only account" : "← Sign in with your MagicWinter (Ares) account"; $("#aTabIn").classList.toggle("on", m === "in"); $("#aTabUp").classList.toggle("on", m === "up"); $("#aPass2").style.display = m === "up" ? "" : "none"; $("#aGo").textContent = m === "up" ? "Create account" : "Sign in"; $("#aPass").autocomplete = m === "up" ? "new-password" : "current-password"; $("#aErr").textContent = ""; };
+    $("#aTabIn").onclick = () => setMode("in"); $("#aTabUp").onclick = () => setMode("up");
+    $("#aSwitch").onclick = () => setMode(mode === "ares" ? (Object.keys(accounts()).filter(k => !k.startsWith("__")).length ? "in" : "up") : "ares");
+    setMode("ares");
+    $("#aShow").onclick = () => { const t = $("#aPass").type === "password" ? "text" : "password"; $("#aPass").type = $("#aPass2").type = t; };
+    $("#aForm").onsubmit = async e => {
+      e.preventDefault(); const err = m => $("#aErr").textContent = m;
+      const name = $("#aUser").value.trim(), id = name.toLowerCase(), pw = $("#aPass").value, accs = accounts();
+      if (Date.now() < lockUntil) return err(`Too many tries — wait ${Math.ceil((lockUntil - Date.now()) / 1000)}s.`);
+      if (mode === "ares") {
+        if (!name || !pw) return err("Enter your username and password.");
+        $("#aGo").disabled = true; $("#aGo").textContent = "Checking…";
+        try {
+          const r = await aresLogin(id, pw);
+          if (r.network) return err("Can't reach the account server. Check your internet — or use a device-only account below.");
+          if (r.error === "banned") return err("This account has been banned." + (r.reason ? " Reason: " + r.reason : ""));
+          if (r.status === 429) return err(r.error || "Too many attempts — wait a minute.");
+          if (!r.ok) { if (++fails >= 5) { lockUntil = Date.now() + 60000; fails = 0; } return err(r.status >= 500 ? "The account server is having trouble — try again soon." : (r.error || "Wrong username or password.")); }
+          const keep = $("#aKeep").checked; SESSION_NAME = r.username || id; ARES_USER = true;
+          (keep ? localStorage : sessionStorage).setItem(MWSESS, JSON.stringify({ user: SESSION_NAME, token: r.token, until: keep ? Date.now() + 30 * 864e5 : 0 }));
+          $("#aPass").value = ""; return done("ares:" + SESSION_NAME.toLowerCase());
+        } finally { $("#aGo").disabled = false; $("#aGo").textContent = "Sign in"; }
+      }
+      if (!/^[a-zA-Z0-9][a-zA-Z0-9_]{2,19}$/.test(name)) return err("Username: 3–20 letters, numbers or _.");
+      $("#aGo").disabled = true;
+      try {
+        if (mode === "up") {
+          if (accs[id]) return err("That username is taken on this device.");
+          if (pw.length < 6) return err("Password needs at least 6 characters.");
+          if (pw !== $("#aPass2").value) return err("Passwords don't match.");
+          const first = !Object.keys(accs).filter(k => !k.startsWith("__")).length, salt = toB64(crypto.getRandomValues(new Uint8Array(16)));
+          accs[id] = { name, salt, hash: await hashPw(pw, salt), created: Date.now() }; setAccounts(accs);
+          if (first) { await migrateOldData(id); accs.__migrated = 1; setAccounts(accs); }
+        } else {
+          const a = accs[id];
+          if (!a || !sameHash(await hashPw(pw, a.salt), a.hash)) { if (++fails >= 5) { lockUntil = Date.now() + 30000; fails = 0; } return err("Wrong username or password."); }
+        }
+        const sess = JSON.stringify({ id, until: $("#aKeep").checked ? Date.now() + 30 * 864e5 : 0 });
+        ($("#aKeep").checked ? localStorage : sessionStorage).setItem(SESS, sess);
+        $("#aPass").value = $("#aPass2").value = ""; done(id);
+      } finally { $("#aGo").disabled = false; }
+    };
+  });
+}
+const ls = { del(k) { try { localStorage.removeItem(NS + k); } catch {} }, get(k, d) { try { const v = localStorage.getItem(NS + k); return v == null ? d : JSON.parse(v); } catch { return d; } }, set(k, v) { try { localStorage.setItem(NS + k, JSON.stringify(v)); return true; } catch { return false; } } };
+// knowledge lives in IndexedDB (hundreds of MB available) so the grid can grow big
+const idb = {
+  db: null,
+  open() { return this.db ??= new Promise((ok, no) => { const r = indexedDB.open("mwai", 1); r.onupgradeneeded = () => r.result.createObjectStore("kv"); r.onsuccess = () => ok(r.result); r.onerror = () => no(r.error); }); },
+  async get(k) { const db = await this.open(); return new Promise((ok, no) => { const q = db.transaction("kv").objectStore("kv").get(NS + k); q.onsuccess = () => ok(q.result); q.onerror = () => no(q.error); }); },
+  async set(k, v) { const db = await this.open(); return new Promise((ok, no) => { const t = db.transaction("kv", "readwrite"); t.objectStore("kv").put(v, NS + k); t.oncomplete = () => ok(true); t.onerror = () => no(t.error); }); },
+  async raw(fn) { const db = await this.open(); return new Promise((ok, no) => { const t = db.transaction("kv", "readwrite"), st = t.objectStore("kv"); fn(st); t.oncomplete = () => ok(true); t.onerror = () => no(t.error); }); },
+  async keys() { const db = await this.open(); return new Promise((ok, no) => { const q = db.transaction("kv").objectStore("kv").getAllKeys(); q.onsuccess = () => ok(q.result); q.onerror = () => no(q.error); }); }
+};
+// ---------- MagicWinter account: sign in before anything loads ----------
+const ACCOUNT = await authGate();
+let chats = ls.get(KEY, []), cur = null;
+let docs = ls.get(DKEY, []), useStarter = ls.get(SKEY, true);
+let G = null, PTS = [];
+
+const status = (t, cls = "") => { const s = $("#status"); s.textContent = t; s.className = cls; };
+const bar = p => $("#barFill").style.width = (p * 100) + "%";
+const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const secChip = n => `<span class="dot" style="background:${COLORS[n]}"></span>`;
+
+// ---------- grid build ----------
+function rebuild() {
+  const all = (useStarter ? STARTER : []).concat(docs);
+  G = MW.build(all);
+  PTS = MW.project(G); gridVer++;
+  view.k = 1; view.x = 0; view.y = 0; sel = null;
+  renderStats(); drawGrid(); renderInfo();
+}
+
+// ---------- markdown ----------
+function md(src) {
+  src = src.replace(/<think>[\s\S]*?(<\/think>|$)/g, "").trim();
+  return src.split(/```/).map((p, i) => {
+    if (i % 2) {
+      const nl = p.indexOf("\n"), lang = (nl >= 0 ? p.slice(0, nl) : "").trim().toLowerCase(), code = nl >= 0 ? p.slice(nl + 1) : p;
+      const run = /^(js|javascript)$/.test(lang) ? `<button class="run">▶ Run</button>` : /^(html|svg)$/.test(lang) ? `<button class="open">▶ Open</button>` : "";
+      return `<pre data-lang="${esc(lang)}"><div class="cbtns">${run}<button class="dl" title="Download">⬇</button><button class="copy">Copy</button></div><code>${esc(code.replace(/\n$/, ""))}</code></pre>`;
+    }
+    const h = esc(p).replace(/`([^`\n]+)`/g, "<code>$1</code>").replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>")
+      .replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<i>$2</i>").replace(/^#{1,6} (.+)$/gm, "<b>$1</b>").replace(/^\s*[-*] (.+)$/gm, "• $1");
+    return h.split(/\n{2,}/).filter(x => x.trim()).map(x => `<p>${x.replace(/\n/g, "<br>")}</p>`).join("");
+  }).join("");
+}
+
+// ---------- chat ----------
+function save() { ls.set(KEY, chats.slice(0, 50)); }
+function renderChats() {
+  const box = $("#chats"); box.innerHTML = "";
+  chats.forEach(c => {
+    const d = document.createElement("div"); d.className = "chat" + (c === cur ? " on" : "");
+    d.innerHTML = `<span>${esc(c.title || "New chat")}</span><button class="x" title="Delete">✕</button>`;
+    d.onclick = e => {
+      if (e.target.classList.contains("x")) { chats = chats.filter(x => x !== c); if (cur === c) cur = null; save(); renderChats(); renderLog(); }
+      else { cur = c; renderChats(); renderLog(); showView("vChat"); $("#side").classList.remove("open"); }
+    };
+    box.appendChild(d);
+  });
+}
+function srcHTML(src, u) {
+  const chips = (u?.mem?.length ? [`<span class="chip" style="color:var(--accent2)">💾 Remembered: ${u.mem.map(esc).join(" · ")}</span>`] : []).concat(u ? [`<span class="chip">🧠 <b>${esc(u.type)}</b>${u.terms ? " · " + esc(u.terms) : ""}${u.sector ? " · " + secChip(u.sector) + " " + u.sector : ""}</span>`] : [])
+    .concat((src || []).map(s => s.url ? `<a class="chip" href="${esc(s.url)}" target="_blank" rel="noopener">${secChip(s.sector)} <b>${s.sector}</b> ${esc(s.title)} ↗</a>` : `<span class="chip">${secChip(s.sector)} <b>${s.sector}</b> ${esc(s.title)}</span>`));
+  return chips.length ? `<div class="srcs">${chips.join("")}</div>` : "";
+}
+function bubble(role, text, src, u, img) {
+  const m = document.createElement("div"); m.className = "msg " + (role === "user" ? "user" : "ai");
+  m.innerHTML = `<div class="av">${role === "user" ? "🙂" : LOGO}</div><div class="body"></div>`;
+  const b = m.querySelector(".body");
+  if (role === "user") { b.textContent = text; if (img) { const im = new Image(); im.src = img; im.className = "thumb"; b.prepend(im); } } else { b.innerHTML = md(text) + srcHTML(src, u); decorateArtifacts(b, false); }
+  $("#wrap").appendChild(m); return b;
+}
+function renderLog() {
+  const w = $("#wrap"); w.innerHTML = "";
+  if (!cur || !cur.msgs.length) {
+    w.innerHTML = `<div id="empty"><div class="logo">${LOGO}</div><h2 style="margin:0;color:var(--text)">Floof AI</h2><div>Your own private AI with a 64-D knowledge grid.</div><div class="sugs">
+      ${["How do plants make food?", "What caused World War 1?", "What is the quadratic formula?", "Explain the fetch-decode-execute cycle"].map(s => `<button type="button">${s}</button>`).join("")}</div></div>`;
+    w.querySelectorAll(".sugs button").forEach(b => b.onclick = () => { $("#input").value = b.textContent; send(); });
+    return;
+  }
+  cur.msgs.forEach(m => bubble(m.role, m.content, m.src, m.u, m.img));
+  scroll();
+}
+const scroll = () => { const l = $("#log"); l.scrollTop = l.scrollHeight; };
+
+let gridVer = 0, chatGridCache = { key: "", G: null };
+function chatGrid() { // global knowledge + anything long you pasted into this chat
+  if (!cur || !cur.docs || !cur.docs.length) return G;
+  const key = cur.id + ":" + cur.docs.length + ":" + gridVer;
+  if (chatGridCache.key !== key) chatGridCache = { key, G: MW.build((useStarter ? STARTER : []).concat(docs, cur.docs.map(d => ({ ...d, chat: true })))) };
+  return chatGridCache.G;
+}
+const CTX = 8192, CHAR_BUDGET = 17000;
+function fitHistory(msgs, extraChars, total = CHAR_BUDGET) { // newest first until the budget is used
+  let budget = total - extraChars; const out = [];
+  for (let i = msgs.length - 1; i >= 0; i--) {
+    let c = msgs[i].content;
+    if (c.length > budget) {
+      if (i !== msgs.length - 1) break;
+      const keep = Math.max(2000, budget - 1500), half = keep / 2 | 0;
+      c = c.slice(0, half) + "\n\n[…middle of a long message shortened. Key points from it:\n" + MW.summarize(chatGrid(), c, 6).join(" ") + "]\n\n" + c.slice(-half);
+    }
+    budget -= c.length; out.unshift({ role: msgs[i].role, content: c });
+    if (budget < 500) break;
+  }
+  return out;
+}
+
+async function send(override, extra = {}) {
+  const input = $("#input"), text = (override ?? input.value).trim();
+  if (!text || busy) return;
+  if (!cur) { cur = { id: Date.now(), title: "", msgs: [], docs: [] }; chats.unshift(cur); }
+  cur.docs ??= [];
+  if (!cur.title) cur.title = text.slice(0, 40);
+  if (!cur.msgs.length) $("#wrap").innerHTML = "";
+  const words = text.split(/\s+/).length;
+  const prevUser = [...cur.msgs].reverse().find(m => m.role === "user");
+  cur.msgs.push({ role: "user", content: text, img: extra.img }); bubble("user", text, null, null, extra.img);
+  if (override == null) { input.value = ""; autosize(); } renderChats();
+
+  // memory: answer "what do you know about me", "forget…", "remember that…" directly
+  const mc = !extra.screen && memoryCommand(text);
+  if (mc) { const ob = bubble("assistant", mc); cur.msgs.push({ role: "assistant", content: mc }); save(); scroll(); return; }
+  const newMem = extra.screen || extra.depth ? [] : learnFromText(text);
+
+  // 1) read: long messages become part of this chat's grid, so every part can be found later
+  if (words > 120) cur.docs.push({ title: "Your message: " + text.slice(0, 30) + "…", text, sector: MW.guessSector(G, text) });
+  save();
+  const CG = chatGrid();
+
+  // 2) understand: question type, key terms, sector; follow-ups inherit the last topic
+  const info = MW.analyze(text, words);
+  const scr = extra.screen ? pickQuestions(text) : null;
+  if (scr) { info.type = "solve"; info.label = "screen solve"; info.terms = MW.tokens(scr.query); }
+  const own = scr ? scr.query : text;
+  // a message only counts as a follow-up if it points back ("it", "they", "what about…")
+  // AND doesn't make sense on its own — so new questions never get stuck on the old topic
+  let query = own;
+  let { hits, sector } = info.type === "summary" ? { hits: [], sector: MW.guessSector(CG, text) } : MW.search(CG, own, 4);
+  if (!scr && info.type !== "summary" && prevUser && MW.isFollowUp(text, info.terms) && (!hits.length || hits[0].score < .6)) {
+    query = prevUser.content.slice(0, 400) + " " + text;
+    const prevSec = [...cur.msgs].reverse().find(m => m.u)?.u.sector || 0;
+    const own = info.terms.length ? MW.search(CG, text, 3, prevSec).hits : [];
+    const both = MW.search(CG, query, 4);
+    const seen = new Set(own.map(h => h.text));
+    hits = own.concat(both.hits.filter(h => !seen.has(h.text))).slice(0, 5); sector = prevSec || both.sector;
+  }
+  const keyTerms = [...new Set(MW.tokens(query).map(t => t.w))].slice(0, 4).join(", ");
+  const u = { type: info.label, terms: keyTerms, sector };
+  const out = bubble("assistant", ""); out.classList.add("cursor"); scroll();
+  const calc = scr ? null : tryMath(text);
+  const solved = scr ? solveLines(scr.lines) : [];
+
+  // 3) look it up: if the grid doesn't know and web is on, read Wikipedia into this chat's grid
+  let CG2 = CG;
+  if (webOn && !calc && !solved.length && info.type !== "summary" && (!hits.length || hits[0].score < .75 || /\b(latest|current|today|now|news|recent)\b/i.test(text))) {
+    status("🌐 Searching the web…");
+    try {
+      const pages = await webSearch(query);
+      if (autoLearn) { const n = learnPages(pages); if (n) { saveDocs(); rebuild(); status(`🌐 Learned ${n} new page${n > 1 ? "s" : ""} into the grid`); } }
+      else { const have = new Set(cur.docs.map(d => d.url)); for (const p of pages) if (!have.has(p.url)) cur.docs.push({ ...p, sector: MW.guessSector(G, p.text) }); save(); }
+      CG2 = chatGrid();
+      const r2 = MW.search(CG2, query, 4);
+      if (r2.hits.length) { hits = r2.hits; sector = r2.sector; u.sector = sector; }
+      status(pages.length ? `🌐 Read ${pages.length} page${pages.length > 1 ? "s" : ""}` : "🌐 Nothing found on the web.");
+    } catch { status("🌐 Web search failed — offline or blocked. Using the grid.", "err"); }
+  }
+  if (hits.length) hits = hits.filter(h => h.sector === hits[0].sector || h.score > hits[0].score * .9); // stay on one topic
+  const urlOf = new Map(cur.docs.concat(docs).filter(d => d.url).map(d => [d.title, d.url]));
+  const src = [...new Map(hits.map(h => [h.title, { title: h.title, sector: h.sector, url: urlOf.get(h.title) }])).values()];
+
+  if (!engine && !cloudReady()) { // grid mode: compose an answer from the best sentences
+    let reply;
+    if (/\bmy (password|passcode|pin|address|phone|bank|card)\b/i.test(text)) reply = "I won't remember that — it's private. Keep passwords and personal details to yourself. 🔒";
+    else if (!hits.length && newMem.length && !calc && !scr && info.type === "statement") reply = "Got it — I'll remember that.";
+    if (newMem.length) u.mem = newMem;
+    const nm = memName();
+    if (reply) {}
+    else if (/^(hi|hello|hey|yo|hiya|good (morning|afternoon|evening))\b[\s!.]*$/i.test(text)) reply = `Hi${nm ? " " + nm : ""}! What can I help you with?`;
+    else if (calc) reply = `\`${calc.expr}\` = **${calc.value}**`;
+    else if (scr && solved.length) reply = "**Solved from your screen:**\n" + solved.map(x => "- " + x).join("\n");
+    else if (scr) {
+      const best = MW.bestSentences(CG2, query, hits, "question", 3, scr.query);
+      reply = `I read your screen (${words} words). ` + (scr.lines.length ? `The question looks like: _${scr.lines.slice(0, 2).join(" / ").slice(0, 200)}_\n\n` : "\n\n") + (best.length ? best.join(" ") : "I can't answer that from the grid" + (webOn ? " or the web" : "") + " — load a brain (left panel) for full solving" + (webOn ? "." : ", or turn on 🌐 web."));
+    }
+    else if (info.type === "summary") {
+      const pts = MW.summarize(CG, text, words > 600 ? 7 : 5);
+      reply = `Read all **${words} words** and added them to this chat's grid, so you can ask me about any part of it.\n\n**Main points:**\n` + pts.map(p => "- " + p).join("\n");
+    } else {
+      const best = MW.bestSentences(CG2, query, hits, info.type, info.type === "list" || info.type === "compare" ? 4 : 3, own);
+      reply = best.length ? best.join(" ") : `I understood that (${u.type}), but I don't know it yet. ` + (webOn ? "The web didn't have it either — try rewording, or load a brain (left panel) for open chat." : "Turn on 🌐 web so I can look it up, add notes in **Knowledge**, or load a brain (left panel) for open chat.");
+    }
+    out.classList.remove("cursor"); out.innerHTML = md(reply) + srcHTML(src, u);
+    cur.msgs.push({ role: "assistant", content: reply, src, u }); save(); scroll(); if (scr) status("Done ✓"); return;
+  }
+
+  busy = true; $("#send").disabled = true; $("#stop").hidden = false;
+  status(hits.length ? `Understood (${u.type}) · grid found ${hits.length} fact${hits.length > 1 ? "s" : ""} — writing…` : `Understood (${u.type}) — writing…`);
+  let reply = "";
+  try {
+    const facts = hits.length ? "\n\nRelevant facts from the user's knowledge grid. Use them if they help answer, prefer them over your own memory, and don't mention the grid:\n" + hits.map((h, i) => `[${i + 1}] ${h.text}`).join("\n") : "";
+    const guide = `\n\nThe user's latest message is a ${u.type === "statement" ? "statement or request" : u.type + " question"}${keyTerms ? " about: " + keyTerms : ""}. Read the whole message carefully before answering, and answer every part of it.` + (info.type === "summary" ? " It is long: summarise its main points clearly, then offer to go deeper." : "")
+      + (extra.full ? " The user attached a screenshot of their screen: find the question(s) in it and solve them step by step, giving a clear final answer for each." : scr ? " It was read from the user's screen with OCR, so it may contain small reading errors. Find the question(s) on it and solve them step by step, giving a clear final answer for each." + (solved.length ? " Exact results already worked out (use these): " + solved.join("; ") : "") : "");
+    const tools = "\n\nYou can write JavaScript in ```js code blocks: the user can press Run to execute it in a sandbox (use console.log for output) and send you the result" + (cloudReady() && cloud.fix ? "; plain JS blocks (no DOM) are also run automatically and any error is sent back to you to fix" : "") + ". Write runnable code when the user asks you to code, test or calculate something. HTML in ```html blocks gets a live preview — for games and web pages give one complete self-contained ```html block." + (calc ? `\n\nExact calculator result (use this number, don't recalculate): ${calc.expr} = ${calc.value}` : "") + (hits.some(h => h.title.startsWith("🌐")) ? "\nSome facts come from Wikipedia; mention the page name when you use them." : "");
+    const sys = SYSTEM + memoryPrompt() + guide + tools + facts;
+    let t = 0; const onT = d => { reply += d; const now = performance.now(); if (now - t > 50) { out.innerHTML = md(reply); scroll(); t = now; } };
+    if (cloudReady()) {
+      const hist = [];
+      for (const m of fitHistory(cur.msgs, sys.length, 120000)) { // turns must alternate, starting with the user
+        if (!hist.length && m.role !== "user") continue;
+        if (hist.length && hist.at(-1).role === m.role) hist.at(-1).content += "\n\n" + m.content; else hist.push({ ...m });
+      }
+      if (extra.full && hist.length) hist.at(-1).img = extra.full;
+      const us = await cloudStream(sys, hist, onT);
+      status(`Ready ✓ · ${us.model || curModel()} · ${us.in + us.out} tokens · free`);
+    } else {
+      const history = fitHistory(cur.msgs, sys.length);
+      const stream = await engine.chat.completions.create({
+        messages: [{ role: "system", content: sys }, ...history],
+        stream: true, temperature: 0.6, max_tokens: 1024,
+        extra_body: loadedModel.startsWith("Qwen3") ? { enable_thinking: false } : undefined
+      });
+      for await (const chunk of stream) onT(chunk.choices[0]?.delta?.content || "");
+      status("Ready ✓");
+    }
+  } catch (e) {
+    console.error(e);
+    if (e.name === "AbortError") status("Stopped.");
+    else if (cloudReady()) status("☁ " + (e.message || e), "err");
+    else if (/context|window|prompt.*(long|exceed)/i.test(e.message || "")) reply += "\n\n_(That was more than the brain can hold at once — start a new chat, or ask about one part.)_";
+    else if (/fetch|network/i.test(e.message || "")) { engine = null; loadedModel = null; status("Lost the model files — press Load brain again.", "err"); updateMode(); }
+    else status("Error: " + (e.message || e), "err");
+  } finally {
+    out.classList.remove("cursor");
+    reply = reply.replace(/<think>[\s\S]*?(<\/think>|$)/g, "");
+    for (const m of reply.matchAll(/<remember>([\s\S]{2,160}?)<\/remember>/gi)) { const f = addMemory(m[1]); if (f) newMem.push(f); }
+    reply = reply.replace(/<remember>[\s\S]*?<\/remember>/gi, "").replace(/<remember>[\s\S]*$/i, "").trim() || "_(no reply)_";
+    if (newMem.length) u.mem = [...new Set(newMem)];
+    out.innerHTML = md(reply) + srcHTML(src, u);
+    decorateArtifacts(out, true);
+    cur.msgs.push({ role: "assistant", content: reply, src, u }); save();
+    busy = false; $("#send").disabled = false; $("#stop").hidden = true; scroll(); input.focus();
+  }
+  // self-testing loop: run the plain-JS code it wrote; if it crashes, send the error back to be fixed
+  if (cloudReady() && cloud.fix && (extra.depth || 0) < 2) {
+    const blocks = [...out.querySelectorAll('pre[data-lang="js"],pre[data-lang="javascript"]')].filter(p => !/\b(document|window|canvas|addEventListener|requestAnimationFrame|alert|prompt|fetch|localStorage)\b/.test(p.textContent));
+    const pre = blocks.at(-1);
+    if (pre) {
+      const box = document.createElement("div"); box.className = "runbox"; pre.after(box);
+      status("🧪 Testing the code…");
+      const res = await runCode("js", pre.querySelector("code").textContent, box);
+      if (res.errors.length) { status("🛠 Found a bug — asking the AI to fix it…"); await send("I ran that code and it failed with:\n```\n" + res.errors.join("\n").slice(0, 2000) + "\n```\nFix it and give the full corrected code.", { depth: (extra.depth || 0) + 1 }); }
+      else status("🧪 Code ran without errors ✓");
+    }
+  }
+}
+
+// ---------- memory: learns about you over time (stored only in this browser) ----------
+let mems = [], memOn = ls.get("mwai.memon", true);
+const SENSITIVE = /password|passcode|\bpin\b|\b\d{6,}\b|@[\w-]+\.\w|\baddress\b|post ?code|\bphone\b|\bbank\b|\bcard\b|\bsort code\b|\blive at\b|\blive on\b/i;
+const memKey = t => t.toLowerCase().replace(/[^a-z0-9 ]/g, "").trim();
+function saveMems() { idb.set("mwai.mem", mems).catch(() => {}); renderMems(); }
+function addMemory(text) {
+  if (!memOn) return null;
+  let t = text.replace(/\s+/g, " ").trim().replace(/[.!]+$/, ""); if (t.length < 3 || t.length > 160 || SENSITIVE.test(t)) return null;
+  t = t[0].toUpperCase() + t.slice(1);
+  if (/^Name:/.test(t)) mems = mems.filter(m => !/^Name:/.test(m.text)); // newest name wins
+  const k = memKey(t); if (mems.some(m => memKey(m.text) === k)) return null;
+  mems.push({ id: Date.now() + Math.random(), text: t, t: Date.now() }); saveMems(); return t;
+}
+const memName = () => (mems.find(m => /^Name:/.test(m.text))?.text.slice(5).trim()) || "";
+const RULES = [
+  [/\b(?:my name is|my name's|call me)\s+([A-Z][a-z]{1,20})\b/i, m => "Name: " + m[1][0].toUpperCase() + m[1].slice(1)],
+  [/\bi(?:'m| am) in (year \d{1,2}|y\d{1,2}|sixth form)\b/i, m => "In " + m[1].replace(/^y(\d)/i, "Year $1").replace(/^year/i, "Year").replace(/^sixth/i, "Sixth")],
+  [/\bi(?:'m| am) (?:studying|taking|doing) ([^.!?,]{3,60})/i, m => "Studies " + m[1]],
+  [/\bmy favou?rite ([a-z ]{2,25}?) (?:is|are) ([^.!?,]{2,40})/i, m => `Favourite ${m[1].trim()}: ${m[2].trim()}`],
+  [/\bi (?:really |absolutely )?(love|like|enjoy|hate|dislike|prefer) ([^.!?,]{3,60})/i, m => ({ love: "Loves", like: "Likes", enjoy: "Enjoys", hate: "Dislikes", dislike: "Dislikes", prefer: "Prefers" })[m[1].toLowerCase()] + " " + m[2]],
+  [/\bi(?:'m| am) (?:really )?(good|great|bad|terrible|struggling) (?:at|with) ([^.!?,]{3,50})/i, m => (/good|great/i.test(m[1]) ? "Good at " : "Finds hard: ") + m[2]],
+  [/\bi (?:really |always )?(?:struggle|find it hard|find it difficult) (?:with )?([^.!?,]{3,50})/i, m => "Finds hard: " + m[1]],
+  [/\bi (?:have|'ve got|got) (?:a |an |my )?((?:[\w ]{0,25})(?:test|exam|mock|assessment|homework|deadline)(?:[^.!?,]{0,30}))/i, m => "Upcoming: " + m[1]],
+  [/\bmy goal is (?:to )?([^.!?]{3,60})|\bi want to (?:get|become|be) ([^.!?,]{3,50})/i, m => "Goal: " + (m[1] || "get/become " + m[2])]
+];
+function learnFromText(text) {
+  if (!memOn || text.length > 600) return [];
+  const out = [];
+  for (const sent of text.split(/(?<=[.!?\n])\s+/)) {
+    if (/\?\s*$/.test(sent) && !/remember/i.test(sent)) continue; // questions aren't facts about you
+    for (const [rx, fmt] of RULES) { const m = sent.match(rx); if (m) { const f = addMemory(fmt(m)); if (f) out.push(f); } }
+  }
+  return out;
+}
+function memoryCommand(text) {
+  const t = text.trim();
+  if (/^(what do you (know|remember) about me|what have you learn(ed|t) about me|who am i)\??$/i.test(t))
+    return mems.length ? "Here's what I know about you:\n" + mems.map(m => "- " + m.text).join("\n") + "\n\nSay **forget …** to remove anything, or edit it in the **Me** tab." : "I don't know anything about you yet. Tell me things like your name, year or subjects" + (memOn ? "." : " — but first switch on **Learn about me** in the Me tab.");
+  if (/^what(?:'s| is) my name\??$/i.test(t)) return memName() ? `Your name is **${memName()}**.` : "You haven't told me your name yet.";
+  let m = t.match(/^forget (?:about )?(everything|all) about me\.?$/i);
+  if (m) { mems = []; saveMems(); return "Done — I've forgotten everything about you."; }
+  m = t.match(/^forget (?:that |about )?(.{2,80}?)\.?$/i);
+  if (m) {
+    const ks = MW.tokens(m[1]).map(x => x.s); const gone = mems.filter(x => { const mt = MW.tokens(x.text).map(y => y.s); return ks.length && ks.every(k => mt.includes(k)); });
+    if (!gone.length) return `I don't have anything saved about "${m[1]}".`;
+    mems = mems.filter(x => !gone.includes(x)); saveMems(); return "Forgotten: " + gone.map(x => x.text).join(" · ");
+  }
+  m = t.match(/^(?:please )?remember (?:that )?(.{3,160})$/i);
+  if (m) { if (!memOn) return "Memory is off — switch on **Learn about me** in the Me tab."; if (SENSITIVE.test(m[1])) return "I don't save things like passwords, phone numbers or addresses."; const f = learnFromText(m[1] + ".")[0] || addMemory(m[1].replace(/^i\b/i, "I")); return f ? `Got it — I'll remember: **${f}**` : "I already know that."; }
+  return null;
+}
+function memoryPrompt() {
+  if (!memOn) return "";
+  return (mems.length ? "\n\nThings you know about the user (use them naturally only when relevant, e.g. their name, level, interests, upcoming tests; never list them unprompted):\n" + mems.slice(-40).map(m => "- " + m.text).join("\n") : "")
+    + "\n\nIf the user tells you a NEW lasting fact about themselves (name, school year, subjects, likes, struggles, goals, upcoming tests), add it at the very end of your reply as <remember>short fact</remember>. Never remember passwords, addresses, phone numbers or other private details.";
+}
+function renderMems() {
+  $("#mOn").checked = memOn;
+  $("#mList").innerHTML = mems.length ? mems.slice().reverse().map(m => `<div class="doc"><span>💾 ${esc(m.text)} <span class="small">· ${new Date(m.t).toLocaleDateString()}</span></span><button class="x" data-id="${m.id}" title="Forget">✕</button></div>`).join("") : `<div class="small">Nothing yet — chat normally and it'll learn as you go.</div>`;
+  $("#mList").querySelectorAll(".x").forEach(b => b.onclick = () => { mems = mems.filter(m => String(m.id) !== b.dataset.id); saveMems(); });
+}
+$("#mOn").onchange = e => { memOn = e.target.checked; ls.set("mwai.memon", memOn); renderMems(); status(memOn ? "💾 Learning about you is on." : "💾 Learning about you is off (saved facts are kept but not used)."); };
+$("#mAddBtn").onclick = () => { const v = $("#mAdd").value.trim(); if (!v) return; if (!memOn) { status("Switch on Learn about me first.", "err"); return; } if (!learnFromText(v).length && !addMemory(v)) status("Couldn't save that (already known, or private info).", "err"); $("#mAdd").value = ""; };
+$("#mAdd").addEventListener("keydown", e => { if (e.key === "Enter") $("#mAddBtn").click(); });
+$("#mClear").onclick = () => { if (mems.length && confirm("Forget everything Floof AI knows about you?")) { mems = []; saveMems(); } };
+idb.get("mwai.mem").then(v => { if (Array.isArray(v)) mems = v; renderMems(); }).catch(() => renderMems());
+
+// ---------- Cloud brains (called straight from this browser; keys never leave it except to that provider) ----------
+const PV = {
+  gemini: { ph: "Gemini API key (AIza…)", ok: k => k.length > 20, vision: true, help: 'Free key, no card: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:var(--accent)">aistudio.google.com/apikey</a> (account holder must be 18+). Free use has daily limits — Floof AI switches model if one runs out.' },
+  openrouter: { ph: "OpenRouter key (sk-or-…)", ok: k => k.length > 20, vision: false, help: 'Free key: <a href="https://openrouter.ai/keys" target="_blank" rel="noopener" style="color:var(--accent)">openrouter.ai/keys</a>. Only free (:free) models are listed, so it costs nothing. Free models have daily limits.' },
+  ollama: { ph: "Ollama address", def: "http://localhost:11434", ok: k => /^https?:\/\//.test(k), vision: false, help: 'Runs on your own PC. Install <a href="https://ollama.com/download" target="_blank" rel="noopener" style="color:var(--accent)">Ollama</a>, run <code>ollama pull qwen3:8b</code>, and allow this page: set <code>OLLAMA_ORIGINS=*</code> then restart Ollama. Open Floof AI on that same PC; if Chrome asks to allow local network access, click Allow.' },
+};
+let cloud = ls.get("mwai.cloud", null), abortCtl = null, modelList = [];
+if (!cloud) cloud = { pv: "", keys: {}, model: {}, fix: true };
+if (!PV[cloud.pv]) cloud.pv = ""; delete cloud.keys.claude; delete cloud.model.claude; ls.del("mwai.claude"); ls.set("mwai.cloud", cloud); // paid option removed: wipe any old key
+const cloudReady = () => !!PV[cloud.pv] && PV[cloud.pv].ok(cloud.keys[cloud.pv] || "");
+const curModel = () => $("#cModel").value || cloud.model[cloud.pv] || modelList[0]?.id || "";
+function saveCloud() { ls.set("mwai.cloud", cloud); updateMode(); }
+
+async function listModels(pv, key) {
+  if (pv === "gemini") {
+    const j = await (await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=" + encodeURIComponent(key))).json();
+    if (j.error) throw new Error(j.error.message);
+    const rank = id => { const v = parseFloat((id.match(/gemini-(\d+(?:\.\d+)?)/) || [0, 0])[1]); return v * 10 + (/-pro/.test(id) ? 3 : /flash-lite/.test(id) ? 1 : /flash/.test(id) ? 2 : 0) - (/preview|exp/.test(id) ? .5 : 0); };
+    return (j.models || []).filter(m => m.supportedGenerationMethods?.includes("generateContent") && /^models\/gemini-/.test(m.name) && !/tts|image|embed|audio|live|vision|thinking-exp|learnlm|aqa|computer/.test(m.name))
+      .map(m => ({ id: m.name.slice(7), name: m.displayName || m.name.slice(7) })).sort((a, b) => rank(b.id) - rank(a.id));
+  }
+  if (pv === "ollama") {
+    let j; try { j = await (await fetch(key.replace(/\/+$/, "") + "/api/tags")).json(); } catch { throw new Error("Can't reach Ollama at " + key + " — is it running, and is OLLAMA_ORIGINS=* set?"); }
+    if (!(j.models || []).length) throw new Error("Ollama has no models yet — run: ollama pull qwen3:8b");
+    return j.models.filter(m => !/embed/.test(m.name)).sort((a, b) => (b.size || 0) - (a.size || 0)).map(m => ({ id: m.name, name: m.name + (m.details?.parameter_size ? " · " + m.details.parameter_size : "") }));
+  }
+  if (pv === "openrouter") {
+    const j = await (await fetch("https://openrouter.ai/api/v1/models")).json();
+    const pri = id => /coder|deepseek/.test(id) ? 3 : /qwen3|llama-3\.3-70b|gpt-oss|kimi|glm/.test(id) ? 2 : 1;
+    return (j.data || []).filter(m => m.id.endsWith(":free") && !/image|audio|vl-/.test(m.id))
+      .sort((a, b) => pri(b.id) - pri(a.id) || (b.context_length || 0) - (a.context_length || 0)).map(m => ({ id: m.id, name: m.name || m.id }));
+  }
+  return [];
+}
+async function refreshModels() {
+  const pv = cloud.pv, key = cloud.keys[pv] || "", sel = $("#cModel");
+  sel.innerHTML = ""; modelList = [];
+  if (!pv || !PV[pv].ok(key)) { sel.style.display = "none"; return; }
+  sel.style.display = ""; sel.innerHTML = "<option value=''>Loading models…</option>";
+  try {
+    modelList = await listModels(pv, key);
+    if (!modelList.length) throw new Error("No usable models found for this key.");
+    sel.innerHTML = modelList.map((m, i) => `<option value="${esc(m.id)}">${esc(m.name)}${i === 0 ? " ★" : ""}</option>`).join("");
+    if (modelList.some(m => m.id === cloud.model[pv])) sel.value = cloud.model[pv];
+    status(`☁ ${$("#pv").selectedOptions[0].text.split("—")[0].trim()} ready — ${modelList.length} model${modelList.length > 1 ? "s" : ""}.`);
+  } catch (e) { sel.innerHTML = ""; sel.style.display = "none"; status("☁ Couldn't load models: " + (e.message || e), "err"); }
+  updateMode();
+}
+
+async function* sse(r) { // read server-sent events
+  const rd = r.body.getReader(), dec = new TextDecoder(); let buf = "";
+  for (;;) {
+    const { done, value } = await rd.read(); if (done) break;
+    buf += dec.decode(value, { stream: true }); let i;
+    while ((i = buf.indexOf("\n")) >= 0) {
+      const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+      if (!line.startsWith("data:")) continue; const d = line.slice(5).trim(); if (d === "[DONE]") return;
+      try { yield JSON.parse(d); } catch {}
+    }
+  }
+}
+async function httpErr(r, pv) {
+  let m = ""; try { const j = await r.json(); m = j.error?.message || j.message || ""; } catch {}
+  const e = new Error(r.status === 401 || r.status === 403 && /key/i.test(m) ? "API key not accepted — check it in the sidebar." : r.status === 429 ? "Free limit reached for this model" + (m ? ": " + m.slice(0, 120) : "") : /credit|balance|billing/i.test(m) ? "That model isn't free on your account — pick another." : (m || "HTTP " + r.status));
+  e.quota = r.status === 429 || /quota|exhaust|rate/i.test(m); return e;
+}
+async function streamOnce(pv, model, sys, msgs, onText) {
+  abortCtl = new AbortController(); const key = cloud.keys[pv], usage = { in: 0, out: 0, model };
+  const b64 = u => u.split(",")[1];
+  if (pv === "gemini") {
+    const contents = msgs.map(m => ({ role: m.role === "assistant" ? "model" : "user", parts: (m.img ? [{ inline_data: { mime_type: "image/jpeg", data: b64(m.img) } }] : []).concat([{ text: m.content }]) }));
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse&key=${encodeURIComponent(key)}`, { method: "POST", signal: abortCtl.signal, headers: { "content-type": "application/json" }, body: JSON.stringify({ systemInstruction: { parts: [{ text: sys }] }, contents, generationConfig: { maxOutputTokens: 8192 } }) });
+    if (!r.ok) throw await httpErr(r, pv);
+    for await (const ev of sse(r)) {
+      if (ev.error) throw new Error(ev.error.message);
+      for (const p of ev.candidates?.[0]?.content?.parts || []) if (p.text && !p.thought) onText(p.text);
+      if (ev.usageMetadata) { usage.in = ev.usageMetadata.promptTokenCount || 0; usage.out = ev.usageMetadata.candidatesTokenCount || 0; }
+    }
+  } else if (pv === "openrouter" || pv === "ollama") {
+    const url = pv === "ollama" ? key.replace(/\/+$/, "") + "/v1/chat/completions" : "https://openrouter.ai/api/v1/chat/completions";
+    let r; try { r = await fetch(url, { method: "POST", signal: abortCtl.signal, headers: { "content-type": "application/json", ...(pv === "openrouter" ? { authorization: "Bearer " + key, "X-Title": "Floof AI" } : {}) }, body: JSON.stringify({ model, stream: true, max_tokens: 8192, messages: [{ role: "system", content: sys }, ...msgs.map(m => ({ role: m.role, content: m.content }))] }) }); }
+    catch (e) { if (e.name === "AbortError") throw e; throw new Error(pv === "ollama" ? "Can't reach Ollama — is it running on this PC with OLLAMA_ORIGINS=*?" : "Network error — check your connection."); }
+    if (!r.ok) throw await httpErr(r, pv);
+    for await (const ev of sse(r)) {
+      if (ev.error) { const e = new Error(ev.error.message || "Provider error"); e.quota = /rate|quota|limit/i.test(e.message); throw e; }
+      const d = ev.choices?.[0]?.delta?.content; if (d) onText(d);
+      if (ev.usage) { usage.in = ev.usage.prompt_tokens || 0; usage.out = ev.usage.completion_tokens || 0; }
+    }
+  }
+  return usage;
+}
+async function cloudStream(sys, msgs, onText) {
+  const pv = cloud.pv, first = curModel();
+  const order = [first, ...modelList.map(m => m.id).filter(id => id !== first)].slice(0, pv === "ollama" ? 1 : 4);
+  let got = false; const wrap = t => { got = true; onText(t); };
+  for (let i = 0; i < order.length; i++) {
+    try { return await streamOnce(pv, order[i], sys, msgs, wrap); }
+    catch (e) {
+      if (e.name === "AbortError" || got || !e.quota || i === order.length - 1) throw e;
+      status(`☁ ${order[i]} hit its free limit — trying ${order[i + 1]}…`);
+    }
+  }
+}
+// ---------- brain loading ----------
+async function diagnose() {
+  const hosts = { "cdn.jsdelivr.net": "https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.88/package.json", "huggingface.co": "https://huggingface.co/api/models/mlc-ai/Qwen2.5-1.5B-Instruct-q4f16_1-MLC", "raw.githubusercontent.com": "https://raw.githubusercontent.com/mlc-ai/binary-mlc-llm-libs/main/README.md" };
+  const bad = [];
+  await Promise.all(Object.entries(hosts).map(async ([h, u]) => { try { await fetch(u, { mode: "no-cors", cache: "no-store" }); } catch { bad.push(h); } }));
+  return bad;
+}
+function updateMode() {
+  if (cloudReady()) { $("#modeNote").textContent = `☁ ${$("#pv").selectedOptions[0].text.split("—")[0].trim()} (${curModel() || "…"}): smart answers & coding${cloud.pv === "ollama" ? " on your PC, free & private" : " for free"}. Grid, web & screen still feed it.`; return; }
+  $("#modeNote").textContent = engine ? "Brain + grid: the grid finds facts, the brain writes the answer. Can still make mistakes." : "Grid mode: answers come straight from your knowledge. Load a brain for written answers.";
+}
+async function loadModel() {
+  if (location.protocol === "file:") { status("Open this from a website (Vercel/GitHub Pages), not as a file — downloads can't be saved from file://.", "err"); return; }
+  let adapter = null; try { adapter = navigator.gpu && await navigator.gpu.requestAdapter(); } catch {}
+  if (!adapter) { status("WebGPU isn't available here. Use Chrome (v113+). Grid mode still works.", "err"); return; }
+  const f16 = adapter.features.has("shader-f16");
+  const id = $("#model").value + (f16 ? "-q4f16_1-MLC" : "-q4f32_1-MLC");
+  if (id === loadedModel) return;
+  $("#load").disabled = true; busy = true; $("#send").disabled = true;
+  try {
+    status("Loading engine…"); bar(0);
+    webllm ??= await import("https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.88/+esm");
+    const cb = r => { bar(r.progress || 0); status(r.text || "Loading…"); };
+    const backends = [ls.get(CKEY, "cache"), "indexeddb", "cache"];
+    let lastErr;
+    for (let i = 0; i < backends.length; i++) {
+      try {
+        if (engine) { try { await engine.unload(); } catch {} engine = null; }
+        engine = await webllm.CreateMLCEngine(id, { initProgressCallback: cb, appConfig: { ...webllm.prebuiltAppConfig, cacheBackend: backends[i] } }, { context_window_size: CTX });
+        ls.set(CKEY, backends[i]); lastErr = null; break;
+      } catch (e) {
+        lastErr = e; engine = null;
+        if (!/fetch|network|cache|quota/i.test(e.message || "")) break;
+        status(`Download hiccup — retrying (${i + 1}/${backends.length - 1})…`);
+        await new Promise(r => setTimeout(r, 1500));
+      }
+    }
+    if (lastErr) throw lastErr;
+    loadedModel = id; ls.set(MKEY, $("#model").value);
+    bar(1); status("Ready ✓ " + $("#model").selectedOptions[0].text.split("—")[0].trim() + " brain + grid" + (f16 ? "" : " (compat mode)"));
+    setTimeout(() => bar(0), 800);
+  } catch (e) {
+    console.error(e); bar(0); engine = null; loadedModel = null;
+    const blocked = /fetch|network/i.test(e.message || "") ? await diagnose() : [];
+    status(blocked.length ? "Blocked by your network/filter: " + blocked.join(", ") + ". Try another Wi-Fi/hotspot." : "Couldn't load: " + (e.message || e) + " — try a smaller brain, or Reset downloads.", "err");
+  } finally { busy = false; $("#load").disabled = false; $("#send").disabled = false; updateMode(); }
+}
+
+// ---------- grid view ----------
+const can = $("#gcan"), ctx = can.getContext("2d");
+const view = { x: 0, y: 0, k: 1 }; let sel = null, hidden = new Set(), hover = null;
+function size() { const r = can.getBoundingClientRect(), d = devicePixelRatio || 1; can.width = r.width * d; can.height = r.height * d; ctx.setTransform(d, 0, 0, d, 0, 0); return r; }
+function toScreen(p, r) { const S = Math.min(r.width, r.height) * .44 * view.k; return [r.width / 2 + view.x + p.x * S, r.height / 2 + view.y - p.y * S]; }
+function drawGrid() {
+  if (!$("#vGrid").classList.contains("on")) return;
+  const r = size(); ctx.clearRect(0, 0, r.width, r.height);
+  // background grid
+  const step = 40 * view.k; ctx.strokeStyle = "rgba(33,69,47,.45)"; ctx.lineWidth = 1; ctx.beginPath();
+  const ox = (r.width / 2 + view.x) % step, oy = (r.height / 2 + view.y) % step;
+  for (let x = ox; x < r.width; x += step) { ctx.moveTo(x, 0); ctx.lineTo(x, r.height); }
+  for (let y = oy; y < r.height; y += step) { ctx.moveTo(0, y); ctx.lineTo(r.width, y); }
+  ctx.stroke();
+  if (!PTS.length) { ctx.fillStyle = "#8fb29b"; ctx.font = "14px system-ui"; ctx.fillText("Add knowledge to grow the grid.", 20, 30); return; }
+  const nb = sel ? new Map(MW.neighbours(G, sel.s, 10).map(([u, s]) => [u, s])) : null;
+  const pos = new Map();
+  for (const p of PTS) pos.set(p.v, toScreen(p, r));
+  if (sel && pos.has(sel)) { // lines to true 64-D neighbours
+    const [sx, sy] = pos.get(sel); ctx.strokeStyle = "rgba(198,240,107,.5)";
+    for (const u of nb.keys()) if (pos.has(u)) { const [x, y] = pos.get(u); ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(x, y); ctx.stroke(); }
+  }
+  const labelN = Math.min(140, Math.round(45 * view.k));
+  PTS.forEach((p, i) => {
+    if (hidden.has(p.v.sector)) return;
+    const [x, y] = pos.get(p.v); if (x < -20 || y < -20 || x > r.width + 20 || y > r.height + 20) return;
+    const on = p.v === sel || (nb && nb.has(p.v));
+    ctx.globalAlpha = sel && !on ? .35 : 1;
+    ctx.fillStyle = COLORS[p.v.sector]; ctx.beginPath(); ctx.arc(x, y, on ? 5 : 2.6 + Math.min(2.5, Math.log(p.v.n) * .5), 0, 7); ctx.fill();
+    if (p.v === sel) { ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.stroke(); ctx.lineWidth = 1; }
+    if (on || i < labelN || p.v === hover) {
+      ctx.fillStyle = on ? "#e9f5ec" : "rgba(233,245,236,.7)"; ctx.font = (on ? "600 13px" : "11px") + " system-ui";
+      ctx.fillText(p.v.w, x + 6, y - 4);
+    }
+  });
+  ctx.globalAlpha = 1;
+}
+function nearestPt(mx, my) {
+  const r = can.getBoundingClientRect(); let best = null, bd = 14 * 14;
+  for (const p of PTS) { if (hidden.has(p.v.sector)) continue; const [x, y] = toScreen(p, r); const d = (x - mx) ** 2 + (y - my) ** 2; if (d < bd) { bd = d; best = p.v; } }
+  return best;
+}
+function select(v) {
+  sel = v;
+  if (v) { const p = PTS.find(p => p.v === v); if (p && view.k < 1.5) { /* keep */ } }
+  drawGrid(); renderInfo();
+}
+function renderInfo() {
+  const box = $("#ginfo");
+  if (!sel || !G || !G.vocab.has(sel.s)) { box.style.display = "none"; return; }
+  const nb = MW.neighbours(G, sel.s, 10);
+  const maxAbs = Math.max(...sel.vec.map(Math.abs)) || 1;
+  box.style.display = "block";
+  box.innerHTML = `<div class="row" style="justify-content:space-between"><h3>${esc(sel.w)}</h3><button id="gx" style="padding:2px 8px">✕</button></div>
+    <div class="small">${secChip(sel.sector)} Sector <b style="color:var(--text)">${sel.sector}</b> · ${SECTORS[sel.sector]} · seen ${sel.n}×</div>
+    <div class="small" style="margin-top:10px">Nearest in 64-D</div>
+    <div class="nbrs">${nb.map(([u, s]) => `<button data-s="${esc(u.s)}">${secChip(u.sector)} ${esc(u.w)} <span class="small">${(s * 100 | 0)}%</span></button>`).join("")}</div>
+    <div class="small">Its 64 coordinates</div>
+    <div class="coords">${[...sel.vec].map(x => `<div title="${x.toFixed(3)}" style="height:${Math.max(2, Math.abs(x) / maxAbs * 54)}px;${x < 0 ? "background:var(--accent2);opacity:.75" : ""}"></div>`).join("")}</div>`;
+  $("#gx").onclick = () => select(null);
+  box.querySelectorAll(".nbrs button").forEach(b => b.onclick = () => select(G.vocab.get(b.dataset.s)));
+}
+function renderLegend() {
+  $("#legend").innerHTML = SECTORS.slice(1).map((n, i) => `<button data-n="${i + 1}" class="${hidden.has(i + 1) ? "off" : ""}">${secChip(i + 1)}${i + 1} ${n}</button>`).join("");
+  $("#legend").querySelectorAll("button").forEach(b => b.onclick = () => { const n = +b.dataset.n; hidden.has(n) ? hidden.delete(n) : hidden.add(n); renderLegend(); drawGrid(); });
+}
+// pan / zoom / hover / click
+let drag = null; const pointers = new Map();
+can.addEventListener("pointerdown", e => { can.setPointerCapture(e.pointerId); pointers.set(e.pointerId, [e.offsetX, e.offsetY]); drag = { x: e.offsetX, y: e.offsetY, vx: view.x, vy: view.y, moved: false, d: null, k: view.k }; can.classList.add("drag"); });
+can.addEventListener("pointermove", e => {
+  if (pointers.has(e.pointerId)) pointers.set(e.pointerId, [e.offsetX, e.offsetY]);
+  if (drag && pointers.size === 2) { // pinch
+    const [a, b] = [...pointers.values()]; const d = Math.hypot(a[0] - b[0], a[1] - b[1]);
+    if (!drag.d) drag.d = d; view.k = Math.min(12, Math.max(.4, drag.k * d / drag.d)); drag.moved = true; drawGrid(); return;
+  }
+  if (drag) { const dx = e.offsetX - drag.x, dy = e.offsetY - drag.y; if (Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true; view.x = drag.vx + dx; view.y = drag.vy + dy; if (drag.moved) drawGrid(); return; }
+  const h = nearestPt(e.offsetX, e.offsetY), tip = $("#gtip");
+  if (h !== hover) { hover = h; drawGrid(); }
+  if (h) { tip.style.display = "block"; tip.style.left = e.offsetX + 12 + "px"; tip.style.top = e.offsetY + 12 + "px"; tip.innerHTML = `${secChip(h.sector)} <b>${esc(h.w)}</b> · sector ${h.sector}`; } else tip.style.display = "none";
+});
+const endDrag = e => { pointers.delete(e.pointerId); if (drag && !drag.moved && pointers.size === 0) select(nearestPt(e.offsetX, e.offsetY)); if (pointers.size === 0) { drag = null; can.classList.remove("drag"); } };
+can.addEventListener("pointerup", endDrag); can.addEventListener("pointercancel", endDrag);
+can.addEventListener("pointerleave", () => { $("#gtip").style.display = "none"; });
+can.addEventListener("wheel", e => {
+  e.preventDefault(); const r = can.getBoundingClientRect(), f = Math.exp(-e.deltaY * .0015), nk = Math.min(12, Math.max(.4, view.k * f)), ff = nk / view.k;
+  const cx = e.offsetX - r.width / 2, cy = e.offsetY - r.height / 2;
+  view.x = cx - (cx - view.x) * ff; view.y = cy - (cy - view.y) * ff; view.k = nk; drawGrid();
+}, { passive: false });
+$("#gfind").addEventListener("keydown", e => {
+  if (e.key !== "Enter") return;
+  const t = MW.tokens(e.target.value)[0]; const v = t && G.vocab.get(t.s);
+  if (!v) { status(`"${e.target.value}" isn't on the grid yet.`, "err"); return; }
+  const p = PTS.find(p => p.v === v);
+  if (p) { const r = can.getBoundingClientRect(); view.k = Math.max(view.k, 2.5); const S = Math.min(r.width, r.height) * .44 * view.k; view.x = -p.x * S; view.y = p.y * S; }
+  select(v); status(`Found "${v.w}" — sector ${v.sector} (${SECTORS[v.sector]})`);
+});
+new ResizeObserver(() => drawGrid()).observe($("#gwrap"));
+
+// ---------- knowledge view ----------
+function renderStats() {
+  const words = G.vocab.size, chunks = G.chunks.length;
+  $("#kStats").innerHTML = `<div><b>${words}</b>words</div><div><b>64</b>dimensions</div><div><b>${chunks}</b>facts</div><div><b>${G.ms}</b>ms build</div>`;
+  $("#kStarter").checked = useStarter;
+  $("#kDocs").innerHTML = docs.length ? docs.map((d, i) => `<div class="doc">${secChip(d.sector)}<b style="font-size:12px">${d.sector}</b><span>${d.url ? `<a href="${esc(d.url)}" target="_blank" rel="noopener" style="color:var(--text)">${esc(d.title)}</a>` : esc(d.title)} <span class="small">· ${d.text.split(/\s+/).length} words</span></span><button class="x" data-i="${i}" title="Delete">✕</button></div>`).join("") : `<div class="small">Nothing yet. Add your notes and they'll be placed on the grid and used in answers.</div>`;
+  $("#kDocs").querySelectorAll(".x").forEach(b => b.onclick = () => { docs.splice(+b.dataset.i, 1); saveDocs(); rebuild(); });
+}
+function saveDocs() { idb.set(DKEY, docs).catch(() => { if (!ls.set(DKEY, docs)) status("Browser storage is full — remove some knowledge.", "err"); }); }
+function addDoc(title, text, sector) {
+  text = text.trim(); if (!text) return;
+  const sec = +sector || MW.guessSector(G, text);
+  docs.push({ title: (title || text.slice(0, 40)).trim(), text, sector: sec });
+  saveDocs(); rebuild(); status(`Added "${docs.at(-1).title}" → sector ${sec} (${SECTORS[sec]})`);
+}
+$("#kSector").innerHTML = `<option value="0">Sector: auto-detect</option>` + SECTORS.slice(1).map((n, i) => `<option value="${i + 1}">Sector ${i + 1} · ${n}</option>`).join("");
+$("#kAdd").onclick = () => { addDoc($("#kTitle").value, $("#kText").value, $("#kSector").value); $("#kTitle").value = $("#kText").value = ""; };
+$("#kFile").onchange = async e => { for (const f of e.target.files) addDoc(f.name.replace(/\.\w+$/, ""), await f.text(), $("#kSector").value); e.target.value = ""; };
+$("#kStarter").onchange = e => { useStarter = e.target.checked; ls.set(SKEY, useStarter); rebuild(); };
+$("#kTest").addEventListener("input", e => {
+  const q = e.target.value.trim(); if (!q) { $("#kHits").innerHTML = ""; return; }
+  const { hits, sector } = MW.search(G, q, 3);
+  $("#kHits").innerHTML = `<div class="small">Query sector: ${secChip(sector)} ${sector} ${SECTORS[sector] || ""}</div>` +
+    (hits.length ? hits.map(h => `<div class="hit"><div class="m">${secChip(h.sector)} ${esc(h.title)} · match ${(h.score * 100 | 0)}%</div>${esc(h.text)}</div>`).join("") : `<div class="small">No match.</div>`);
+});
+
+// ---------- wiring ----------
+function showView(id) {
+  document.querySelectorAll(".view").forEach(v => v.classList.toggle("on", v.id === id));
+  document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("on", b.dataset.v === id));
+  if (id === "vGrid") drawGrid();
+}
+document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => showView(b.dataset.v));
+function autosize() { const t = $("#input"); t.style.height = "auto"; t.style.height = Math.min(t.scrollHeight, 180) + "px"; }
+$("#input").addEventListener("input", autosize);
+$("#input").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); send(); } });
+$("#form").onsubmit = e => { e.preventDefault(); send(); };
+$("#load").onclick = loadModel;
+$("#stop").onclick = () => { abortCtl?.abort(); engine?.interruptGenerate(); };
+function showPv() {
+  const pv = cloud.pv; $("#pv").value = pv; $("#cKey").style.display = pv ? "" : "none";
+  $("#cKey").placeholder = pv ? PV[pv].ph : ""; if (pv && !cloud.keys[pv] && PV[pv].def) cloud.keys[pv] = PV[pv].def; $("#cKey").value = pv ? cloud.keys[pv] || "" : ""; $("#cKey").type = pv === "ollama" ? "text" : "password"; $("#pvHelp").innerHTML = pv ? PV[pv].help : "Pick Gemini or OpenRouter for a free, much smarter brain.";
+  $("#cFix").checked = cloud.fix !== false; refreshModels();
+}
+$("#pv").onchange = () => { cloud.pv = $("#pv").value; saveCloud(); showPv(); };
+$("#cKey").onchange = () => { cloud.keys[cloud.pv] = $("#cKey").value.trim(); saveCloud(); refreshModels(); };
+$("#cModel").onchange = () => { cloud.model[cloud.pv] = $("#cModel").value; saveCloud(); };
+$("#cFix").onchange = () => { cloud.fix = $("#cFix").checked; saveCloud(); };
+showPv();
+$("#newChat").onclick = () => { cur = null; renderChats(); renderLog(); showView("vChat"); $("#input").focus(); $("#side").classList.remove("open"); };
+$("#menuBtn").onclick = () => $("#side").classList.toggle("open");
+$("#reset").onclick = async () => {
+  if (!confirm("Delete downloaded brains? They'll re-download next load. (Your knowledge and chats stay.)")) return;
+  try { await engine?.unload(); } catch {}
+  engine = null; loadedModel = null; updateMode();
+  try { for (const k of await caches.keys()) if (/webllm/i.test(k)) await caches.delete(k); } catch {}
+  try { for (const d of (await indexedDB.databases?.()) || []) if (/webllm/i.test(d.name)) indexedDB.deleteDatabase(d.name); } catch {}
+  ls.del(CKEY);
+  status("Downloads cleared. Grid mode still works.");
+};
+$("#wrap").addEventListener("click", e => {
+  const t = e.target, pre = t.closest("pre");
+  if (t.classList.contains("copy")) { navigator.clipboard.writeText(pre.querySelector("code").textContent); t.textContent = "Copied"; setTimeout(() => t.textContent = "Copy", 1200); }
+  if (t.classList.contains("open")) openArtifact(pre.querySelector("code").textContent, pre.dataset.lang);
+  if (t.classList.contains("dl")) downloadCode(pre.querySelector("code").textContent, pre.dataset.lang);
+  const card = t.closest(".artcard"); if (card) { const p = card.previousElementSibling; if (p && p.tagName === "PRE") openArtifact(p.querySelector("code").textContent, p.dataset.lang); }
+  if (t.classList.contains("run")) {
+    let out = pre.nextElementSibling;
+    if (!out || !out.classList.contains("runbox")) { out = document.createElement("div"); out.className = "runbox"; pre.after(out); }
+    runCode(pre.dataset.lang, pre.querySelector("code").textContent, out);
+  }
+  if (t.classList.contains("tellai")) { $("#input").value = "Here's the output of the code:\n```\n" + t.closest(".runout").querySelector(".txt").textContent.slice(0, 4000) + "\n```"; showView("vChat"); send(); }
+});
+
+// ---------- artifact panel: games, pages & files open beside the chat ----------
+const EXT = { html: "html", svg: "svg", js: "js", javascript: "js", python: "py", py: "py", css: "css", json: "json", md: "md", markdown: "md", ts: "ts", typescript: "ts", java: "java", c: "c", cpp: "cpp", "c++": "cpp", cs: "cs", sh: "sh", bash: "sh", sql: "sql", lua: "lua", txt: "txt", csv: "csv", xml: "xml", yaml: "yml", yml: "yml" };
+let artNow = null;
+const titleOf = (code, lang) => (code.match(/<title[^>]*>([^<]{1,60})<\/title>/i)?.[1] || (lang === "svg" ? "Drawing" : lang === "html" ? "Preview" : "Code")).trim();
+const fileOf = (code, lang) => (titleOf(code, lang).replace(/[^\w\- ]+/g, "").trim().replace(/\s+/g, "-").toLowerCase() || "file") + "." + (EXT[lang] || "txt");
+function downloadCode(code, lang) {
+  const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([code], { type: lang === "html" ? "text/html" : "text/plain" }));
+  a.download = fileOf(code, lang); a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+}
+// sandboxed games can't use real storage, so give them a safe in-memory one instead of crashing
+const STORE_SHIM = `<script>(()=>{const mk=()=>{const m=new Map();return{getItem:k=>m.has(k)?m.get(k):null,setItem:(k,v)=>m.set(String(k),String(v)),removeItem:k=>m.delete(k),clear:()=>m.clear(),key:i=>[...m.keys()][i]??null,get length(){return m.size}}};for(const n of["localStorage","sessionStorage"]){try{window[n].length}catch(e){try{Object.defineProperty(window,n,{value:mk(),configurable:true})}catch(_){}}}})();<\/script>`;
+function openArtifact(code, lang) {
+  artNow = { code, lang }; const html = lang === "svg" ? `<!doctype html><body style="margin:0;display:grid;place-items:center;min-height:100vh">${code}</body>` : code;
+  $("#artFrame").srcdoc = /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, m => m + STORE_SHIM) : STORE_SHIM + html;
+  $("#artCode").textContent = code; $("#artTitle").textContent = titleOf(code, lang);
+  $("#art").classList.add("on"); artTab("p");
+}
+function artTab(w) { $("#artFrame").style.display = w === "p" ? "" : "none"; $("#artCode").style.display = w === "c" ? "block" : "none"; $("#artTP").classList.toggle("on", w === "p"); $("#artTC").classList.toggle("on", w === "c"); }
+function decorateArtifacts(el, auto) { // add a card under big html/svg blocks; auto-open the newest
+  const pres = [...el.querySelectorAll('pre[data-lang="html"],pre[data-lang="svg"]')].filter(p => p.querySelector("code").textContent.length > 150);
+  pres.forEach(p => { const c = p.querySelector("code").textContent, card = document.createElement("div"); card.className = "artcard";
+    card.innerHTML = `<span style="font-size:22px">${/canvas|requestAnimationFrame|game/i.test(c) ? "🎮" : p.dataset.lang === "svg" ? "🎨" : "🌐"}</span><div><b>${esc(titleOf(c, p.dataset.lang))}</b><span class="small">Click to open · ${fileOf(c, p.dataset.lang)}</span></div>`;
+    p.after(card); });
+  if (auto && pres.length) { const p = pres.at(-1); openArtifact(p.querySelector("code").textContent, p.dataset.lang); }
+}
+$("#artTP").onclick = () => artTab("p"); $("#artTC").onclick = () => artTab("c");
+$("#artX").onclick = () => { $("#art").classList.remove("on", "full"); $("#artFrame").srcdoc = ""; };
+$("#artFull").onclick = () => $("#art").classList.toggle("full");
+$("#artReload").onclick = () => artNow && openArtifact(artNow.code, artNow.lang);
+$("#artDl").onclick = () => artNow && downloadCode(artNow.code, artNow.lang);
+
+// ---------- code runner (sandboxed: no access to your page, storage or files) ----------
+function runCode(lang, code, box) {
+  if (lang === "html") { const f = document.createElement("iframe"); f.className = "preview"; f.sandbox = "allow-scripts"; f.srcdoc = code; box.replaceChildren(f); return Promise.resolve({ errors: [] }); }
+  let resolve; const p = new Promise(r => resolve = r); const errors = [];
+  const id = Math.random().toString(36).slice(2);
+  box.innerHTML = `<div class="runout"><div class="txt">Running…</div><div class="tools"><button class="tellai">↩ Send output to AI</button></div></div>`;
+  const txt = box.querySelector(".txt"); let first = true, done = false;
+  const add = (cls, line) => { if (cls === "e") errors.push(line); if (first) { txt.textContent = ""; first = false; } const d = document.createElement("div"); if (cls) d.className = cls; d.textContent = line; txt.appendChild(d); };
+  const f = document.createElement("iframe"); f.sandbox = "allow-scripts"; f.style.display = "none";
+  const onMsg = e => {
+    if (e.source !== f.contentWindow || e.data?.id !== id) return;
+    if (e.data.t === "done") return finish();
+    add(e.data.t === "err" ? "e" : e.data.t === "warn" ? "w" : "", e.data.a);
+  };
+  const finish = (msg) => { if (done) return; done = true; if (msg) add("w", msg); if (first) add("", "(finished — no output. Use console.log() to print.)"); removeEventListener("message", onMsg); f.remove(); resolve({ errors }); };
+  addEventListener("message", onMsg);
+  const safe = code.replace(/<\/script/gi, "<\\/script");
+  f.srcdoc = `<script>
+const __s=(t,a)=>parent.postMessage({id:${JSON.stringify(id)},t,a:a.map(x=>{try{return typeof x==="object"?JSON.stringify(x):String(x)}catch{return String(x)}}).join(" ")},"*");
+console.log=console.info=(...a)=>__s("log",a);console.warn=(...a)=>__s("warn",a);console.error=(...a)=>__s("err",a);
+onerror=m=>{__s("err",[m]);__s("done",[]);};
+(async()=>{try{const __r=await (async()=>{\n${safe}\n})();if(__r!==undefined)__s("log",[__r]);}catch(e){__s("err",["Error: "+e.message]);}__s("done",[]);})();
+<\/script>`;
+  document.body.appendChild(f);
+  setTimeout(() => finish("⏱ Stopped after 5 seconds."), 5000);
+  return p;
+}
+
+// ---------- calculator: exact maths so the AI never guesses numbers ----------
+function tryMath(text) {
+  let t = text.toLowerCase().trim().replace(/^(q\d+|\d+\s*[.)])[.:)]?\s*/, "").replace(/^(what is|what's|whats|calculate|work out|compute|solve|evaluate)\s+/, "").replace(/[?=.!\s]+$/, "");
+  t = t.replace(/×/g, "*").replace(/÷/g, "/").replace(/√/g, "sqrt ").replace(/π/g, "pi").replace(/,(?=\d{3})/g, "")
+    .replace(/(\d)\s*x\s*(?=[\d(])/g, "$1*").replace(/\btimes\b|\bmultiplied by\b/g, "*").replace(/\bdivided by\b/g, "/")
+    .replace(/\bplus\b/g, "+").replace(/\bminus\b/g, "-").replace(/\bsquared\b/g, "^2").replace(/\bcubed\b/g, "^3")
+    .replace(/\bsquare root of\b/g, "sqrt ").replace(/(\d+(?:\.\d+)?)\s*% of\s*/g, "($1/100)*").replace(/(\d+(?:\.\d+)?\s*\/\s*\d+(?:\.\d+)?)\s*of\s*/g, "($1)*").replace(/\bto the power of\b/g, "^")
+    .replace(/\b(sqrt|sin|cos|tan|log|ln|abs)\s*(\d+(?:\.\d+)?)/g, "$1($2)");
+  const bare = t.replace(/\b(sqrt|sin|cos|tan|log|ln|abs|round|pi)\b/g, "");
+  if (!/\d/.test(t) || !/^[\d\s+\-*/^().]+$/.test(bare) || !/[+\-*/^]|sqrt|sin|cos|tan|log|ln|abs/.test(t)) return null;
+  try {
+    const r = Function(`"use strict";const sqrt=Math.sqrt,abs=Math.abs,round=Math.round,pi=Math.PI,log=Math.log10,ln=Math.log,d=Math.PI/180,sin=x=>Math.sin(x*d),cos=x=>Math.cos(x*d),tan=x=>Math.tan(x*d);return (${t.replace(/\^/g, "**")});`)();
+    if (typeof r !== "number" || !isFinite(r)) return null;
+    return { expr: t, value: +r.toPrecision(12) };
+  } catch { return null; }
+}
+
+// ---------- equation solver (linear & quadratic, one letter) ----------
+function solveEq(line) {
+  let t = line.toLowerCase().replace(/[−–]/g, "-").replace(/×/g, "*").replace(/÷/g, "/").replace(/²/g, "^2").replace(/³/g, "^3")
+    .replace(/^\s*(solve|find\s+[a-z]|work out\s+[a-z]|q\d+|\d+\s*[.):])\s*[:.)-]?\s*/, "").replace(/\s+/g, "").replace(/[.,;]+$/, "");
+  const m = t.match(/^([0-9a-z+\-*/^().]+)=([0-9a-z+\-*/^().]+)$/); if (!m) return null;
+  const vars = [...new Set(t.match(/[a-z]/g) || [])]; if (vars.length !== 1) return null;
+  const v = vars[0];
+  const prep = x => x.replace(/(\d)([a-z(])/g, "$1*$2").replace(/\)([\da-z(])/g, ")*$1").replace(/([a-z])([\d(])/g, "$1*$2").replace(/\^/g, "**");
+  let f; try { f = Function(v, `"use strict";return (${prep(m[1])})-(${prep(m[2])});`); } catch { return null; }
+  const [f0, f1, f2, f3] = [0, 1, 2, 3].map(x => { try { return f(x); } catch { return NaN; } });
+  if (![f0, f1, f2, f3].every(isFinite)) return null;
+  const a = (f2 - 2 * f1 + f0) / 2, b = f1 - f0 - a, c = f0;
+  if (Math.abs(9 * a + 3 * b + c - f3) > 1e-6 * (1 + Math.abs(f3))) return null; // not linear/quadratic
+  const r = x => +x.toFixed(6);
+  if (Math.abs(a) < 1e-12) { if (Math.abs(b) < 1e-12) return null; return `${line.trim()} → **${v} = ${r(-c / b)}**`; }
+  const d = b * b - 4 * a * c;
+  if (d < 0) return `${line.trim()} → no real solutions`;
+  const x1 = r((-b + Math.sqrt(d)) / (2 * a)), x2 = r((-b - Math.sqrt(d)) / (2 * a));
+  return `${line.trim()} → **${v} = ${x1 === x2 ? x1 : x1 + " or " + x2}**`;
+}
+function pickQuestions(text) {
+  const lines = text.split(/\n+/).map(l => l.trim()).filter(l => l.length > 2);
+  const qs = lines.filter(l => /\?\s*$/.test(l) || /^(q\d|question|\d+\s*[.)])/i.test(l)
+    || /\b(calculate|work out|find|solve|simplify|expand|factorise|evaluate|explain|describe|what|why|how|which|who|when|state|name|give)\b/i.test(l)
+    || (/\d/.test(l) && /[=+×÷*/^-]/.test(l)));
+  return { lines: qs.slice(0, 12), query: (qs.length ? qs : lines).join(" ").slice(0, 600) };
+}
+function solveLines(lines) {
+  const out = [];
+  for (const l of lines) {
+    const e = solveEq(l); if (e) { out.push(e); continue; }
+    const m = tryMath(l); if (m) out.push(`\`${m.expr}\` = **${m.value}**`);
+    if (out.length >= 6) break;
+  }
+  return out;
+}
+
+// ---------- screen share + OCR (Tesseract, runs on-device) ----------
+let stream = null, tess = null;
+async function startShare() {
+  if (!navigator.mediaDevices?.getDisplayMedia) { status("Screen sharing isn't available here — open Floof AI from your website (https) in Chrome.", "err"); return; }
+  try {
+    stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: 5 }, audio: false });
+    const v = $("#scrVid"); v.srcObject = stream; await v.play();
+    stream.getVideoTracks()[0].onended = stopShare;
+    $("#screenBar").classList.add("on"); $("#scrBtn").classList.add("on"); status("🖥 Sharing — open your question and press 📸 Solve.");
+  } catch (e) { status(e.name === "NotAllowedError" ? "Screen share cancelled." : "Couldn't share screen: " + e.message, e.name === "NotAllowedError" ? "" : "err"); }
+}
+function stopShare() { stream?.getTracks().forEach(t => t.stop()); stream = null; $("#screenBar").classList.remove("on"); $("#scrBtn").classList.remove("on"); }
+function snapScreen() {
+  const v = $("#scrVid"); if (!v.videoWidth) return;
+  const c = document.createElement("canvas"); c.width = v.videoWidth; c.height = v.videoHeight; c.getContext("2d").drawImage(v, 0, 0); openCrop(c);
+}
+// crop picker: drag a box around the question
+let cropSrc = null, sel0 = null, selBox = null;
+function openCrop(canvas) {
+  cropSrc = canvas; selBox = null; const cc = $("#cropCan"); cc.width = canvas.width; cc.height = canvas.height; cc.getContext("2d").drawImage(canvas, 0, 0);
+  $("#cropRect").style.display = "none"; $("#crop").classList.add("on");
+}
+const cw = $("#cropWrap");
+const cropPt = e => { const r = $("#cropCan").getBoundingClientRect(); return [Math.max(0, Math.min(r.width, e.clientX - r.left)), Math.max(0, Math.min(r.height, e.clientY - r.top)), r]; };
+cw.addEventListener("pointerdown", e => { cw.setPointerCapture(e.pointerId); sel0 = cropPt(e); });
+cw.addEventListener("pointermove", e => {
+  if (!sel0) return; const [x, y] = cropPt(e), [x0, y0, r] = sel0, R = $("#cropRect");
+  const l = Math.min(x, x0), t = Math.min(y, y0), w = Math.abs(x - x0), h = Math.abs(y - y0);
+  Object.assign(R.style, { display: "block", left: l + "px", top: t + "px", width: w + "px", height: h + "px" });
+  const sc = cropSrc.width / r.width; selBox = w > 8 && h > 8 ? [l * sc, t * sc, w * sc, h * sc] : null;
+});
+cw.addEventListener("pointerup", () => sel0 = null);
+$("#cropX").onclick = () => $("#crop").classList.remove("on");
+$("#cropAll").onclick = () => { $("#crop").classList.remove("on"); solveImage(cropSrc); };
+$("#cropGo").onclick = () => {
+  $("#crop").classList.remove("on");
+  if (!selBox) return solveImage(cropSrc);
+  const [x, y, w, h] = selBox, c = document.createElement("canvas"); c.width = w; c.height = h; c.getContext("2d").drawImage(cropSrc, x, y, w, h, 0, 0, w, h); solveImage(c);
+};
+async function ocr(canvas) {
+  // upscale small grabs + greyscale for cleaner reading
+  const k = canvas.width < 1200 ? Math.min(3, 1600 / canvas.width) : 1, c = document.createElement("canvas");
+  c.width = canvas.width * k; c.height = canvas.height * k; const g = c.getContext("2d"); g.filter = "grayscale(1) contrast(1.3)"; g.drawImage(canvas, 0, 0, c.width, c.height);
+  if (!window.Tesseract) await new Promise((ok, no) => { const sc = document.createElement("script"); sc.src = "https://cdn.jsdelivr.net/npm/tesseract.js@7.0.0/dist/tesseract.min.js"; sc.onload = ok; sc.onerror = () => no(new Error("Couldn't download the screen reader (cdn.jsdelivr.net blocked?)")); document.head.appendChild(sc); });
+  tess ??= await Tesseract.createWorker("eng", 1, { logger: m => { if (m.status) { status("👁 " + m.status + "…"); bar(m.progress || 0); } } });
+  const { data } = await tess.recognize(c);
+  bar(0); return data.text.replace(/[ \t]+/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+}
+async function solveImage(canvas) {
+  if (busy) return;
+  try {
+    if (cloudReady() && PV[cloud.pv].vision) { // vision models see the picture directly — no OCR needed
+      const sc = Math.min(1, 1568 / Math.max(canvas.width, canvas.height)), c = document.createElement("canvas"); c.width = canvas.width * sc; c.height = canvas.height * sc; c.getContext("2d").drawImage(canvas, 0, 0, c.width, c.height);
+      const t = document.createElement("canvas"), ts = Math.min(1, 240 / canvas.width); t.width = canvas.width * ts; t.height = canvas.height * ts; t.getContext("2d").drawImage(canvas, 0, 0, t.width, t.height);
+      showView("vChat"); return send("📸 Solve the question on my screen.", { screen: true, img: t.toDataURL("image/jpeg", .6), full: c.toDataURL("image/jpeg", .85) });
+    }
+    busy = true; status("👁 Reading the screen…");
+    const text = await ocr(canvas);
+    busy = false;
+    if (text.replace(/\W/g, "").length < 3) { status("I couldn't read any text there — try selecting a smaller, clearer area.", "err"); return; }
+    const t = document.createElement("canvas"), sc = Math.min(1, 240 / canvas.width); t.width = canvas.width * sc; t.height = canvas.height * sc; t.getContext("2d").drawImage(canvas, 0, 0, t.width, t.height);
+    showView("vChat"); status("Read ✓ — solving…");
+    await send(text, { screen: true, img: t.toDataURL("image/jpeg", .6) });
+  } catch (e) { busy = false; bar(0); status("Screen reading failed: " + (e.message || e), "err"); }
+}
+$("#scrBtn").onclick = () => stream ? stopShare() : startShare();
+$("#scrSnap").onclick = snapScreen;
+$("#scrStop").onclick = stopShare;
+async function imageFile(file) {
+  const img = await createImageBitmap(file), c = document.createElement("canvas"); c.width = img.width; c.height = img.height; c.getContext("2d").drawImage(img, 0, 0); openCrop(c);
+}
+$("#imgIn").onchange = e => { const f = e.target.files[0]; if (f) imageFile(f); e.target.value = ""; };
+document.addEventListener("paste", e => { const it = [...(e.clipboardData?.items || [])].find(i => i.type.startsWith("image/")); if (it) { e.preventDefault(); imageFile(it.getAsFile()); } });
+window.__mw = { tryMath, solveEq, pickQuestions, solveLines, solveImage, openCrop };
+
+// ---------- web (Wikipedia: free, no key, works from any browser) ----------
+let webOn = ls.get("mwai.web", false);
+function setWeb(v) { webOn = v; ls.set("mwai.web", v); $("#webBtn").classList.toggle("on", v); }
+$("#webBtn").onclick = () => { setWeb(!webOn); status(webOn ? "🌐 Web on — Floof AI will look things up on Wikipedia when its grid doesn't know." : "Web off — answers from your grid and brain only."); };
+async function webSearch(q) {
+  const terms = MW.tokens(q).map(t => t.w).slice(0, 8).join(" ") || q;
+  const u = "https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*&generator=search&gsrlimit=3&prop=extracts|info&inprop=url&exintro=1&explaintext=1&exsentences=10&gsrsearch=" + encodeURIComponent(terms);
+  const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), 8000);
+  try {
+    const j = await (await fetch(u, { signal: ctl.signal })).json();
+    return Object.values(j.query?.pages || {}).sort((a, b) => a.index - b.index).filter(p => p.extract && p.extract.length > 80)
+      .map(p => ({ title: "🌐 " + p.title, text: p.extract, url: p.fullurl }));
+  } finally { clearTimeout(to); }
+}
+
+// ---------- grow the grid: read whole Wikipedia articles into permanent knowledge ----------
+let autoLearn = ls.get("mwai.autolearn", true);
+function cleanWiki(t) {
+  t = t.split(/\n==+\s*(See also|References|Notes|External links|Further reading|Bibliography|Sources|Citations)\s*==+/i)[0];
+  return t.replace(/\n==+\s*([^=\n]+?)\s*==+/g, "\n$1.\n").replace(/\n{2,}/g, "\n").trim();
+}
+let learnedNames = [];
+function learnPages(pages) { // add to permanent knowledge, skipping pages already known
+  const have = new Set(docs.map(d => d.url)); learnedNames = [];
+  for (const p of pages) if (p.url && !have.has(p.url) && p.text.length > 80) { docs.push({ title: p.title, text: p.text, url: p.url, web: true, sector: MW.guessSector(G, p.text) }); have.add(p.url); learnedNames.push(p.title.slice(3)); }
+  return learnedNames.length;
+}
+async function wikiArticle(title) {
+  const u = "https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*&redirects=1&prop=extracts|info&inprop=url&explaintext=1&exchars=7000&titles=" + encodeURIComponent(title);
+  const j = await (await fetch(u)).json(); const p = Object.values(j.query?.pages || {})[0];
+  return p && p.extract ? { title: "🌐 " + p.title, text: cleanWiki(p.extract), url: p.fullurl } : null;
+}
+async function learnTopic(topic, count) {
+  const log = $("#lLog"); $("#lGo").disabled = true;
+  try {
+    log.textContent = "Searching…";
+    const j = await (await fetch("https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*&list=search&srlimit=" + count + "&srsearch=" + encodeURIComponent(topic))).json();
+    const titles = (j.query?.search || []).map(r => r.title);
+    if (!titles.length) { log.textContent = "Nothing found for that topic."; return; }
+    const before = docs.length, got = [];
+    for (let i = 0; i < titles.length; i++) {
+      log.textContent = `Reading ${i + 1}/${titles.length}: ${titles[i]}…`; bar((i + 1) / titles.length);
+      try { const a = await wikiArticle(titles[i]); if (a) got.push(a); } catch {}
+    }
+    const n = learnPages(got); bar(0);
+    if (n) { saveDocs(); rebuild(); }
+    log.innerHTML = n ? `✓ Learned <b>${n}</b> new page${n > 1 ? "s" : ""}: ${learnedNames.slice(0, 12).map(esc).join(", ")}. Check the Grid tab to see them.` : "Already knew all of those pages.";
+    status(n ? `🌐 Grid grew by ${n} page${n > 1 ? "s" : ""} — now ${G.vocab.size.toLocaleString()} words.` : "Nothing new to learn.");
+  } catch { log.textContent = "Couldn't reach Wikipedia — check your connection."; bar(0); }
+  finally { $("#lGo").disabled = false; }
+}
+$("#lGo").onclick = () => { const t = $("#lTopic").value.trim(); if (t) learnTopic(t, +$("#lCount").value); };
+$("#lTopic").addEventListener("keydown", e => { if (e.key === "Enter") $("#lGo").click(); });
+$("#lAuto").checked = autoLearn; $("#lAuto").onchange = e => { autoLearn = e.target.checked; ls.set("mwai.autolearn", autoLearn); };
+$("#kClearWeb").onclick = () => { const n = docs.filter(d => d.web).length; if (!n || !confirm(`Remove ${n} web page${n > 1 ? "s" : ""} from the grid?`)) return; docs = docs.filter(d => !d.web); saveDocs(); rebuild(); };
+
+$("#whoami").textContent = $("#accName").textContent = ACCOUNT;
+$("#signOut").onclick = () => { try { for (const k of [SESS, MWSESS]) { localStorage.removeItem(k); sessionStorage.removeItem(k); } } catch {} location.reload(); };
+if (ARES_USER) { // password is managed on Ares Revision
+  ["#pOld", "#pNew", "#pNew2", "#pChange", "#accDel"].forEach(q => $(q).style.display = "none");
+  $("#pMsg").innerHTML = `This is your MagicWinter account from <b>Ares Revision</b> — change your password there: <a href="https://ares-revision.vercel.app" target="_blank" rel="noopener" style="color:var(--accent)">Ares Revision ↗</a>`;
+}
+$("#pChange").onclick = async () => {
+  const id = NS.slice(2, -1), accs = accounts(), a = accs[id], msg = t => $("#pMsg").textContent = t;
+  if (!sameHash(await hashPw($("#pOld").value, a.salt), a.hash)) return msg("Current password is wrong.");
+  if ($("#pNew").value.length < 6) return msg("New password needs at least 6 characters.");
+  if ($("#pNew").value !== $("#pNew2").value) return msg("New passwords don't match.");
+  a.salt = toB64(crypto.getRandomValues(new Uint8Array(16))); a.hash = await hashPw($("#pNew").value, a.salt); setAccounts(accs);
+  $("#pOld").value = $("#pNew").value = $("#pNew2").value = ""; msg("✓ Password changed.");
+};
+$("#accDel").onclick = async () => {
+  const id = NS.slice(2, -1), a = accounts()[id], pw = prompt("Type your password to permanently delete this account and all its chats, notes and memory:");
+  if (pw == null) return; if (!sameHash(await hashPw(pw, a.salt), a.hash)) return alert("Wrong password — nothing deleted.");
+  for (let i = localStorage.length - 1; i >= 0; i--) { const k = localStorage.key(i); if (k && k.startsWith(NS)) localStorage.removeItem(k); }
+  try { const ks = (await idb.keys()).filter(k => typeof k === "string" && k.startsWith(NS)); await idb.raw(st => ks.forEach(k => st.delete(k))); } catch {}
+  const accs = accounts(); delete accs[id]; setAccounts(accs); $("#signOut").click();
+};
+
+setWeb(webOn);
+const saved = ls.get(MKEY, null); if (saved) $("#model").value = saved;
+renderLegend(); rebuild();
+idb.get(DKEY).then(v => { // load saved knowledge (and move any old copy out of localStorage)
+  if (Array.isArray(v)) docs = v; else if (docs.length) idb.set(DKEY, docs);
+  ls.del(DKEY);
+  rebuild();
+}).catch(() => {});
+cur = chats[0] || null; renderChats(); renderLog(); updateMode();
+if (saved) loadModel();
+</script>
+</body>
+</html>
