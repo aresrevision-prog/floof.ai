@@ -687,6 +687,8 @@ const idb = {
   async get(k) { const db = await this.open(); return new Promise((ok, no) => { const q = db.transaction("kv").objectStore("kv").get(NS + k); q.onsuccess = () => ok(q.result); q.onerror = () => no(q.error); }); },
   async set(k, v) { const db = await this.open(); return new Promise((ok, no) => { const t = db.transaction("kv", "readwrite"); t.objectStore("kv").put(v, NS + k); t.oncomplete = () => ok(true); t.onerror = () => no(t.error); }); },
   async raw(fn) { const db = await this.open(); return new Promise((ok, no) => { const t = db.transaction("kv", "readwrite"), st = t.objectStore("kv"); fn(st); t.oncomplete = () => ok(true); t.onerror = () => no(t.error); }); },
+  async getRaw(k) { const db = await this.open(); return new Promise((ok, no) => { const q = db.transaction("kv").objectStore("kv").get(k); q.onsuccess = () => ok(q.result); q.onerror = () => no(q.error); }); },
+  async setRaw(k, v) { const db = await this.open(); return new Promise((ok, no) => { const t = db.transaction("kv", "readwrite"); t.objectStore("kv").put(v, k); t.oncomplete = () => ok(true); t.onerror = () => no(t.error); }); },
   async keys() { const db = await this.open(); return new Promise((ok, no) => { const q = db.transaction("kv").objectStore("kv").getAllKeys(); q.onsuccess = () => ok(q.result); q.onerror = () => no(q.error); }); }
 };
 // ---------- MagicWinter account: sign in before anything loads ----------
@@ -739,7 +741,7 @@ function renderChats() {
   });
 }
 function srcHTML(src, u) {
-  const chips = (u?.mem?.length ? [`<span class="chip" style="color:var(--accent2)">💾 Remembered: ${u.mem.map(esc).join(" · ")}</span>`] : []).concat(u ? [`<span class="chip">🧠 <b>${esc(u.type)}</b>${u.terms ? " · " + esc(u.terms) : ""}${u.sector ? " · " + secChip(u.sector) + " " + u.sector : ""}</span>`] : [])
+  const chips = (u?.fix ? [`<span class="chip">✏️ Read as: ${esc(u.fix)}</span>`] : []).concat(u?.mem?.length ? [`<span class="chip" style="color:var(--accent2)">💾 Remembered: ${u.mem.map(esc).join(" · ")}</span>`] : []).concat(u ? [`<span class="chip">🧠 <b>${esc(u.type)}</b>${u.terms ? " · " + esc(u.terms) : ""}${u.sector ? " · " + secChip(u.sector) + " " + u.sector : ""}</span>`] : [])
     .concat((src || []).map(s => s.url ? `<a class="chip" href="${esc(s.url)}" target="_blank" rel="noopener">${secChip(s.sector)} <b>${s.sector}</b> ${esc(s.title)} ↗</a>` : `<span class="chip">${secChip(s.sector)} <b>${s.sector}</b> ${esc(s.title)}</span>`));
   return chips.length ? `<div class="srcs">${chips.join("")}</div>` : "";
 }
@@ -801,6 +803,15 @@ async function send(override, extra = {}) {
   // memory: answer "what do you know about me", "forget…", "remember that…" directly
   const mc = !extra.screen && memoryCommand(text);
   if (mc) { const ob = bubble("assistant", mc); cur.msgs.push({ role: "assistant", content: mc }); save(); scroll(); return; }
+  // dictionary: "define x", "what does x mean", "meaning of x"
+  const dm = !extra.screen && text.match(/^(?:define|definition of|meaning of|what(?:'s| is) the meaning of|what does)\s+["']?([a-z][a-z'-]{1,40})["']?(?:\s+mean)?\s*\??$/i);
+  if (dm) {
+    const ob = bubble("assistant", ""); ob.classList.add("cursor"); status("📖 Looking it up…");
+    let w = dm[1], fixed = null; await loadDict(); if (DICT && !DICT.has(w.toLowerCase())) { const sg = suggest(w.toLowerCase()); if (sg) { fixed = w; w = sg; } }
+    const def = await defineWord(w);
+    const reply = def ? (fixed ? `*(I read "${fixed}" as "${w}")*\n\n` : "") + def : (DICT && DICT.has(w.toLowerCase()) ? `"${w}" is a real word, but I couldn't fetch its meaning — check your internet.` : `I couldn't find "${w}" in the dictionary.`);
+    ob.classList.remove("cursor"); ob.innerHTML = md(reply); cur.msgs.push({ role: "assistant", content: reply }); save(); scroll(); status(def ? "📖 Done ✓" : "Ready"); return;
+  }
   const newMem = extra.screen || extra.depth ? [] : learnFromText(text);
 
   // 1) read: long messages become part of this chat's grid, so every part can be found later
@@ -809,10 +820,12 @@ async function send(override, extra = {}) {
   const CG = chatGrid();
 
   // 2) understand: question type, key terms, sector; follow-ups inherit the last topic
-  const info = MW.analyze(text, words);
+  // typos: read "photosynthsis" as "photosynthesis" (274k-word dictionary + the grid's own words)
+  const ty = extra.screen ? { text, fixes: [] } : fixTypos(text);
+  const info = MW.analyze(ty.text, words);
   const scr = extra.screen ? pickQuestions(text) : null;
   if (scr) { info.type = "solve"; info.label = "screen solve"; info.terms = MW.tokens(scr.query); }
-  const own = scr ? scr.query : text;
+  const own = scr ? scr.query : ty.text;
   // a message only counts as a follow-up if it points back ("it", "they", "what about…")
   // AND doesn't make sense on its own — so new questions never get stuck on the old topic
   let query = own;
@@ -826,7 +839,7 @@ async function send(override, extra = {}) {
     hits = own.concat(both.hits.filter(h => !seen.has(h.text))).slice(0, 5); sector = prevSec || both.sector;
   }
   const keyTerms = [...new Set(MW.tokens(query).map(t => t.w))].slice(0, 4).join(", ");
-  const u = { type: info.label, terms: keyTerms, sector };
+  const u = { type: info.label, terms: keyTerms, sector, fix: ty.fixes.map(f => f.join("→")).join(", ") };
   const out = bubble("assistant", ""); out.classList.add("cursor"); scroll();
   const calc = scr ? null : tryMath(text);
   const solved = scr ? solveLines(scr.lines) : [];
@@ -879,7 +892,7 @@ async function send(override, extra = {}) {
   let reply = "";
   try {
     const facts = hits.length ? "\n\nRelevant facts from the user's knowledge grid. Use them if they help answer, prefer them over your own memory, and don't mention the grid:\n" + hits.map((h, i) => `[${i + 1}] ${h.text}`).join("\n") : "";
-    const guide = `\n\nThe user's latest message is a ${u.type === "statement" ? "statement or request" : u.type + " question"}${keyTerms ? " about: " + keyTerms : ""}. Read the whole message carefully before answering, and answer every part of it.` + (info.type === "summary" ? " It is long: summarise its main points clearly, then offer to go deeper." : "")
+    const guide = (ty.fixes.length ? `\n\nThe user's message has typos; they most likely meant: "${ty.text}".` : "") + `\n\nThe user's latest message is a ${u.type === "statement" ? "statement or request" : u.type + " question"}${keyTerms ? " about: " + keyTerms : ""}. Read the whole message carefully before answering, and answer every part of it.` + (info.type === "summary" ? " It is long: summarise its main points clearly, then offer to go deeper." : "")
       + (extra.full ? " The user attached a screenshot of their screen: find the question(s) in it and solve them step by step, giving a clear final answer for each." : scr ? " It was read from the user's screen with OCR, so it may contain small reading errors. Find the question(s) on it and solve them step by step, giving a clear final answer for each." + (solved.length ? " Exact results already worked out (use these): " + solved.join("; ") : "") : "");
     const tools = "\n\nYou can write JavaScript in ```js code blocks: the user can press Run to execute it in a sandbox (use console.log for output) and send you the result" + (cloudReady() && cloud.fix ? "; plain JS blocks (no DOM) are also run automatically and any error is sent back to you to fix" : "") + ". Write runnable code when the user asks you to code, test or calculate something. HTML in ```html blocks gets a live preview — for games and web pages give one complete self-contained ```html block." + (calc ? `\n\nExact calculator result (use this number, don't recalculate): ${calc.expr} = ${calc.value}` : "") + (hits.some(h => h.title.startsWith("🌐")) ? "\nSome facts come from Wikipedia; mention the page name when you use them." : "");
     const edu = ACCOUNT_KIND === "ares" ? "\n\n📚 EDU MODE (signed in with a school Ares Revision account): act as a patient GCSE study tutor. Keep everything educational and age-appropriate. Explain step by step and check understanding; for homework or exam questions, guide them to the answer and show the method rather than only giving the final answer. Coding is fine when it's for learning. If asked for something unrelated to learning (e.g. just for fun or entertainment), kindly steer back to studying." : "";
@@ -934,6 +947,76 @@ async function send(override, extra = {}) {
       else status("🧪 Code ran without errors ✓");
     }
   }
+}
+
+// ---------- dictionary: 274,000 English words — fixes typos and looks up meanings ----------
+let DICT = null, DICT_LEN = null, dictLoading = null;
+const COMMON = new Set("the be to of and a in that have i it for not on with he as you do at this but his by from they we say her she or an will my one all would there their what so up out if about who get which go me when make can like time no just him know take people into year your good some could them see other than then now look only come its over think also back after use two how our work first well way even new want because any these give day most us is was are were has had been did does said made should very really thing things please thanks thank sorry help question answer explain mean why where how what which school homework revision exam test lesson teacher maths science history english geography computing physics chemistry biology".split(" "));
+function loadDict() {
+  return dictLoading ??= (async () => {
+    let txt = null; try { txt = await idb.getRaw("dict.words.v1"); } catch {}
+    if (!txt) { const r = await fetch("https://cdn.jsdelivr.net/npm/word-list@4.1.0/words.txt"); if (!r.ok) throw new Error("dict " + r.status); txt = await r.text(); idb.setRaw("dict.words.v1", txt).catch(() => {}); }
+    const words = txt.split("\n").filter(Boolean); DICT = new Set(words); DICT_LEN = new Map();
+    for (const w of words) { const L = w.length; if (!DICT_LEN.has(L)) DICT_LEN.set(L, []); DICT_LEN.get(L).push(w); }
+    try { renderStats(); } catch {}
+    return DICT;
+  })().catch(() => { dictLoading = null; return null; });
+}
+function editDist(a, b, max) { // Damerau-Levenshtein with early exit
+  const m = a.length, n = b.length; if (Math.abs(m - n) > max) return max + 1;
+  let p2 = null, p = Array.from({ length: n + 1 }, (_, j) => j);
+  for (let i = 1; i <= m; i++) {
+    const c = [i]; let best = i;
+    for (let j = 1; j <= n; j++) {
+      let v = Math.min(p[j] + 1, c[j - 1] + 1, p[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+      if (p2 && i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) v = Math.min(v, p2[j - 2] + 1);
+      c.push(v); if (v < best) best = v;
+    }
+    if (best > max) return max + 1; p2 = p; p = c;
+  }
+  return p[n];
+}
+const isSwap = (a, b) => { if (a.length !== b.length) return false; const d = []; for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) d.push(i); return d.length === 2 && d[1] === d[0] + 1 && a[d[0]] === b[d[1]] && a[d[1]] === b[d[0]]; };
+function swapFix(w) { // "frist" is technically a word, but "first" is what people mean
+  const gridWords = G ? [...G.vocab.values()].map(v => v.w) : [];
+  for (const c of [...COMMON, ...gridWords]) if (isSwap(w, c)) return c;
+  return null;
+}
+function suggest(w) {
+  const max = w.length <= 4 ? 1 : 2; let best = null, bestScore = 1e9;
+  const gridWords = G ? [...G.vocab.values()].map(v => v.w) : [];
+  const consider = (cand, inGrid) => {
+    if (Math.abs(cand.length - w.length) > max) return;
+    if (cand[0] !== w[0] && cand[1] !== w[1] && cand[0] !== w[1]) return; // quick filter: typos rarely change the start
+    const d = editDist(w, cand, max); if (d > max) return;
+    const sc = d * 10 - (inGrid ? 6 : 0) - (COMMON.has(cand) ? 5 : 0) - (isSwap(w, cand) ? 3 : 0) - (cand[0] === w[0] ? 2 : 0) + Math.abs(cand.length - w.length) + cand.length * .01;
+    if (sc < bestScore) { bestScore = sc; best = cand; }
+  };
+  for (const g of gridWords) consider(g, true);
+  for (let L = w.length - max; L <= w.length + max; L++) for (const c of DICT_LEN.get(L) || []) consider(c, false);
+  return best;
+}
+function fixTypos(text) { // returns { text, fixes:[[from,to]] }
+  if (!DICT) return { text, fixes: [] };
+  const fixes = [];
+  const out = text.replace(/[A-Za-z][a-z']{2,}/g, w => {
+    const lw = w.toLowerCase().replace(/'s$/, ""); if (lw.includes("'") || COMMON.has(lw) || (G && G.vocab.has(MW.stem(lw)))) return w;
+    if (DICT.has(lw)) { const sw = lw.length >= 3 && swapFix(lw); if (sw) { fixes.push([w, sw]); return sw; } return w; }
+    if (/^[A-Z]/.test(w) && w !== text.trim().split(/\s/)[0]) return w; // probably a name
+    const s = suggest(lw); if (!s || s === lw) return w; fixes.push([w, s]); return s;
+  });
+  return { text: out, fixes };
+}
+async function defineWord(word) {
+  const w = word.toLowerCase().trim();
+  try {
+    const r = await fetch("https://api.dictionaryapi.dev/api/v2/entries/en/" + encodeURIComponent(w));
+    if (!r.ok) return null; const j = await r.json(); const e = j[0]; if (!e) return null;
+    const lines = []; let n = 0;
+    for (const m of e.meanings || []) for (const d of (m.definitions || []).slice(0, 2)) { if (n++ >= 5) break; lines.push(`- *${m.partOfSpeech}* — ${d.definition}${d.example ? ` *e.g. "${d.example}"*` : ""}`); }
+    const syn = [...new Set((e.meanings || []).flatMap(m => m.synonyms || []))].slice(0, 6);
+    return `**${e.word}**${e.phonetic ? " " + e.phonetic : ""}\n` + lines.join("\n") + (syn.length ? `\n\nSimilar words: ${syn.join(", ")}` : "");
+  } catch { return null; }
 }
 
 // ---------- memory: learns about you over time (stored only in this browser) ----------
@@ -1255,7 +1338,7 @@ new ResizeObserver(() => drawGrid()).observe($("#gwrap"));
 // ---------- knowledge view ----------
 function renderStats() {
   const words = G.vocab.size, chunks = G.chunks.length;
-  $("#kStats").innerHTML = `<div><b>${words}</b>words</div><div><b>64</b>dimensions</div><div><b>${chunks}</b>facts</div><div><b>${G.ms}</b>ms build</div>`;
+  $("#kStats").innerHTML = `<div><b>${words}</b>words</div><div><b>64</b>dimensions</div><div><b>${chunks}</b>facts</div><div><b>${DICT ? (DICT.size / 1000 | 0) + "k" : "…"}</b>dictionary</div>`;
   $("#kStarter").checked = useStarter;
   $("#kDocs").innerHTML = docs.length ? docs.map((d, i) => `<div class="doc">${secChip(d.sector)}<b style="font-size:12px">${d.sector}</b><span>${d.url ? `<a href="${esc(d.url)}" target="_blank" rel="noopener" style="color:var(--text)">${esc(d.title)}</a>` : esc(d.title)} <span class="small">· ${d.text.split(/\s+/).length} words</span></span><button class="x" data-i="${i}" title="Delete">✕</button></div>`).join("") : `<div class="small">Nothing yet. Add your notes and they'll be placed on the grid and used in answers.</div>`;
   $("#kDocs").querySelectorAll(".x").forEach(b => b.onclick = () => { docs.splice(+b.dataset.i, 1); saveDocs(); rebuild(); });
@@ -1610,6 +1693,7 @@ if (ACCOUNT_KIND === "device") $("#accDel").onclick = async () => {
 };
 
 setWeb(webOn);
+setTimeout(() => loadDict(), 1500); // 274k-word dictionary: ~0.7 MB once, then cached
 const saved = ls.get(MKEY, null); if (saved) $("#model").value = saved;
 renderLegend(); rebuild();
 idb.get(DKEY).then(v => { // load saved knowledge (and move any old copy out of localStorage)
