@@ -717,7 +717,7 @@ function md(src) {
   return src.split(/```/).map((p, i) => {
     if (i % 2) {
       const nl = p.indexOf("\n"), lang = (nl >= 0 ? p.slice(0, nl) : "").trim().toLowerCase(), code = nl >= 0 ? p.slice(nl + 1) : p;
-      const run = /^(js|javascript)$/.test(lang) ? `<button class="run">▶ Run</button>` : /^(html|svg)$/.test(lang) ? `<button class="open">▶ Open</button>` : "";
+      const run = /^(js|javascript|python|py)$/.test(lang) ? `<button class="run">▶ Run</button>` : /^(html|svg)$/.test(lang) ? `<button class="open">▶ Open</button>` : "";
       return `<pre data-lang="${esc(lang)}"><div class="cbtns">${run}<button class="dl" title="Download">⬇</button><button class="copy">Copy</button></div><code>${esc(code.replace(/\n$/, ""))}</code></pre>`;
     }
     const h = esc(p).replace(/`([^`\n]+)`/g, "<code>$1</code>").replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>")
@@ -894,7 +894,9 @@ async function send(override, extra = {}) {
     const facts = hits.length ? "\n\nRelevant facts from the user's knowledge grid. Use them if they help answer, prefer them over your own memory, and don't mention the grid:\n" + hits.map((h, i) => `[${i + 1}] ${h.text}`).join("\n") : "";
     const guide = (ty.fixes.length ? `\n\nThe user's message has typos; they most likely meant: "${ty.text}".` : "") + `\n\nThe user's latest message is a ${u.type === "statement" ? "statement or request" : u.type + " question"}${keyTerms ? " about: " + keyTerms : ""}. Read the whole message carefully before answering, and answer every part of it.` + (info.type === "summary" ? " It is long: summarise its main points clearly, then offer to go deeper." : "")
       + (extra.full ? " The user attached a screenshot of their screen: find the question(s) in it and solve them step by step, giving a clear final answer for each." : scr ? " It was read from the user's screen with OCR, so it may contain small reading errors. Find the question(s) on it and solve them step by step, giving a clear final answer for each." + (solved.length ? " Exact results already worked out (use these): " + solved.join("; ") : "") : "");
-    const tools = "\n\nYou can write JavaScript in ```js code blocks: the user can press Run to execute it in a sandbox (use console.log for output) and send you the result" + (cloudReady() && cloud.fix ? "; plain JS blocks (no DOM) are also run automatically and any error is sent back to you to fix" : "") + ". Write runnable code when the user asks you to code, test or calculate something. HTML in ```html blocks gets a live preview — for games and web pages give one complete self-contained ```html block." + (calc ? `\n\nExact calculator result (use this number, don't recalculate): ${calc.expr} = ${calc.value}` : "") + (hits.some(h => h.title.startsWith("🌐")) ? "\nSome facts come from Wikipedia; mention the page name when you use them." : "");
+    const coding = CODEY.test(own);
+    const tools = "\n\nCODE TOOLS: ```js blocks run in a sandbox (console.log prints). ```python blocks run real Python 3 in the browser (standard library only; no input() — set values in variables and print results). ```html blocks open as a live preview in a side panel." + (cloud.fix !== false ? " After you reply, your last runnable block is tested automatically; if it errors, you'll get the error to fix." : "")
+      + (coding ? "\nWhen coding: first get the requirements straight, then give COMPLETE, working code — no placeholders, TODOs or '...'. Put a whole program in ONE block (for games, apps and web pages: one self-contained ```html file with inline CSS/JS; for GCSE-style tasks use ```python unless asked otherwise). Use clear names and brief comments. Handle edge cases and invalid input. After the code, explain in 2–4 short sentences how it works and how to run or change it. When fixing code, return the full corrected program, not just the changed lines." : "") + (calc ? `\n\nExact calculator result (use this number, don't recalculate): ${calc.expr} = ${calc.value}` : "") + (hits.some(h => h.title.startsWith("🌐")) ? "\nSome facts come from Wikipedia; mention the page name when you use them." : "");
     const edu = ACCOUNT_KIND === "ares" ? "\n\n📚 EDU MODE (signed in with a school Ares Revision account): act as a patient GCSE study tutor. Keep everything educational and age-appropriate. Explain step by step and check understanding; for homework or exam questions, guide them to the answer and show the method rather than only giving the final answer. Coding is fine when it's for learning. If asked for something unrelated to learning (e.g. just for fun or entertainment), kindly steer back to studying." : "";
     const sys = SYSTEM + edu + memoryPrompt() + guide + tools + facts;
     let t = 0; const onT = d => { reply += d; const now = performance.now(); if (now - t > 50) { out.innerHTML = md(reply); scroll(); t = now; } };
@@ -911,7 +913,7 @@ async function send(override, extra = {}) {
       const history = fitHistory(cur.msgs, sys.length);
       const stream = await engine.chat.completions.create({
         messages: [{ role: "system", content: sys }, ...history],
-        stream: true, temperature: 0.6, max_tokens: 1024,
+        stream: true, temperature: CODEY.test(own) ? 0.3 : 0.6, max_tokens: /Coder/.test(loadedModel) ? 3072 : 1536,
         extra_body: loadedModel.startsWith("Qwen3") ? { enable_thinking: false } : undefined
       });
       for await (const chunk of stream) onT(chunk.choices[0]?.delta?.content || "");
@@ -935,16 +937,23 @@ async function send(override, extra = {}) {
     cur.msgs.push({ role: "assistant", content: reply, src, u }); save();
     busy = false; $("#send").disabled = false; $("#stop").hidden = true; scroll(); input.focus();
   }
-  // self-testing loop: run the plain-JS code it wrote; if it crashes, send the error back to be fixed
-  if (cloudReady() && cloud.fix && (extra.depth || 0) < 2) {
-    const blocks = [...out.querySelectorAll('pre[data-lang="js"],pre[data-lang="javascript"]')].filter(p => !/\b(document|window|canvas|addEventListener|requestAnimationFrame|alert|prompt|fetch|localStorage)\b/.test(p.textContent));
-    const pre = blocks.at(-1);
+  // self-testing loop: run the code it just wrote (JS, Python or HTML); if it crashes, send the error back to be fixed
+  if ((cloudReady() || engine) && cloud.fix !== false && (extra.depth || 0) < 3) {
+    const pres = [...out.querySelectorAll("pre[data-lang]")].filter(p => /^(js|javascript|python|py|html)$/.test(p.dataset.lang));
+    const pre = pres.at(-1);
     if (pre) {
-      const box = document.createElement("div"); box.className = "runbox"; pre.after(box);
-      status("🧪 Testing the code…");
-      const res = await runCode("js", pre.querySelector("code").textContent, box);
-      if (res.errors.length) { status("🛠 Found a bug — asking the AI to fix it…"); await send("I ran that code and it failed with:\n```\n" + res.errors.join("\n").slice(0, 2000) + "\n```\nFix it and give the full corrected code.", { depth: (extra.depth || 0) + 1 }); }
-      else status("🧪 Code ran without errors ✓");
+      const lang = pre.dataset.lang, code = pre.querySelector("code").textContent;
+      const jsDom = /^(js|javascript)$/.test(lang) && /\b(document|window|canvas|addEventListener|requestAnimationFrame|alert|prompt|fetch|localStorage)\b/.test(code);
+      if (!jsDom && !/\binput\s*\(/.test(lang.startsWith("py") ? code : "")) {
+        status("🧪 Testing the code…");
+        let res;
+        if (lang === "html") res = await testHtml(code);
+        else { const box = document.createElement("div"); box.className = "runbox"; pre.after(box); res = await runCode(lang, code, box); }
+        if (res.errors.length) {
+          status(`🛠 Test ${(extra.depth || 0) + 1}/3 found a bug — fixing it…`);
+          await send(`I tested that ${lang === "html" ? "page" : "code"} and it failed with:\n\`\`\`\n${res.errors.slice(0, 8).join("\n").slice(0, 2000)}\n\`\`\`\nFind the cause, fix it, and give the full corrected code.`, { depth: (extra.depth || 0) + 1 });
+        } else status(lang === "html" ? "🧪 Page loaded and ran 3 seconds with no errors ✓" : "🧪 Code ran without errors ✓");
+      }
     }
   }
 }
@@ -1099,7 +1108,19 @@ const cloudReady = () => !!PV[cloud.pv] && PV[cloud.pv].ok(cloud.keys[cloud.pv] 
 const curModel = () => $("#cModel").value || cloud.model[cloud.pv] || modelList[0]?.id || "";
 function saveCloud() { ls.set("mwai.cloud", cloud); updateMode(); }
 
+const EXTRA_PV = {}; // plug-in brains: Floof.addProvider({ id, label, ph, ok(key), vision, help, list(key) -> [{id,name}], stream({model, sys, msgs, onText, signal, key}) -> {in,out} })
+window.Floof = {
+  version: 1,
+  addProvider(p) {
+    if (!p || !p.id || PV[p.id] && !EXTRA_PV[p.id]) return false;
+    PV[p.id] = EXTRA_PV[p.id] = p;
+    if (![...$("#pv").options].some(o => o.value === p.id)) $("#pv").add(new Option(p.label || p.id, p.id));
+    if (cloud.pv === p.id) showPv();
+    return true;
+  }
+};
 async function listModels(pv, key) {
+  if (EXTRA_PV[pv]) return EXTRA_PV[pv].list(key);
   if (pv === "gemini") {
     const j = await (await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=" + encodeURIComponent(key))).json();
     if (j.error) throw new Error(j.error.message);
@@ -1154,10 +1175,11 @@ async function httpErr(r, pv) {
 }
 async function streamOnce(pv, model, sys, msgs, onText) {
   abortCtl = new AbortController(); const key = cloud.keys[pv], usage = { in: 0, out: 0, model };
+  if (EXTRA_PV[pv]) return { model, ...(await EXTRA_PV[pv].stream({ model, sys, msgs, onText, signal: abortCtl.signal, key })) };
   const b64 = u => u.split(",")[1];
   if (pv === "gemini") {
     const contents = msgs.map(m => ({ role: m.role === "assistant" ? "model" : "user", parts: (m.img ? [{ inline_data: { mime_type: "image/jpeg", data: b64(m.img) } }] : []).concat([{ text: m.content }]) }));
-    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse&key=${encodeURIComponent(key)}`, { method: "POST", signal: abortCtl.signal, headers: { "content-type": "application/json" }, body: JSON.stringify({ systemInstruction: { parts: [{ text: sys }] }, contents, generationConfig: { maxOutputTokens: 8192 } }) });
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse&key=${encodeURIComponent(key)}`, { method: "POST", signal: abortCtl.signal, headers: { "content-type": "application/json" }, body: JSON.stringify({ systemInstruction: { parts: [{ text: sys }] }, contents, generationConfig: { maxOutputTokens: 16384 } }) });
     if (!r.ok) throw await httpErr(r, pv);
     for await (const ev of sse(r)) {
       if (ev.error) throw new Error(ev.error.message);
@@ -1166,7 +1188,7 @@ async function streamOnce(pv, model, sys, msgs, onText) {
     }
   } else if (pv === "openrouter" || pv === "ollama") {
     const url = pv === "ollama" ? key.replace(/\/+$/, "") + "/v1/chat/completions" : "https://openrouter.ai/api/v1/chat/completions";
-    let r; try { r = await fetch(url, { method: "POST", signal: abortCtl.signal, headers: { "content-type": "application/json", ...(pv === "openrouter" ? { authorization: "Bearer " + key, "X-Title": "Floof AI" } : {}) }, body: JSON.stringify({ model, stream: true, max_tokens: 8192, messages: [{ role: "system", content: sys }, ...msgs.map(m => ({ role: m.role, content: m.content }))] }) }); }
+    let r; try { r = await fetch(url, { method: "POST", signal: abortCtl.signal, headers: { "content-type": "application/json", ...(pv === "openrouter" ? { authorization: "Bearer " + key, "X-Title": "Floof AI" } : {}) }, body: JSON.stringify({ model, stream: true, max_tokens: 16384, messages: [{ role: "system", content: sys }, ...msgs.map(m => ({ role: m.role, content: m.content }))] }) }); }
     catch (e) { if (e.name === "AbortError") throw e; throw new Error(pv === "ollama" ? "Can't reach Ollama — is it running on this PC with OLLAMA_ORIGINS=*?" : "Network error — check your connection."); }
     if (!r.ok) throw await httpErr(r, pv);
     for await (const ev of sse(r)) {
@@ -1177,8 +1199,11 @@ async function streamOnce(pv, model, sys, msgs, onText) {
   }
   return usage;
 }
+const CODEY = /\b(code|coding|program|script|function|class|bug|debug|error|exception|python|javascript|js|html|css|java|c\+\+|sql|algorithm|game|app|website|web page|compile|loop|array|variable)\b/i;
 async function cloudStream(sys, msgs, onText) {
-  const pv = cloud.pv, first = curModel();
+  const pv = cloud.pv, last = msgs.at(-1)?.content || "";
+  let first = curModel();
+  if (pv === "openrouter" && typeof last === "string" && CODEY.test(last) && !cloud.model.openrouter) { const c = modelList.find(m => /coder|devstral|codestral/i.test(m.id)); if (c) first = c.id; } // coding question → coding model
   const order = [first, ...modelList.map(m => m.id).filter(id => id !== first)].slice(0, pv === "ollama" ? 1 : 4);
   let got = false; const wrap = t => { got = true; onText(t); };
   for (let i = 0; i < order.length; i++) {
@@ -1440,8 +1465,57 @@ $("#artFull").onclick = () => $("#art").classList.toggle("full");
 $("#artReload").onclick = () => artNow && openArtifact(artNow.code, artNow.lang);
 $("#artDl").onclick = () => artNow && downloadCode(artNow.code, artNow.lang);
 
+// ---------- Python: real Python 3 (Pyodide) in a background worker ----------
+const PYODIDE = window.FLOOF_PYODIDE || "https://cdn.jsdelivr.net/npm/pyodide@314.0.7/";
+let pyWorker = null, pyReady = null, pyJobs = new Map(), pyId = 0;
+function getPy() {
+  if (pyWorker) return pyReady;
+  const src = `import { loadPyodide } from ${JSON.stringify(PYODIDE + "pyodide.mjs")};
+let py; const ready = loadPyodide({ indexURL: ${JSON.stringify(PYODIDE)} }).then(p => py = p);
+onmessage = async e => { const { id, code } = e.data; const out = m => postMessage({ id, t: "out", m }), err = m => postMessage({ id, t: "err", m });
+  try { await ready; py.setStdout({ batched: out }); py.setStderr({ batched: err }); py.setStdin({ stdin: () => { throw new Error("input() isn't available here — put the value in a variable instead"); } });
+    try { await py.loadPackagesFromImports(code); } catch (x) {}
+    const r = await py.runPythonAsync(code); if (r !== undefined && r !== null) out(String(r)); }
+  catch (x) { const lines = String(x.message || x).trim().split("\\n"), i = lines.findIndex(l => l.includes('File "<exec>"')); err((i >= 0 ? ["Traceback:", ...lines.slice(i)] : lines.slice(-3)).join("\\n")); }
+  postMessage({ id, t: "done" }); };
+postMessage({ t: "loaded" });`;
+  pyWorker = new Worker(URL.createObjectURL(new Blob([src], { type: "text/javascript" })), { type: "module" });
+  pyReady = new Promise((ok, no) => {
+    pyWorker.onmessage = e => { const d = e.data; if (d.t === "loaded") return ok(); const j = pyJobs.get(d.id); if (j) j(d); };
+    pyWorker.onerror = e => { no(new Error("Couldn't start Python (needs internet the first time)")); pyWorker = null; };
+  });
+  return pyReady;
+}
+function runPython(code, box) {
+  box.innerHTML = `<div class="runout"><div class="txt">🐍 Starting Python… (first run downloads ~10 MB)</div><div class="tools"><button class="tellai">↩ Send output to AI</button></div></div>`;
+  const txt = box.querySelector(".txt"); let first = true; const errors = [];
+  const add = (cls, line) => { if (cls === "e") errors.push(line); if (first) { txt.textContent = ""; first = false; } const d = document.createElement("div"); if (cls) d.className = cls; d.textContent = line; txt.appendChild(d); };
+  return new Promise(async resolve => {
+    try { await getPy(); } catch (e) { add("w", e.message); return resolve({ errors: [], infra: true }); }
+    const id = ++pyId; let timer;
+    const end = msg => { clearTimeout(timer); pyJobs.delete(id); if (msg) add("w", msg); if (first) add("", "(finished — no output. Use print() to show results.)"); resolve({ errors }); };
+    pyJobs.set(id, d => { if (d.t === "done") end(); else add(d.t === "err" ? "e" : "", d.m); });
+    timer = setTimeout(() => { pyWorker.terminate(); pyWorker = null; pyReady = null; end("⏱ Stopped after 20 seconds (infinite loop?)"); }, 20000);
+    pyWorker.postMessage({ id, code });
+  });
+}
+// test a web page/game invisibly for 3 s and collect any errors it throws
+function testHtml(code) {
+  return new Promise(resolve => {
+    const id = Math.random().toString(36).slice(2), errors = [], f = document.createElement("iframe");
+    f.sandbox = "allow-scripts"; f.style.cssText = "position:fixed;left:-9999px;width:800px;height:600px";
+    const catcher = `<script>(()=>{const s=m=>parent.postMessage({id:${JSON.stringify(id)},m:String(m).slice(0,300)},"*");addEventListener("error",e=>s((e.message||"Error")+(e.lineno?" (line "+e.lineno+")":"")));addEventListener("unhandledrejection",e=>s("Unhandled promise: "+(e.reason&&e.reason.message||e.reason)));const ce=console.error;console.error=(...a)=>{s(a.join(" "));ce(...a)}})();<\/script>` + STORE_SHIM;
+    const onMsg = e => { if (e.source === f.contentWindow && e.data?.id === id && !errors.includes(e.data.m)) errors.push(e.data.m); };
+    addEventListener("message", onMsg);
+    f.srcdoc = /<head[^>]*>/i.test(code) ? code.replace(/<head[^>]*>/i, m => m + catcher) : catcher + code;
+    document.body.appendChild(f);
+    setTimeout(() => { removeEventListener("message", onMsg); f.remove(); resolve({ errors: errors.filter(m => !/ResizeObserver loop/.test(m)) }); }, 3000);
+  });
+}
+
 // ---------- code runner (sandboxed: no access to your page, storage or files) ----------
 function runCode(lang, code, box) {
+  if (/^(python|py)$/.test(lang)) return runPython(code, box);
   if (lang === "html") { const f = document.createElement("iframe"); f.className = "preview"; f.sandbox = "allow-scripts"; f.srcdoc = code; box.replaceChildren(f); return Promise.resolve({ errors: [] }); }
   let resolve; const p = new Promise(r => resolve = r); const errors = [];
   const id = Math.random().toString(36).slice(2);
