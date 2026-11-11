@@ -58,7 +58,7 @@
       r = await fetch("https://api.openai.com/v1/chat/completions", {
         method: "POST", signal: abortCtl.signal,
         headers: { "content-type": "application/json", authorization: "Bearer " + key },
-        body: JSON.stringify({ model, stream: true, stream_options: { include_usage: true }, max_tokens: 8192, messages })
+        body: JSON.stringify({ model, stream: true, stream_options: { include_usage: true }, max_completion_tokens: 8192, messages })
       });
     } catch (e) {
       if (e.name === "AbortError") throw e;
