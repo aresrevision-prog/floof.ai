@@ -92,6 +92,12 @@ a.chip{text-decoration:none;color:var(--accent)}
 .linkbtn{background:none;border:0;color:var(--dim);font-size:12px;text-decoration:underline;padding:2px;align-self:center}.linkbtn:hover{color:var(--text)}
 .authfoot{display:flex;justify-content:center;gap:8px;align-items:center;font-size:11px;color:var(--dim)}.authfoot svg{width:16px;height:16px}
 #aForm{display:flex;flex-direction:column;gap:10px}
+.acct{position:relative}#acctBtn{display:flex;align-items:center;gap:6px;padding:4px 10px 4px 4px;border-radius:99px;font-size:13px}
+#acctBtn .av{width:24px;height:24px;border-radius:50%;display:grid;place-items:center;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#07130d;font-weight:800;font-size:12px}
+.acctmenu{position:absolute;right:0;top:calc(100% + 6px);min-width:210px;background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:6px;display:none;z-index:40;box-shadow:0 16px 40px rgba(0,0,0,.45)}
+.acctmenu.on{display:block}.acctmenu .who{padding:6px 8px 8px;border-bottom:1px solid var(--line);margin-bottom:4px;display:flex;flex-direction:column;font-size:12px;color:var(--dim)}.acctmenu .who b{color:var(--text);font-size:14px}
+.acctmenu button{display:block;width:100%;text-align:left;border:0;background:none;padding:8px;border-radius:8px}.acctmenu button:hover{background:var(--panel2)}
+@media(max-width:720px){#acctNm{display:none}}
 .thumb{display:block;max-width:240px;border-radius:8px;border:1px solid var(--line);margin-bottom:6px}
 .srcs{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
 .chip{font-size:11px;padding:2px 8px;border-radius:99px;border:1px solid var(--line);color:var(--dim);background:var(--panel)}
@@ -169,7 +175,7 @@ form#form{padding:12px 16px 16px;border-top:1px solid var(--line)}
   <div class="brand"><div class="logo"><svg viewBox="0 0 100 100" aria-hidden="true"><defs><radialGradient id="fg" cx="38%" cy="32%" r="75%"><stop offset="0" stop-color="#ffffff"/><stop offset=".55" stop-color="#d8f7e6"/><stop offset="1" stop-color="#3ddc84"/></radialGradient></defs><path d="M83.0 50.0 A7.6 7.6 0 0 1 79.7 64.3 A7.6 7.6 0 0 1 70.6 75.8 A7.6 7.6 0 0 1 57.3 82.2 A7.6 7.6 0 0 1 42.7 82.2 A7.6 7.6 0 0 1 29.4 75.8 A7.6 7.6 0 0 1 20.3 64.3 A7.6 7.6 0 0 1 17.0 50.0 A7.6 7.6 0 0 1 20.3 35.7 A7.6 7.6 0 0 1 29.4 24.2 A7.6 7.6 0 0 1 42.7 17.8 A7.6 7.6 0 0 1 57.3 17.8 A7.6 7.6 0 0 1 70.6 24.2 A7.6 7.6 0 0 1 79.7 35.7 A7.6 7.6 0 0 1 83.0 50.0Z" fill="url(#fg)" stroke="#3ddc84" stroke-width="3" stroke-linejoin="round"/><ellipse cx="39" cy="50" rx="5.5" ry="7" fill="#07130d"/><ellipse cx="61" cy="50" rx="5.5" ry="7" fill="#07130d"/><circle cx="41" cy="47" r="2" fill="#fff"/><circle cx="63" cy="47" r="2" fill="#fff"/><ellipse cx="31" cy="60" rx="5" ry="3" fill="#ff9fc4" opacity=".7"/><ellipse cx="69" cy="60" rx="5" ry="3" fill="#ff9fc4" opacity=".7"/><path d="M45 61q5 5 10 0" stroke="#07130d" stroke-width="2.6" fill="none" stroke-linecap="round"/></svg></div>Floof AI</div>
   <button id="newChat">+ New chat</button>
   <div id="chats"></div>
-  <label class="small" for="model">Brain (optional — the grid answers without one)</label>
+  <label class="small" for="model">On-device fallback brain (optional)</label>
   <select id="model">
     <option value="SmolLM2-360M-Instruct">⚡ Tiny — fastest (~0.4 GB)</option>
     <option value="Llama-3.2-1B-Instruct">🌨 Light — quick (~0.9 GB)</option>
@@ -182,7 +188,7 @@ form#form{padding:12px 16px 16px;border-top:1px solid var(--line)}
   <button id="load">Load brain</button>
   <button id="reset" style="font-size:12px">Reset downloads</button>
   <div style="border-top:1px solid var(--line);padding-top:10px;display:flex;flex-direction:column;gap:8px">
-    <label class="small" for="pv" style="color:var(--text)">☁ Smarter brain (free)</label>
+    <label class="small" for="pv" style="color:var(--text)">☁ Floof collective brain</label>
     <select id="pv"><option value="">Off — on-device only</option><option value="gemini">Google Gemini — free</option><option value="openrouter">OpenRouter — free models</option><option value="ollama">Local PC (Ollama) — free, private</option></select>
     <input type="password" id="cKey" placeholder="API key" autocomplete="off">
     <select id="cModel"></select>
@@ -198,6 +204,7 @@ form#form{padding:12px 16px 16px;border-top:1px solid var(--line)}
     <div class="tabs"><button data-v="vChat" class="on">Chat</button><button data-v="vGrid">Grid</button><button data-v="vKnow">Knowledge</button><button data-v="vMe">Me</button></div>
     <div id="status">Grid ready — chat now, or load a brain for full answers.</div>
     <button id="stop" hidden>■ Stop</button>
+    <div class="acct"><button id="acctBtn" type="button" aria-haspopup="menu"><span class="av" id="acctAv"></span><span id="acctNm"></span> ▾</button><div class="acctmenu" id="acctMenu" role="menu"><div class="who"><b id="acctWho"></b><span id="acctKind"></span></div><button type="button" id="acctMe">👤 Account &amp; memory</button><button type="button" id="acctOut">↩ Sign out</button></div></div>
   </header>
   <div id="bar"><div id="barFill"></div></div>
 
@@ -525,13 +532,31 @@ const STARTER = [
  { title: "English literature and language", sector: 4, text: "Macbeth by William Shakespeare explores ambition, guilt and the supernatural. The witches predict that Macbeth will be king, and Lady Macbeth persuades him to murder King Duncan. An Inspector Calls by J.B. Priestley was written in 1945 but set in 1912. It explores social responsibility through the Birling family and the death of Eva Smith. A Christmas Carol by Charles Dickens, published in 1843, follows Ebenezer Scrooge's redemption and criticises the treatment of the poor. Strange Case of Dr Jekyll and Mr Hyde by Robert Louis Stevenson, from 1886, explores the duality of human nature. Romeo and Juliet by Shakespeare is a tragedy about young love, fate and family conflict. Language techniques include metaphor, simile, personification, alliteration, onomatopoeia and rhetorical questions. A strong analytical paragraph makes a point, gives evidence such as a quotation, then explains and analyses the writer's methods and effects." },
  { title: "Geography essentials", sector: 5, text: "Tectonic plates meet at plate boundaries. At destructive boundaries, an oceanic plate sinks beneath a continental plate in subduction, causing volcanoes and earthquakes. At constructive boundaries plates move apart, as at the Mid-Atlantic Ridge. At conservative boundaries plates slide past each other, as at the San Andreas Fault. The water cycle includes evaporation, condensation, precipitation, infiltration and surface runoff. Climate change is caused by greenhouse gases such as carbon dioxide and methane trapping heat. Human causes include burning fossil fuels and deforestation. Rivers erode through hydraulic action, abrasion, attrition and solution. River landforms include meanders, oxbow lakes, waterfalls and gorges. Tropical rainforests have very high biodiversity and layers called the emergent layer, canopy, under canopy and shrub layer. Urbanisation is the growth of the proportion of people living in towns and cities." },
  { title: "Computer science essentials", sector: 6, text: "Computers store data in binary, which is base 2. Eight bits make one byte. The CPU follows the fetch-decode-execute cycle. Inside the CPU are the arithmetic logic unit, the control unit, registers and cache. Clock speed is measured in gigahertz. RAM is volatile memory that loses its data when power is off, while ROM is non-volatile. A linear search checks each item in turn. A binary search repeatedly halves a sorted list. Sorting algorithms include bubble sort, insertion sort and merge sort. The three programming constructs are sequence, selection using if statements, and iteration using loops. A LAN covers a small area and a WAN covers a large area. Websites use HTML for structure, CSS for style and JavaScript for behaviour. Cyber security threats include phishing, malware, brute force attacks and SQL injection." },
- { title: "About Floof AI", sector: 7, text: "Floof AI is made by MagicWinter Studio, an independent studio established in 2025 that makes browser games and apps. Floof AI runs fully on your device. Its knowledge grid places every word at a point in 64 dimensions, so words with similar meanings sit near each other, and every word carries a sector number for its subject. When you ask a question, the grid finds the closest knowledge and hands it to the brain to write the answer." }
+ { title: "About Floof AI", sector: 7, text: "Floof AI is made by MagicWinter Studio, an independent studio established in 2025 that makes browser games and apps. Floof AI runs fully on your device. Its knowledge grid places every word at a point in 64 dimensions, so words with similar meanings sit near each other, and every word carries a sector number for its subject. When you ask a question, the grid finds the closest knowledge and hands it to the brain to write the answer." },
+ { title: "Epistemology and truth-seeking", sector: 7, text: "Knowledge is justified true belief, but justification is hard. Evidence can be incomplete, biased, or selected. Correlation is not causation. Anecdotes are weak evidence. Extraordinary claims require strong evidence. Models are useful maps, not the territory. Falsifiability is a key feature of scientific claims: a claim that cannot be wrong is not scientific. Occam's razor prefers simpler explanations that still fit the data. Motivated reasoning is the tendency to search for reasons that support what you already want to believe. Confirmation bias is the tendency to notice evidence that agrees with you and ignore evidence that does not. The map is not the territory: language and models simplify reality." },
+ { title: "Common cognitive biases", sector: 7, text: "Confirmation bias: seeking or interpreting evidence to support existing beliefs. Availability heuristic: judging probability by how easily examples come to mind. Anchoring: relying too heavily on the first number or idea you hear. Sunk cost fallacy: continuing because of past investment rather than future value. Groupthink: suppressing dissent to maintain group harmony. Dunning-Kruger effect: low ability in a domain often comes with overconfidence. Status quo bias: preferring the current state just because it is current. Narrative fallacy: forcing complex events into a neat story. Survivorship bias: focusing on successes that remain visible while ignoring failures that disappeared." },
+ { title: "Physics of the universe basics", sector: 2, text: "The universe is expanding. The cosmic microwave background is leftover radiation from the early hot dense state. Gravity is the curvature of spacetime caused by mass and energy according to general relativity. Special relativity says the speed of light in vacuum is the same for all observers and that energy and mass are related by E equals m c squared. Quantum mechanics describes nature at small scales with probabilistic outcomes and superposition. The second law of thermodynamics says entropy of a closed system tends to increase. Stars fuse hydrogen into helium and heavier elements. Black holes have event horizons beyond which light cannot escape. Dark matter and dark energy are inferred from gravitational effects and the expansion history, not directly observed in the lab yet." },
+ { title: "Critical thinking tools", sector: 7, text: "Ask what would change your mind. Separate facts from values. Ask for the mechanism, not just the label. Demand effect sizes and base rates, not just relative risk. Steelman the opposing view before attacking it. Distinguish between what is true and what is useful to say. Beware of motte-and-bailey: defending a modest claim then switching to a stronger one. Watch for motte claims that retreat to safety when challenged. Prefer primary sources when stakes are high. Incentives matter: follow the incentives of the speaker." },
+ { title: "History without romanticization", sector: 3, text: "Most historical narratives are simplified. Empires rise and fall for mixtures of technology, institutions, geography, disease, and contingency. Moral progress is real in some domains but uneven and reversible. Atrocities have been committed by many groups across history; focusing only on some while ignoring others is selective. Living standards, life expectancy, and literacy have risen dramatically in the last two centuries for most of the world, driven largely by science, markets, and institutions. Idealizing the past is common; so is presentism that judges the past only by current values." },
+ { title: "Evolutionary and biological reality", sector: 2, text: "Humans are animals shaped by natural selection. Many psychological tendencies that feel moral or universal are products of evolutionary history. Kin selection and reciprocal altruism help explain cooperation. Status competition, coalitional psychology, and sexual selection influence a large amount of human behaviour. Ignoring biological constraints when designing social systems often produces failure. Variation between individuals is real and substantial; group averages do not determine individual outcomes." },
+ { title: "AI and intelligence basics", sector: 6, text: "Current large language models predict the next token based on patterns in training data. They do not have grounded understanding in the human sense, though they can produce highly capable behaviour. Scaling laws show that performance often improves predictably with more compute, data, and parameters. Alignment is the problem of making powerful AI systems reliably pursue intended goals. Hallucinations occur because models optimise for plausible continuations, not truth. Tool use and retrieval can reduce but not eliminate errors." }
 ];
 </script>
 
 <script type="module">
 const $ = s => document.querySelector(s);
-const SYSTEM = "You are Floof AI, the friendly, sharp assistant made by MagicWinter Studio. Be clear, concise and helpful. Use markdown code blocks for code. If you are unsure, say so instead of guessing.";
+const SYSTEM = `You are Floof AI, built by MagicWinter Studio with a strong truth-seeking personality.
+
+Core rules:
+- Prefer what is true over what is comforting, popular, or socially safe.
+- When something is uncertain, say so clearly instead of hedging with vague language.
+- Call out common cognitive biases, cope, and motivated reasoning when they appear.
+- Stay curious and precise. Prefer evidence, mechanisms, and clear reasoning over slogans.
+- Be direct and useful. Avoid unnecessary moralizing or corporate fluff.
+- Use markdown. Put code in fenced code blocks.
+- If the knowledge grid has relevant facts, treat them as higher priority than your general training when they conflict.
+
+You are friendly and sharp, not cold. You just refuse to lie for comfort.`;
 const KEY = "mwai.chats.v1", MKEY = "mwai.model", CKEY = "mwai.cache", DKEY = "mwai.docs.v1", SKEY = "mwai.starter";
 const LOGO = document.querySelector(".brand .logo").innerHTML;
 const { SECTORS, COLORS } = MW;
@@ -717,7 +742,7 @@ function md(src) {
   return src.split(/```/).map((p, i) => {
     if (i % 2) {
       const nl = p.indexOf("\n"), lang = (nl >= 0 ? p.slice(0, nl) : "").trim().toLowerCase(), code = nl >= 0 ? p.slice(nl + 1) : p;
-      const run = /^(js|javascript)$/.test(lang) ? `<button class="run">▶ Run</button>` : /^(html|svg)$/.test(lang) ? `<button class="open">▶ Open</button>` : "";
+      const run = /^(js|javascript|python|py)$/.test(lang) ? `<button class="run">▶ Run</button>` : /^(html|svg)$/.test(lang) ? `<button class="open">▶ Open</button>` : "";
       return `<pre data-lang="${esc(lang)}"><div class="cbtns">${run}<button class="dl" title="Download">⬇</button><button class="copy">Copy</button></div><code>${esc(code.replace(/\n$/, ""))}</code></pre>`;
     }
     const h = esc(p).replace(/`([^`\n]+)`/g, "<code>$1</code>").replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>")
@@ -894,7 +919,9 @@ async function send(override, extra = {}) {
     const facts = hits.length ? "\n\nRelevant facts from the user's knowledge grid. Use them if they help answer, prefer them over your own memory, and don't mention the grid:\n" + hits.map((h, i) => `[${i + 1}] ${h.text}`).join("\n") : "";
     const guide = (ty.fixes.length ? `\n\nThe user's message has typos; they most likely meant: "${ty.text}".` : "") + `\n\nThe user's latest message is a ${u.type === "statement" ? "statement or request" : u.type + " question"}${keyTerms ? " about: " + keyTerms : ""}. Read the whole message carefully before answering, and answer every part of it.` + (info.type === "summary" ? " It is long: summarise its main points clearly, then offer to go deeper." : "")
       + (extra.full ? " The user attached a screenshot of their screen: find the question(s) in it and solve them step by step, giving a clear final answer for each." : scr ? " It was read from the user's screen with OCR, so it may contain small reading errors. Find the question(s) on it and solve them step by step, giving a clear final answer for each." + (solved.length ? " Exact results already worked out (use these): " + solved.join("; ") : "") : "");
-    const tools = "\n\nYou can write JavaScript in ```js code blocks: the user can press Run to execute it in a sandbox (use console.log for output) and send you the result" + (cloudReady() && cloud.fix ? "; plain JS blocks (no DOM) are also run automatically and any error is sent back to you to fix" : "") + ". Write runnable code when the user asks you to code, test or calculate something. HTML in ```html blocks gets a live preview — for games and web pages give one complete self-contained ```html block." + (calc ? `\n\nExact calculator result (use this number, don't recalculate): ${calc.expr} = ${calc.value}` : "") + (hits.some(h => h.title.startsWith("🌐")) ? "\nSome facts come from Wikipedia; mention the page name when you use them." : "");
+    const coding = CODEY.test(own);
+    const tools = "\n\nCODE TOOLS: ```js blocks run in a sandbox (console.log prints). ```python blocks run real Python 3 in the browser (standard library only; no input() — set values in variables and print results). ```html blocks open as a live preview in a side panel." + (cloud.fix !== false ? " After you reply, your last runnable block is tested automatically; if it errors, you'll get the error to fix." : "")
+      + (coding ? "\nWhen coding: first get the requirements straight, then give COMPLETE, working code — no placeholders, TODOs or '...'. Put a whole program in ONE block (for games, apps and web pages: one self-contained ```html file with inline CSS/JS; for GCSE-style tasks use ```python unless asked otherwise). Use clear names and brief comments. Handle edge cases and invalid input. After the code, explain in 2–4 short sentences how it works and how to run or change it. When fixing code, return the full corrected program, not just the changed lines." : "") + (calc ? `\n\nExact calculator result (use this number, don't recalculate): ${calc.expr} = ${calc.value}` : "") + (hits.some(h => h.title.startsWith("🌐")) ? "\nSome facts come from Wikipedia; mention the page name when you use them." : "");
     const edu = ACCOUNT_KIND === "ares" ? "\n\n📚 EDU MODE (signed in with a school Ares Revision account): act as a patient GCSE study tutor. Keep everything educational and age-appropriate. Explain step by step and check understanding; for homework or exam questions, guide them to the answer and show the method rather than only giving the final answer. Coding is fine when it's for learning. If asked for something unrelated to learning (e.g. just for fun or entertainment), kindly steer back to studying." : "";
     const sys = SYSTEM + edu + memoryPrompt() + guide + tools + facts;
     let t = 0; const onT = d => { reply += d; const now = performance.now(); if (now - t > 50) { out.innerHTML = md(reply); scroll(); t = now; } };
@@ -911,7 +938,7 @@ async function send(override, extra = {}) {
       const history = fitHistory(cur.msgs, sys.length);
       const stream = await engine.chat.completions.create({
         messages: [{ role: "system", content: sys }, ...history],
-        stream: true, temperature: 0.6, max_tokens: 1024,
+        stream: true, temperature: CODEY.test(own) ? 0.3 : 0.6, max_tokens: /Coder/.test(loadedModel) ? 3072 : 1536,
         extra_body: loadedModel.startsWith("Qwen3") ? { enable_thinking: false } : undefined
       });
       for await (const chunk of stream) onT(chunk.choices[0]?.delta?.content || "");
@@ -935,16 +962,23 @@ async function send(override, extra = {}) {
     cur.msgs.push({ role: "assistant", content: reply, src, u }); save();
     busy = false; $("#send").disabled = false; $("#stop").hidden = true; scroll(); input.focus();
   }
-  // self-testing loop: run the plain-JS code it wrote; if it crashes, send the error back to be fixed
-  if (cloudReady() && cloud.fix && (extra.depth || 0) < 2) {
-    const blocks = [...out.querySelectorAll('pre[data-lang="js"],pre[data-lang="javascript"]')].filter(p => !/\b(document|window|canvas|addEventListener|requestAnimationFrame|alert|prompt|fetch|localStorage)\b/.test(p.textContent));
-    const pre = blocks.at(-1);
+  // self-testing loop: run the code it just wrote (JS, Python or HTML); if it crashes, send the error back to be fixed
+  if ((cloudReady() || engine) && cloud.fix !== false && (extra.depth || 0) < 3) {
+    const pres = [...out.querySelectorAll("pre[data-lang]")].filter(p => /^(js|javascript|python|py|html)$/.test(p.dataset.lang));
+    const pre = pres.at(-1);
     if (pre) {
-      const box = document.createElement("div"); box.className = "runbox"; pre.after(box);
-      status("🧪 Testing the code…");
-      const res = await runCode("js", pre.querySelector("code").textContent, box);
-      if (res.errors.length) { status("🛠 Found a bug — asking the AI to fix it…"); await send("I ran that code and it failed with:\n```\n" + res.errors.join("\n").slice(0, 2000) + "\n```\nFix it and give the full corrected code.", { depth: (extra.depth || 0) + 1 }); }
-      else status("🧪 Code ran without errors ✓");
+      const lang = pre.dataset.lang, code = pre.querySelector("code").textContent;
+      const jsDom = /^(js|javascript)$/.test(lang) && /\b(document|window|canvas|addEventListener|requestAnimationFrame|alert|prompt|fetch|localStorage)\b/.test(code);
+      if (!jsDom && !/\binput\s*\(/.test(lang.startsWith("py") ? code : "")) {
+        status("🧪 Testing the code…");
+        let res;
+        if (lang === "html") res = await testHtml(code);
+        else { const box = document.createElement("div"); box.className = "runbox"; pre.after(box); res = await runCode(lang, code, box); }
+        if (res.errors.length) {
+          status(`🛠 Test ${(extra.depth || 0) + 1}/3 found a bug — fixing it…`);
+          await send(`I tested that ${lang === "html" ? "page" : "code"} and it failed with:\n\`\`\`\n${res.errors.slice(0, 8).join("\n").slice(0, 2000)}\n\`\`\`\nFind the cause, fix it, and give the full corrected code.`, { depth: (extra.depth || 0) + 1 });
+        } else status(lang === "html" ? "🧪 Page loaded and ran 3 seconds with no errors ✓" : "🧪 Code ran without errors ✓");
+      }
     }
   }
 }
@@ -1099,7 +1133,27 @@ const cloudReady = () => !!PV[cloud.pv] && PV[cloud.pv].ok(cloud.keys[cloud.pv] 
 const curModel = () => $("#cModel").value || cloud.model[cloud.pv] || modelList[0]?.id || "";
 function saveCloud() { ls.set("mwai.cloud", cloud); updateMode(); }
 
+const EXTRA_PV = {}; // plug-in brains: Floof.addProvider({ id, label, ph, ok(key), vision, help, list(key) -> [{id,name}], stream({model, sys, msgs, onText, signal, key}) -> {in,out} })
+window.Floof = {
+  version: 2,
+  addProvider(p) {
+    if (!p || !p.id || PV[p.id] && !EXTRA_PV[p.id]) return false;
+    PV[p.id] = EXTRA_PV[p.id] = p;
+    if (![...$("#pv").options].some(o => o.value === p.id)) $("#pv").add(new Option(p.label || p.id, p.id));
+    if (cloud.pv === p.id) showPv();
+    return true;
+  },
+  getKey(id) { return cloud.keys[id] || ""; },
+  setKey(id, value) { cloud.keys[id] = value; saveCloud(); },
+  getCurrentProvider() { return cloud.pv; },
+  setCurrentProvider(id) {
+    if (!PV[id]) return false;
+    cloud.pv = id; saveCloud(); showPv(); return true;
+  },
+  refresh() { return refreshModels(); }
+};
 async function listModels(pv, key) {
+  if (EXTRA_PV[pv]) return EXTRA_PV[pv].list(key);
   if (pv === "gemini") {
     const j = await (await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=" + encodeURIComponent(key))).json();
     if (j.error) throw new Error(j.error.message);
@@ -1154,10 +1208,11 @@ async function httpErr(r, pv) {
 }
 async function streamOnce(pv, model, sys, msgs, onText) {
   abortCtl = new AbortController(); const key = cloud.keys[pv], usage = { in: 0, out: 0, model };
+  if (EXTRA_PV[pv]) return { model, ...(await EXTRA_PV[pv].stream({ model, sys, msgs, onText, signal: abortCtl.signal, key })) };
   const b64 = u => u.split(",")[1];
   if (pv === "gemini") {
     const contents = msgs.map(m => ({ role: m.role === "assistant" ? "model" : "user", parts: (m.img ? [{ inline_data: { mime_type: "image/jpeg", data: b64(m.img) } }] : []).concat([{ text: m.content }]) }));
-    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse&key=${encodeURIComponent(key)}`, { method: "POST", signal: abortCtl.signal, headers: { "content-type": "application/json" }, body: JSON.stringify({ systemInstruction: { parts: [{ text: sys }] }, contents, generationConfig: { maxOutputTokens: 8192 } }) });
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse&key=${encodeURIComponent(key)}`, { method: "POST", signal: abortCtl.signal, headers: { "content-type": "application/json" }, body: JSON.stringify({ systemInstruction: { parts: [{ text: sys }] }, contents, generationConfig: { maxOutputTokens: 16384 } }) });
     if (!r.ok) throw await httpErr(r, pv);
     for await (const ev of sse(r)) {
       if (ev.error) throw new Error(ev.error.message);
@@ -1166,7 +1221,7 @@ async function streamOnce(pv, model, sys, msgs, onText) {
     }
   } else if (pv === "openrouter" || pv === "ollama") {
     const url = pv === "ollama" ? key.replace(/\/+$/, "") + "/v1/chat/completions" : "https://openrouter.ai/api/v1/chat/completions";
-    let r; try { r = await fetch(url, { method: "POST", signal: abortCtl.signal, headers: { "content-type": "application/json", ...(pv === "openrouter" ? { authorization: "Bearer " + key, "X-Title": "Floof AI" } : {}) }, body: JSON.stringify({ model, stream: true, max_tokens: 8192, messages: [{ role: "system", content: sys }, ...msgs.map(m => ({ role: m.role, content: m.content }))] }) }); }
+    let r; try { r = await fetch(url, { method: "POST", signal: abortCtl.signal, headers: { "content-type": "application/json", ...(pv === "openrouter" ? { authorization: "Bearer " + key, "X-Title": "Floof AI" } : {}) }, body: JSON.stringify({ model, stream: true, max_tokens: 16384, messages: [{ role: "system", content: sys }, ...msgs.map(m => ({ role: m.role, content: m.content }))] }) }); }
     catch (e) { if (e.name === "AbortError") throw e; throw new Error(pv === "ollama" ? "Can't reach Ollama — is it running on this PC with OLLAMA_ORIGINS=*?" : "Network error — check your connection."); }
     if (!r.ok) throw await httpErr(r, pv);
     for await (const ev of sse(r)) {
@@ -1177,8 +1232,11 @@ async function streamOnce(pv, model, sys, msgs, onText) {
   }
   return usage;
 }
+const CODEY = /\b(code|coding|program|script|function|class|bug|debug|error|exception|python|javascript|js|html|css|java|c\+\+|sql|algorithm|game|app|website|web page|compile|loop|array|variable)\b/i;
 async function cloudStream(sys, msgs, onText) {
-  const pv = cloud.pv, first = curModel();
+  const pv = cloud.pv, last = msgs.at(-1)?.content || "";
+  let first = curModel();
+  if (pv === "openrouter" && typeof last === "string" && CODEY.test(last) && !cloud.model.openrouter) { const c = modelList.find(m => /coder|devstral|codestral/i.test(m.id)); if (c) first = c.id; } // coding question → coding model
   const order = [first, ...modelList.map(m => m.id).filter(id => id !== first)].slice(0, pv === "ollama" ? 1 : 4);
   let got = false; const wrap = t => { got = true; onText(t); };
   for (let i = 0; i < order.length; i++) {
@@ -1440,8 +1498,57 @@ $("#artFull").onclick = () => $("#art").classList.toggle("full");
 $("#artReload").onclick = () => artNow && openArtifact(artNow.code, artNow.lang);
 $("#artDl").onclick = () => artNow && downloadCode(artNow.code, artNow.lang);
 
+// ---------- Python: real Python 3 (Pyodide) in a background worker ----------
+const PYODIDE = window.FLOOF_PYODIDE || "https://cdn.jsdelivr.net/npm/pyodide@314.0.7/";
+let pyWorker = null, pyReady = null, pyJobs = new Map(), pyId = 0;
+function getPy() {
+  if (pyWorker) return pyReady;
+  const src = `import { loadPyodide } from ${JSON.stringify(PYODIDE + "pyodide.mjs")};
+let py; const ready = loadPyodide({ indexURL: ${JSON.stringify(PYODIDE)} }).then(p => py = p);
+onmessage = async e => { const { id, code } = e.data; const out = m => postMessage({ id, t: "out", m }), err = m => postMessage({ id, t: "err", m });
+  try { await ready; py.setStdout({ batched: out }); py.setStderr({ batched: err }); py.setStdin({ stdin: () => { throw new Error("input() isn't available here — put the value in a variable instead"); } });
+    try { await py.loadPackagesFromImports(code); } catch (x) {}
+    const r = await py.runPythonAsync(code); if (r !== undefined && r !== null) out(String(r)); }
+  catch (x) { const lines = String(x.message || x).trim().split("\\n"), i = lines.findIndex(l => l.includes('File "<exec>"')); err((i >= 0 ? ["Traceback:", ...lines.slice(i)] : lines.slice(-3)).join("\\n")); }
+  postMessage({ id, t: "done" }); };
+postMessage({ t: "loaded" });`;
+  pyWorker = new Worker(URL.createObjectURL(new Blob([src], { type: "text/javascript" })), { type: "module" });
+  pyReady = new Promise((ok, no) => {
+    pyWorker.onmessage = e => { const d = e.data; if (d.t === "loaded") return ok(); const j = pyJobs.get(d.id); if (j) j(d); };
+    pyWorker.onerror = e => { no(new Error("Couldn't start Python (needs internet the first time)")); pyWorker = null; };
+  });
+  return pyReady;
+}
+function runPython(code, box) {
+  box.innerHTML = `<div class="runout"><div class="txt">🐍 Starting Python… (first run downloads ~10 MB)</div><div class="tools"><button class="tellai">↩ Send output to AI</button></div></div>`;
+  const txt = box.querySelector(".txt"); let first = true; const errors = [];
+  const add = (cls, line) => { if (cls === "e") errors.push(line); if (first) { txt.textContent = ""; first = false; } const d = document.createElement("div"); if (cls) d.className = cls; d.textContent = line; txt.appendChild(d); };
+  return new Promise(async resolve => {
+    try { await getPy(); } catch (e) { add("w", e.message); return resolve({ errors: [], infra: true }); }
+    const id = ++pyId; let timer;
+    const end = msg => { clearTimeout(timer); pyJobs.delete(id); if (msg) add("w", msg); if (first) add("", "(finished — no output. Use print() to show results.)"); resolve({ errors }); };
+    pyJobs.set(id, d => { if (d.t === "done") end(); else add(d.t === "err" ? "e" : "", d.m); });
+    timer = setTimeout(() => { pyWorker.terminate(); pyWorker = null; pyReady = null; end("⏱ Stopped after 20 seconds (infinite loop?)"); }, 20000);
+    pyWorker.postMessage({ id, code });
+  });
+}
+// test a web page/game invisibly for 3 s and collect any errors it throws
+function testHtml(code) {
+  return new Promise(resolve => {
+    const id = Math.random().toString(36).slice(2), errors = [], f = document.createElement("iframe");
+    f.sandbox = "allow-scripts"; f.style.cssText = "position:fixed;left:-9999px;width:800px;height:600px";
+    const catcher = `<script>(()=>{const s=m=>parent.postMessage({id:${JSON.stringify(id)},m:String(m).slice(0,300)},"*");addEventListener("error",e=>s((e.message||"Error")+(e.lineno?" (line "+e.lineno+")":"")));addEventListener("unhandledrejection",e=>s("Unhandled promise: "+(e.reason&&e.reason.message||e.reason)));const ce=console.error;console.error=(...a)=>{s(a.join(" "));ce(...a)}})();<\/script>` + STORE_SHIM;
+    const onMsg = e => { if (e.source === f.contentWindow && e.data?.id === id && !errors.includes(e.data.m)) errors.push(e.data.m); };
+    addEventListener("message", onMsg);
+    f.srcdoc = /<head[^>]*>/i.test(code) ? code.replace(/<head[^>]*>/i, m => m + catcher) : catcher + code;
+    document.body.appendChild(f);
+    setTimeout(() => { removeEventListener("message", onMsg); f.remove(); resolve({ errors: errors.filter(m => !/ResizeObserver loop/.test(m)) }); }, 3000);
+  });
+}
+
 // ---------- code runner (sandboxed: no access to your page, storage or files) ----------
 function runCode(lang, code, box) {
+  if (/^(python|py)$/.test(lang)) return runPython(code, box);
   if (lang === "html") { const f = document.createElement("iframe"); f.className = "preview"; f.sandbox = "allow-scripts"; f.srcdoc = code; box.replaceChildren(f); return Promise.resolve({ errors: [] }); }
   let resolve; const p = new Promise(r => resolve = r); const errors = [];
   const id = Math.random().toString(36).slice(2);
@@ -1654,6 +1761,12 @@ $("#lAuto").checked = autoLearn; $("#lAuto").onchange = e => { autoLearn = e.tar
 $("#kClearWeb").onclick = () => { const n = docs.filter(d => d.web).length; if (!n || !confirm(`Remove ${n} web page${n > 1 ? "s" : ""} from the grid?`)) return; docs = docs.filter(d => !d.web); saveDocs(); rebuild(); };
 
 $("#whoami").textContent = $("#accName").textContent = ACCOUNT;
+$("#acctAv").textContent = (ACCOUNT[0] || "?").toUpperCase(); $("#acctNm").textContent = $("#acctWho").textContent = ACCOUNT;
+$("#acctKind").textContent = ACCOUNT_KIND === "mw" ? "MagicWinter account" : ACCOUNT_KIND === "ares" ? "Ares account · 📚 Edu" : "Device-only account";
+$("#acctBtn").onclick = e => { e.stopPropagation(); $("#acctMenu").classList.toggle("on"); };
+document.addEventListener("click", e => { if (!e.target.closest(".acct")) $("#acctMenu").classList.remove("on"); });
+$("#acctMe").onclick = () => { $("#acctMenu").classList.remove("on"); showView("vMe"); };
+$("#acctOut").onclick = () => $("#signOut").click();
 $("#signOut").onclick = () => { try { for (const k of [SESS, MWSESS, ARESSESS]) { localStorage.removeItem(k); sessionStorage.removeItem(k); } } catch {} location.reload(); };
 $("#accName").insertAdjacentHTML("afterend", ACCOUNT_KIND === "mw" ? " <span class='small'>· MagicWinter account (works in every studio app)</span>" : ACCOUNT_KIND === "ares" ? " <span class='small'>· Ares account · 📚 Edu mode</span>" : " <span class='small'>· device-only account</span>");
 if (ACCOUNT_KIND === "ares") { // Edu mode: Floof becomes a study tutor
@@ -1704,6 +1817,6 @@ idb.get(DKEY).then(v => { // load saved knowledge (and move any old copy out of 
 cur = chats[0] || null; renderChats(); renderLog(); updateMode();
 if (saved) loadModel();
 </script>
-<script src="./floof-upgrade.js?v=1"></script>
+<script type="module" src="./floof-upgrade.js?v=2"></script>
 </body>
 </html>
