@@ -581,28 +581,23 @@ async function migrateOldData(id) { // first account on this device inherits any
 }
 let SESSION_NAME = "", ARES_USER = false, ACCOUNT_KIND = "device";
 const ARESSESS = "mw.ares";
-const mwEmail = u => u.toLowerCase() + "@accounts.magicwinter.app";
-async function authFetch(path, opts) { // try the account server directly, then this site's own /auth/v1 route (for school networks that block it)
+async function authFetch(path, opts) { // try the account server directly, then this site's own route (for school networks that block it)
   const bases = [ARES]; if (/^https?:$/.test(location.protocol)) bases.push(location.origin);
   let last; for (const b of bases) { try { const r = await fetch(b + path, opts); if (r.status === 404 && b !== ARES) continue; return r; } catch (e) { last = e; } }
   throw last || new Error("network");
 }
-async function mwAuth(kind, username, password) { // MagicWinter accounts: Supabase Auth, username-based (no emails sent)
-  const url = kind === "up" ? "/auth/v1/signup" : "/auth/v1/token?grant_type=password";
-  const body = kind === "up" ? { email: mwEmail(username), password, data: { username } } : { email: mwEmail(username), password };
+async function mwRpc(fn, args) { // MagicWinter account server (Supabase database functions — see magicwinter-accounts.sql)
+  const r = await authFetch("/rest/v1/rpc/" + fn, { method: "POST", headers: { "Content-Type": "application/json", apikey: ARES_KEY }, body: JSON.stringify(args) });
+  let j = {}; try { j = await r.json(); } catch {}
+  if (r.status === 404 || /could not find the function|schema cache/i.test(j.message || "")) return { error: "MagicWinter accounts aren't switched on yet — the studio needs to run magicwinter-accounts.sql in Supabase." };
+  if (!r.ok) return { error: j.message || "Account server error (" + r.status + ")." };
+  return j;
+}
+async function mwAuth(kind, username, password) { // MagicWinter accounts: username + password, no emails
   try {
-    const r = await authFetch(url, { method: "POST", headers: { "Content-Type": "application/json", apikey: ARES_KEY }, body: JSON.stringify(body) });
-    let j = {}; try { j = await r.json(); } catch {}
-    const msg = j.msg || j.error_description || j.message || j.error || "";
-    if (r.ok && j.access_token) return { ok: true, user: j.user?.user_metadata?.username || username, token: j.access_token };
-    if (r.ok && kind === "up") { const again = await mwAuth("in", username, password); return again.ok ? again : { error: "Account made, but it's waiting on email confirmation — the studio needs to switch \"Confirm email\" off in Supabase." }; }
-    if (/email not confirmed/i.test(msg)) return { error: "This account is waiting on email confirmation — the studio needs to switch \"Confirm email\" off in Supabase." };
-    if (/already registered|already exists/i.test(msg)) return { error: "That username is taken." };
-    if (/invalid login|invalid_credentials|invalid grant/i.test(msg + (j.error_code || ""))) return { error: "Wrong username or password.", bad: true };
-    if (/signups? not allowed|disabled/i.test(msg)) return { error: "New accounts are switched off right now." };
-    if (/password/i.test(msg)) return { error: msg };
-    if (r.status === 429) return { error: "Too many attempts — wait a minute." };
-    return { error: msg || "Something went wrong (" + r.status + ")." };
+    const j = await mwRpc(kind === "up" ? "mw_signup" : "mw_login", { p_username: username, p_password: password });
+    if (j.ok && j.token) return { ok: true, user: j.username || username, token: j.token };
+    return { error: j.error || "Something went wrong.", bad: /wrong username/i.test(j.error || "") };
   } catch { return { network: true, error: "Can't reach the account server. Check your internet — or use a device-only account below." }; }
 }
 function getSession() {
@@ -1813,9 +1808,9 @@ if (ACCOUNT_KIND === "mw") { // change password on the MagicWinter account serve
     const msg = t => $("#pMsg").textContent = t;
     if ($("#pNew").value.length < 6) return msg("New password needs at least 6 characters.");
     if ($("#pNew").value !== $("#pNew2").value) return msg("New passwords don't match.");
-    const r = await mwAuth("in", ACCOUNT, $("#pOld").value); if (!r.ok) return msg(r.bad ? "Current password is wrong." : r.error);
-    try { const u = await fetch(ARES + "/auth/v1/user", { method: "PUT", headers: { "Content-Type": "application/json", apikey: ARES_KEY, Authorization: "Bearer " + r.token }, body: JSON.stringify({ password: $("#pNew").value }) });
-      if (!u.ok) { let j = {}; try { j = await u.json(); } catch {} return msg(j.msg || j.message || "Couldn't change it — try again."); } } catch { return msg("Can't reach the account server."); }
+    let j; try { j = await mwRpc("mw_change_password", { p_username: ACCOUNT, p_old: $("#pOld").value, p_new: $("#pNew").value }); } catch { return msg("Can't reach the account server."); }
+    if (!j.ok) return msg(j.error || "Couldn't change it — try again.");
+    for (const st of [localStorage, sessionStorage]) { try { const v = JSON.parse(st.getItem(MWSESS)); if (v && v.kind === "mw") { v.token = j.token; st.setItem(MWSESS, JSON.stringify(v)); } } catch {} }
     $("#pOld").value = $("#pNew").value = $("#pNew2").value = ""; msg("✓ Password changed for every MagicWinter app.");
   };
 }

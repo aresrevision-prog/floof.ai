@@ -5,8 +5,8 @@
       "destination": "https://lakjmdyzuqrwcncxybcw.supabase.co/functions/v1/:path*"
     },
     {
-      "source": "/auth/v1/:path*",
-      "destination": "https://lakjmdyzuqrwcncxybcw.supabase.co/auth/v1/:path*"
+      "source": "/rest/v1/rpc/:path*",
+      "destination": "https://lakjmdyzuqrwcncxybcw.supabase.co/rest/v1/rpc/:path*"
     }
   ]
 }
