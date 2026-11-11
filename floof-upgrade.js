@@ -55,7 +55,7 @@
     ph: "Local Ollama address",
     ok: raw => /^https?:\/\//i.test(parseConfig(raw).ollamaUrl),
     vision: true,
-    help: "Free local mode: install Ollama on this computer and pull a model. No API key, subscription, or paid cloud service is needed. See the Floof setup panel below.",
+    help: "Free mode: connect to Ollama running on this Chromebook (Linux environment) or another computer you control. No API key, subscription, or paid cloud service is needed.",
     list: async raw => {
       const cfg = parseConfig(raw), base = cleanUrl(cfg.ollamaUrl);
       const data = await getJson(base + "/api/tags", "Ollama");
@@ -129,11 +129,11 @@
   setup.style.cssText = "display:flex;flex-direction:column;gap:8px;margin-top:8px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--panel2)";
   setup.innerHTML = [
     '<div style="font-weight:700;font-size:13px">🐾 Free Floof setup</div>',
-    '<div class="small">Floof runs on your computer. No paid API keys, subscriptions, or image credits.</div>',
-    '<label class="small">Ollama address<input id="flOllamaUrl" type="url" value="http://localhost:11434" spellcheck="false"></label>',
+    '<div class="small">Free-first and Chromebook-friendly: run the AI on this Chromebook if supported, or connect to another computer on your Wi-Fi. No paid API keys, subscriptions, or image credits.</div>',
+    '<label class="small">Chat AI address (this Chromebook or another computer)<input id="flOllamaUrl" type="url" value="http://localhost:11434" spellcheck="false"></label>',
     '<button id="flSaveLocal" type="button" class="go">Save local setup &amp; find models</button>',
-    '<div class="small" style="line-height:1.5">1. Install <a href="https://ollama.com/download" target="_blank" rel="noopener">Ollama</a>.<br>2. In a terminal run <code>ollama pull qwen3:8b</code>.<br>3. Allow this website in Ollama browser-origin settings. For local-only use, open Floof and Ollama on the same computer.</div>',
-    '<div class="small" id="flLocalStatus" role="status">The built-in WebGPU brain in the sidebar is another free local option.</div>'
+    '<div class="small" style="line-height:1.5"><b>On a Chromebook:</b> if your model supports it, enable the Linux development environment in ChromeOS Settings, install <a href="https://ollama.com/download" target="_blank" rel="noopener">Ollama for Linux</a>, then try <code>ollama pull qwen3:1.7b</code> (lighter) or <code>ollama pull qwen3:4b</code> (stronger, needs more memory). Linux/GPU support varies by Chromebook, so performance is not guaranteed.<br><br><b>Easy alternative:</b> install Ollama on another computer on your home Wi-Fi and enter that computer’s address here, e.g. <code>http://192.168.1.20:11434</code>. Configure Ollama to allow requests from Floof. The Chromebook is then just the screen and controls.</div>',
+    '<div class="small" id="flLocalStatus" role="status">The built-in WebGPU brain in the sidebar is another free local option. If your Chromebook is low on memory, use a smaller model or connect to another computer.</div>'
   ].join("");
   $("#pvHelp")?.after(setup);
   $("#cKey") && ($("#cKey").style.display = "none");
@@ -176,14 +176,14 @@
     '<textarea id="flImagePrompt" class="box" rows="4" maxlength="12000" placeholder="A cinematic illustration of a tiny astronaut fox exploring a glowing alien garden…"></textarea>',
     '<textarea id="flImageNegative" class="box" rows="2" maxlength="4000" placeholder="Optional: things to avoid (blurry, text, watermark…)"></textarea>',
     '<div class="row" style="flex-wrap:wrap;gap:10px">',
-    '<label class="small">Shape<select id="flImageSize" style="display:block;min-width:145px"><option value="1024x1024">Square · 1024</option><option value="1216x832">Landscape</option><option value="832x1216">Portrait</option><option value="768x768">Square · lighter</option></select></label>',
-    '<label class="small">Quality<select id="flImageSteps" style="display:block;min-width:130px"><option value="20">Fast · 20 steps</option><option value="28" selected>Balanced · 28 steps</option><option value="36">Detailed · 36 steps</option></select></label>',
-    '<label class="small">Local image server<input id="flImageUrl" type="url" value="http://127.0.0.1:7860" spellcheck="false"></label>',
+    '<label class="small">Shape<select id="flImageSize" style="display:block;min-width:145px"><option value="512x512">Square · Chromebook friendly</option><option value="768x512">Landscape · lighter</option><option value="512x768">Portrait · lighter</option><option value="768x768">Square · detailed</option></select></label>',
+    '<label class="small">Quality<select id="flImageSteps" style="display:block;min-width:130px"><option value="16">Fast · 16 steps</option><option value="22" selected>Balanced · 22 steps</option><option value="28">Detailed · 28 steps</option></select></label>',
+    '<label class="small">Image server (this Chromebook or another computer)<input id="flImageUrl" type="url" value="http://127.0.0.1:7860" spellcheck="false"></label>',
     '<button type="button" class="go" id="flImageGenerate" style="margin-left:auto">Generate free image</button></div>',
-    '<div class="small" id="flImageStatus" role="status">Start Stable Diffusion WebUI Forge or AUTOMATIC1111 with its API enabled. No account or key needed.</div>',
+    '<div class="small" id="flImageStatus" role="status">Start the local image server on this Chromebook (if it has enough power) or on another computer. No account or paid key needed.</div>',
     '<div id="flImageResult" style="display:none;gap:10px;flex-direction:column"><img id="flImagePreview" alt="Image generated locally by Floof" style="width:100%;max-height:65vh;object-fit:contain;border-radius:12px;background:#030a06">',
     '<div class="row"><a id="flImageDownload" class="go" download="floof-generated.png" style="padding:8px 12px;border-radius:10px;text-decoration:none">⬇ Save image</a><button type="button" id="flImageAgain">Make another</button></div></div>',
-    '<div class="small" style="line-height:1.5">Free setup: install <a href="https://github.com/lllyasviel/stable-diffusion-webui-forge" target="_blank" rel="noopener">Stable Diffusion WebUI Forge</a>, download a free model/checkpoint you are licensed to use, and launch it with <code>--api --cors-allow-origins=*</code>. Default local address: <code>http://127.0.0.1:7860</code>. Generation speed depends on your computer and graphics card.</div>',
+    '<div class="small" style="line-height:1.5"><b>Chromebook tip:</b> most Chromebooks are not powerful enough to run Stable Diffusion comfortably. For free image generation, run <a href="https://github.com/lllyasviel/stable-diffusion-webui-forge" target="_blank" rel="noopener">Stable Diffusion WebUI Forge</a> on a more powerful computer you own, enable its API/CORS (<code>--api --cors-allow-origins=*</code>), then enter that computer’s image-server address above (for example <code>http://192.168.1.20:7860</code>). You can try it locally on a Chromebook with a supported Linux setup, but it may be very slow or unsupported. Your browser may require local-network permission and compatible HTTPS/CORS settings. No paid image service is involved.</div>',
     '</div>'
   ].join("");
   document.body.appendChild(modal);
