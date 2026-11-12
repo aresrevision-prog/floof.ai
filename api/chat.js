@@ -11,7 +11,7 @@
 const SB = "https://lakjmdyzuqrwcncxybcw.supabase.co", SB_KEY = "sb_publishable__m0zTZ3-ThJVk0pktI65Ag_yDFPPD5s";
 const API = "https://generativelanguage.googleapis.com/v1beta";
 const ARES = "https://ares-revision.vercel.app/api/ai";
-const VERSION = "floof-cloud 4";
+const VERSION = "floof-cloud 5";
 // Used only when the live model list can't be fetched. Free-tier models first (checked against Google's
 // pricing page, Nov 2026). gemini-2.5-* still work for keys that used them before, but new keys get
 // 404 "no longer available", so they are last and get cached as bad on the first 404.
@@ -193,6 +193,8 @@ async function diagnostics(key, test) {
     out.models = plan(all, false).slice(0, 4); out.proModels = plan(all.filter(isPro), true).slice(0, 2);
     out.listed = all.length;
   }
+  const own = ownServers();
+  if (own.length) { out.ok = true; out.own = own.map(x => ({ name: x.name, model: x.model, hasKey: !!x.key, cooling: _ownBad[x.name] && _ownBad[x.name].until > now() ? _ownBad[x.name].why : null })); out.mode = own.map(x => x.name).join("+") + (key ? "+gemini" : ""); }
   out.cooling = Object.fromEntries(Object.entries(_bad).filter(([, v]) => v.until > now()).map(([m, v]) => [m, { secs: Math.round((v.until - now()) / 1000), why: v.why }]));
   out.lastError = lastError; out.lastOk = lastOk;
   if (test && key) {
@@ -226,6 +228,56 @@ function noteFail(m, e, key) {
   lastError = { at: new Date().toISOString(), model: m, kind: k, code: e.code || null, msg: clean(e.message, key) };
 }
 
+// ----- Floof's own AI machines (Oracle free VM first, Hugging Face Space as backup) — Ollama behind a secret -----
+// Vercel env: OWN_AI_URL (+ OWN_AI_KEY, OWN_AI_MODEL) for Oracle, OWN_AI_URL2 (+ OWN_AI_KEY2, OWN_AI_MODEL2) for Hugging Face.
+const T_OWN = 30000, T_OWN_FIRST = 15000; // own machines get 30 s in total; each must start answering within 15 s
+const _ownBad = {};
+function ownServers() {
+  const e = process.env, list = [];
+  if (e.OWN_AI_URL) list.push({ name: "oracle", url: e.OWN_AI_URL, key: e.OWN_AI_KEY, model: e.OWN_AI_MODEL || "qwen3:4b" });
+  if (e.OWN_AI_URL2) list.push({ name: "huggingface", url: e.OWN_AI_URL2, key: e.OWN_AI_KEY2 || e.OWN_AI_KEY, model: e.OWN_AI_MODEL2 || "qwen3:1.7b" });
+  return list.map(x => ({ ...x, url: String(x.url).trim().replace(/\/+$/, ""), key: String(x.key || "").trim() }));
+}
+function ownMessages(sys, raw) {
+  const msgs = [];
+  if (sys.trim()) msgs.push({ role: "system", content: sys.slice(0, 6000) }); // CPU machines: keep the prompt short so they start fast
+  for (const m of raw.slice(-10)) {
+    const t = String((m && m.content) || "").slice(-6000);
+    if (t.trim()) msgs.push({ role: m.role === "assistant" ? "assistant" : "user", content: t });
+  }
+  return msgs;
+}
+async function ownAI(sv, sys, raw, want, ms) {
+  const ctl = new AbortController(), t0 = now();
+  const killAll = setTimeout(() => ctl.abort(), ms);
+  let first = setTimeout(() => ctl.abort(), Math.min(T_OWN_FIRST, ms));
+  let text = "", done = false;
+  try {
+    const r = await fetch(sv.url + "/api/chat", { method: "POST", signal: ctl.signal,
+      headers: { "Content-Type": "application/json", ...(sv.key ? { Authorization: "Bearer " + sv.key } : {}) },
+      body: JSON.stringify({ model: sv.model, messages: ownMessages(sys, raw), stream: true, think: false, keep_alive: -1,
+        options: { num_predict: Math.min(want, 1500), num_ctx: 8192 } }) });
+    if (!r.ok) throw new Error("HTTP " + r.status + (r.status === 401 ? " (OWN_AI_KEY doesn't match the machine's secret)" : ""));
+    const rd = r.body.getReader(), dec = new TextDecoder(); let buf = "";
+    try {
+      for (;;) {
+        const { value, done: end } = await rd.read(); if (end) break;
+        buf += dec.decode(value, { stream: true }); let i;
+        while ((i = buf.indexOf("\n")) >= 0) {
+          const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1); if (!line) continue;
+          let j; try { j = JSON.parse(line); } catch (e) { continue; }
+          if (j.error) throw new Error(String(j.error).slice(0, 120));
+          if (j.message && j.message.content) { if (first) { clearTimeout(first); first = null; } text += j.message.content; }
+          if (j.done) done = true;
+        }
+      }
+    } catch (e) { if (!(e.name === "AbortError" && text.trim())) throw e; } // out of time mid-answer → keep what we have
+    text = text.replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+    if (!text) throw new Error("empty answer");
+    return { text: done ? text : text + " …", via: sv.name + ":" + sv.model, cut: !done, secs: (now() - t0) / 1000 };
+  } finally { clearTimeout(killAll); if (first) clearTimeout(first); }
+}
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
@@ -239,7 +291,8 @@ export default async function handler(req, res) {
     try { return res.status(200).json(await diagnostics(key, test)); } catch (e) { return res.status(200).json({ ok: !!key, hasKey: !!key, error: "diagnostics failed" }); }
   }
   if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
-  if (!key && !aresOn) return res.status(500).json({ error: "Floof Cloud isn't set up yet (the studio needs to add GEMINI_KEY in Vercel)." });
+  const own = ownServers();
+  if (!key && !aresOn && !own.length) return res.status(500).json({ error: "Floof Cloud isn't set up yet (the studio needs to add GEMINI_KEY in Vercel)." });
 
   const t0 = now(), left = () => T_TOTAL - (now() - t0);
   let b = {}; try { b = typeof req.body === "string" ? JSON.parse(req.body || "{}") : (req.body || {}); } catch (e) {}
@@ -256,6 +309,21 @@ export default async function handler(req, res) {
   const want = Math.min(Math.max(parseInt(b.maxTokens) || 8192, 256), acc.pro ? 16384 : 8192);
 
   const errs = []; let stop = false, keyBad = false;
+  const hasImg = raw.some(m => m && typeof m.img === "string" && m.img); // pictures need Gemini (the CPU models are text-only)
+  const ownEnd = now() + (key ? T_OWN : T_TOTAL - 5000);
+  for (const sv of hasImg ? [] : own) {
+    const bad = _ownBad[sv.name]; if (bad && bad.until > now()) { errs.push(sv.name + ": cooling (" + bad.why + ")"); continue; }
+    const ms = Math.min(ownEnd - now(), left() - 4000); if (ms < 5000) break;
+    try {
+      const o = await ownAI(sv, sys, raw, want, ms);
+      lastOk = { at: new Date().toISOString(), model: o.via };
+      return res.status(200).json({ text: o.text, via: o.via, pro: acc.pro, own: true, finish: o.cut ? "MAX_TOKENS" : "" });
+    } catch (e) {
+      const why = clean(e.name === "AbortError" ? "too slow / unreachable" : e.message, sv.key).slice(0, 100);
+      _ownBad[sv.name] = { until: now() + 120000, why }; errs.push(sv.name + ": " + why);
+      lastError = { at: new Date().toISOString(), model: sv.name, kind: "own", msg: why };
+    }
+  }
   if (key) {
     const order = plan(await models(key), acc.pro);
     const body = { contents, generationConfig: { maxOutputTokens: want } };

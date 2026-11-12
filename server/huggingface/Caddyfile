@@ -1,0 +1,13 @@
+{
+	admin off
+	auto_https off
+}
+:7860 {
+	@ok header Authorization "Bearer {$FLOOF_SECRET}"
+	handle @ok {
+		reverse_proxy 127.0.0.1:11434 {
+			flush_interval -1
+		}
+	}
+	respond "Floof backup brain" 401
+}
