@@ -3060,17 +3060,14 @@ async function singSong(lyrics) {
   stopSinging(); if (synth) synth.cancel();
   status("🎤 Warming up the singing voice… (one time, ~0.7 MB)");
   let ms; try { ms = await singerLoad(); } catch (e) { status("🎤 Couldn't load the singing voice — using the speaking voice instead.", "err"); return sing(lyrics); }
-  const AC = new (window.AudioContext || window.webkitAudioContext)(); const out = AC.createGain(); out.gain.value = .9; out.connect(AC.destination);
-  const echo = AC.createDelay(); echo.delayTime.value = .06; const wet = AC.createGain(); wet.gain.value = .12; echo.connect(wet); wet.connect(out); // just a touch of room, no repeats
-  const comp = AC.createDynamicsCompressor(); comp.threshold.value = -20; comp.ratio.value = 3; comp.attack.value = .01; comp.release.value = .2;
-  const warm = AC.createBiquadFilter(); warm.type = "lowpass"; warm.frequency.value = 3800; warm.Q.value = .5; // softens eSpeak's buzz
-  const hall = AC.createConvolver(), irL = Math.floor(AC.sampleRate * 1.4), ir = AC.createBuffer(2, irL, AC.sampleRate); for (let c = 0; c < 2; c++) { const ch = ir.getChannelData(c); for (let k = 0; k < irL; k++) ch[k] = (Math.random() * 2 - 1) * Math.pow(1 - k / irL, 3.2); } hall.buffer = ir; const hallWet = AC.createGain(); hallWet.gain.value = .16; hall.connect(hallWet); hallWet.connect(out); // soft, smooth room (no repeats)
-  const voiceBus = AC.createGain(); voiceBus.gain.value = .9; voiceBus.connect(warm); warm.connect(comp); comp.connect(out); comp.connect(hall);
-  const padBus = AC.createBiquadFilter(); padBus.type = "lowpass"; padBus.frequency.value = 1400; padBus.connect(out); padBus.connect(hall);
-  const singVoice = await singLang(); const lines = speakable(lyrics).split(/(?<=[.!?;])\s+|\n+/).map(l => l.replace(/[^\p{L}' -]/gu, " ").trim()).filter(Boolean).slice(0, 24);
+  const singVoice = await singLang();
+  const lines = speakable(lyrics).split(/(?<=[.!?;])\s+|\n+/).map(l => l.replace(/[^\p{L}' -]/gu, " ").trim()).filter(Boolean).slice(0, 24);
   if (!lines.length) return;
-  const female = (vset.pitch || 1) >= 1.05, bpm = 84, beat = 60 / bpm, t0 = AC.currentTime + .4;
-  const chords = [[0, 4, 7], [7, 11, 14], [9, 12, 16], [5, 9, 12]], root = female ? 53 : 45; // C G Am F, in the singer's range (MIDI)
+  let cancelled = false; singStop = () => { cancelled = true; status("🎤 Stopped singing."); };
+  status("🎤 Learning the song…");
+  // 1) the tune: chords C G Am F, one word per beat (long words and line-ends held longer), a breath between lines
+  const female = (vset.pitch || 1) >= 1.05, bpm = 84, beat = 60 / bpm, SR = 44100;
+  const chords = [[0, 4, 7], [7, 11, 14], [9, 12, 16], [5, 9, 12]], root = female ? 53 : 45;
   const hz = m => 440 * Math.pow(2, (m - 69) / 12), scale = [0, 2, 4, 5, 7, 9, 11, 12, 14];
   const words = []; let beatN = 0, deg = 2;
   for (const line of lines) {
@@ -3079,49 +3076,65 @@ async function singSong(lyrics) {
       const tones = chord.map(c => scale.indexOf(c % 12) >= 0 ? scale.indexOf(c % 12) : 0);
       deg = (beatN % 4 === 0 || lastW) ? tones[(i + Math.floor(beatN / 4)) % 3] : Math.max(0, Math.min(scale.length - 1, deg + [1, -1, 1, 2, -2][(beatN + i) % 5]));
       const len = lastW ? 2 : (w.length > 7 ? 1.5 : 1); words.push({ w, beat: beatN, len, midi: root + scale[deg] }); beatN += len; });
-    beatN = Math.ceil((beatN + 1) / 2) * 2; // breathe between lines
+    beatN = Math.ceil((beatN + 1) / 2) * 2;
   }
-  const total = beatN, nodes = [];
-  // the band: chords, bass, soft drums
-  for (let b = 0; b < total; b += 4) {
-    const ch = chords[(b / 4) % 4], tt = t0 + b * beat;
-    ch.forEach(c => { for (const det of [-6, 6]) { const o = AC.createOscillator(), g = AC.createGain(); o.type = "sawtooth"; o.frequency.value = hz(48 + c); o.detune.value = det; g.gain.setValueAtTime(0.0001, tt); g.gain.linearRampToValueAtTime(.018, tt + .35); g.gain.setValueAtTime(.018, tt + 4 * beat - .2); g.gain.linearRampToValueAtTime(0.0001, tt + 4 * beat + .15); o.connect(g); g.connect(padBus); o.start(tt); o.stop(tt + 4 * beat + .2); nodes.push(o); } }); // soft string-pad chords
-    for (let k = 0; k < 4; k++) { const tk = tt + k * beat;
-      const bo = AC.createOscillator(), bg = AC.createGain(); bo.type = "sine"; bo.frequency.value = hz(36 + ch[0] % 12); bg.gain.setValueAtTime(0.0001, tk); bg.gain.linearRampToValueAtTime(.09, tk + .03); bg.gain.exponentialRampToValueAtTime(.01, tk + beat * .95); bo.connect(bg); bg.connect(out); bo.start(tk); bo.stop(tk + beat); nodes.push(bo);
-    }
-  }
-  // the singer: make each word with eSpeak, trim its silence, tune it to the note, hold the last vowel so notes join up (legato)
-  status("🎤 Singing… (press 🔊 or send a message to stop)");
-  let prevRate = 0;
+  const total = beatN, lenS = total * beat + 2.5;
+  const OC = new OfflineAudioContext(2, Math.ceil(lenS * SR), SR); // the whole song is made first, then played — no stutters
+  // 2) the voice: each word from eSpeak → trimmed → its last vowel smoothly stretched (overlapping grains) → tuned to its note
+  const voice = OC.createGain(); const warm = OC.createBiquadFilter(); warm.type = "lowpass"; warm.frequency.value = 3800; warm.Q.value = .5;
+  const comp = OC.createDynamicsCompressor(); comp.threshold.value = -20; comp.ratio.value = 3; comp.attack.value = .01; comp.release.value = .25;
+  const hall = OC.createConvolver(), irL = Math.floor(SR * 1.4), ir = OC.createBuffer(2, irL, SR); for (let c = 0; c < 2; c++) { const ch = ir.getChannelData(c); for (let k = 0; k < irL; k++) ch[k] = (Math.random() * 2 - 1) * Math.pow(1 - k / irL, 3.2); } hall.buffer = ir;
+  const hallWet = OC.createGain(); hallWet.gain.value = .14; hall.connect(hallWet); hallWet.connect(OC.destination);
+  voice.connect(warm); warm.connect(comp); comp.connect(OC.destination); comp.connect(hall);
+  const decodeCtx = new OfflineAudioContext(1, 1, SR);
   for (let wi = 0; wi < words.length; wi++) {
+    if (cancelled) return;
     const nw = words[wi], next = words[wi + 1];
-    const target = hz(nw.midi), p = Math.max(10, Math.min(99, Math.round(25 + Math.log(target / 74) / .011))); // eSpeak pitch ≈ 74 Hz·e^(0.011·(p−25))
-    let wav; try { wav = ms.speak(nw.w, { pitch: p, speed: 150, amplitude: 120, rawdata: "array", ...(singVoice ? { voice: singVoice } : {}) }); } catch {} if (!wav) continue;
-    let raw; try { raw = await AC.decodeAudioData(new Uint8Array(wav).buffer); } catch { continue; }
-    // trim the silence eSpeak puts before and after the word, and even out the loudness
-    const d0 = raw.getChannelData(0), thr = .02; let a = 0, z = d0.length - 1, pk = 0;
+    const target = hz(nw.midi), p = Math.max(10, Math.min(99, Math.round(25 + Math.log(target / 74) / .011)));
+    let wav; try { wav = ms.speak(nw.w, { pitch: p, speed: 140, amplitude: 120, rawdata: "array", ...(singVoice ? { voice: singVoice } : {}) }); } catch {} if (!wav) continue;
+    let raw; try { raw = await decodeCtx.decodeAudioData(new Uint8Array(wav).buffer); } catch { continue; }
+    const sr = raw.sampleRate, d0 = raw.getChannelData(0), thr = .02; let a = 0, z = d0.length - 1, pk = 0;
     while (a < z && Math.abs(d0[a]) < thr) a++; while (z > a && Math.abs(d0[z]) < thr) z--;
-    a = Math.max(0, a - 200); z = Math.min(d0.length - 1, z + 200);
-    const buf = AC.createBuffer(1, z - a + 1, raw.sampleRate), d = buf.getChannelData(0); for (let k = a; k <= z; k++) { d[k - a] = d0[k]; pk = Math.max(pk, Math.abs(d0[k])); }
-    const f0 = f0Of(buf) || target, rate = Math.max(.6, Math.min(1.8, target / f0));
-    const st = t0 + nw.beat * beat, noteLen = (next && next.beat - nw.beat < nw.len + .01 ? next.beat - nw.beat : nw.len) * beat, wordLen = buf.duration / rate;
-    const src = AC.createBufferSource(), g = AC.createGain(), vib = AC.createOscillator(), vg = AC.createGain();
-    src.buffer = buf;
-    if (wordLen < noteLen) { // hold the vowel: loop a few whole pitch periods near the end of the voiced sound
-      const per = 1 / f0, le = Math.max(per * 4, buf.duration - .04), ls = Math.max(0, le - per * Math.max(2, Math.round(.035 / per)));
-      const zc = t => { let k = Math.floor(t * buf.sampleRate); while (k > 1 && !(d[k - 1] < 0 && d[k] >= 0)) k--; return k / buf.sampleRate; }; // snap to a rising zero-crossing
-      const zs = zc(ls), ze = zc(le); src.loop = true; src.loopStart = zs; src.loopEnd = ze > zs + per ? ze : le;
+    a = Math.max(0, a - 150); z = Math.min(d0.length - 1, z + 150);
+    const wd = d0.slice(a, z + 1); for (const v of wd) pk = Math.max(pk, Math.abs(v));
+    const tmp = OC.createBuffer(1, wd.length, sr); tmp.getChannelData(0).set(wd);
+    const f0 = f0Of(tmp) || target, rate = Math.max(.6, Math.min(1.8, target / f0));
+    const noteLen = (next && next.beat - nw.beat < nw.len + .01 ? next.beat - nw.beat : nw.len) * beat;
+    // stretch: keep the word, then hold its last steady vowel with overlapping Hann-windowed grains one pitch period apart (smooth, no buzz)
+    const need = Math.ceil((noteLen + .1) * rate * sr), per = Math.max(20, Math.round(sr / f0));
+    let outD = wd;
+    if (need > wd.length + per * 2) {
+      const tail = Math.min(wd.length - per * 3, Math.round(wd.length - .06 * sr)), c = Math.max(per * 2, tail); // centre of the held vowel
+      const G = per * 2, win = new Float32Array(G); for (let k = 0; k < G; k++) win[k] = .5 - .5 * Math.cos(2 * Math.PI * k / G);
+      const grain = new Float32Array(G); for (let k = 0; k < G; k++) grain[k] = (wd[c - per + k] || 0) * win[k];
+      const holdN = need - wd.length; outD = new Float32Array(c + holdN + (wd.length - c));
+      outD.set(wd.subarray(0, c));
+      for (let pos = c - per; pos < c + holdN; pos += per) for (let k = 0; k < G; k++) if (pos + k >= c && pos + k < c + holdN) outD[pos + k] += grain[k];
+      const fadeN = Math.min(per * 2, wd.length - c); for (let k = 0; k < wd.length - c; k++) { const f = k < fadeN ? k / fadeN : 1; outD[c + holdN + k] = wd[c + k] * f + (k < fadeN ? outD[c + holdN + k] * (1 - f) : 0); }
+      for (let k = 0; k < fadeN && c + k < outD.length; k++) { const f = k / fadeN; outD[c + k] = outD[c + k] * f + wd[c + k] * (1 - f) * 1; } // blend into the grains
     }
-    // glide into the note from the last one (portamento) + gentle vibrato that grows on long notes
-    src.playbackRate.setValueAtTime(prevRate && Math.abs(Math.log(prevRate / rate)) < .5 ? prevRate : rate, st); src.playbackRate.linearRampToValueAtTime(rate, st + .11); prevRate = rate;
-    vib.frequency.value = 5.2; vg.gain.setValueAtTime(0, st); vg.gain.linearRampToValueAtTime(rate * .009, st + Math.min(.6, noteLen)); vib.connect(vg); vg.connect(src.playbackRate);
-    const lvl = .55 / Math.max(.05, pk), rel = Math.min(.18, noteLen * .35), endT = st + noteLen + .1; // notes overlap so words melt into each other
-    g.gain.setValueAtTime(0, st); g.gain.linearRampToValueAtTime(lvl * .7, st + .025); g.gain.linearRampToValueAtTime(lvl, st + .09); g.gain.setValueAtTime(lvl, endT - rel); g.gain.linearRampToValueAtTime(0, endT);
-    src.connect(g); g.connect(voiceBus); src.start(Math.max(st, AC.currentTime)); src.stop(endT + .02); vib.start(st); vib.stop(endT + .02); nodes.push(src, vib);
+    const buf = OC.createBuffer(1, outD.length, sr); buf.getChannelData(0).set(outD);
+    const st = 1 + nw.beat * beat, endT = st + noteLen + .12, lvl = .5 / Math.max(.05, pk), rel = Math.min(.2, noteLen * .35);
+    const src = OC.createBufferSource(), g = OC.createGain(), vib = OC.createOscillator(), vg = OC.createGain();
+    src.buffer = buf; src.playbackRate.value = rate;
+    vib.frequency.value = 5; vg.gain.setValueAtTime(0, st); vg.gain.linearRampToValueAtTime(rate * .008, st + Math.min(.7, noteLen)); vib.connect(vg); vg.connect(src.playbackRate);
+    g.gain.setValueAtTime(0, st); g.gain.linearRampToValueAtTime(lvl, st + .04); g.gain.setValueAtTime(lvl, endT - rel); g.gain.linearRampToValueAtTime(0, endT);
+    src.connect(g); g.connect(voice); src.start(st); src.stop(endT + .05); vib.start(st); vib.stop(endT + .05);
   }
-  const end = t0 + total * beat + 1;
-  const tm = setTimeout(() => { status("Ready"); AC.close(); singStop = null; }, (end - AC.currentTime) * 1000);
-  singStop = () => { clearTimeout(tm); nodes.forEach(n => { try { n.stop(); } catch {} }); AC.close(); status("🎤 Stopped singing."); };
+  // 3) the band: soft string pad + gentle bass
+  const pad = OC.createBiquadFilter(); pad.type = "lowpass"; pad.frequency.value = 1400; pad.connect(OC.destination); pad.connect(hall);
+  for (let b = 0; b < total; b += 4) {
+    const ch = chords[(b / 4) % 4], tt = 1 + b * beat;
+    ch.forEach(c => { for (const det of [-6, 6]) { const o = OC.createOscillator(), g = OC.createGain(); o.type = "sawtooth"; o.frequency.value = hz(48 + c); o.detune.value = det; g.gain.setValueAtTime(.0001, tt); g.gain.linearRampToValueAtTime(.016, tt + .35); g.gain.setValueAtTime(.016, tt + 4 * beat - .2); g.gain.linearRampToValueAtTime(.0001, tt + 4 * beat + .15); o.connect(g); g.connect(pad); o.start(tt); o.stop(tt + 4 * beat + .2); } });
+    for (let k = 0; k < 4; k++) { const tk = tt + k * beat, bo = OC.createOscillator(), bg = OC.createGain(); bo.type = "sine"; bo.frequency.value = hz(36 + ch[0] % 12); bg.gain.setValueAtTime(.0001, tk); bg.gain.linearRampToValueAtTime(.08, tk + .03); bg.gain.exponentialRampToValueAtTime(.01, tk + beat * .95); bo.connect(bg); bg.connect(OC.destination); bo.start(tk); bo.stop(tk + beat); }
+  }
+  if (cancelled) return;
+  status("🎤 Mixing…");
+  const song = await OC.startRendering(); if (cancelled) return;
+  const AC = new (window.AudioContext || window.webkitAudioContext)(), play = AC.createBufferSource(); play.buffer = song; play.connect(AC.destination); play.start();
+  window.__lastSong = song; status("🎤 Singing… (press 🔊 or send a message to stop)");
+  play.onended = () => { AC.close(); if (singStop === stopper) { singStop = null; status("Ready"); } };
+  const stopper = () => { try { play.stop(); } catch {} AC.close(); status("🎤 Stopped singing."); }; singStop = stopper;
 }
 // 🌍 languages: what Floof replies in, listens for and speaks
 const LANGS = [["", "Auto (match how I write)"], ["en-GB", "English"], ["es-ES", "Español"], ["fr-FR", "Français"], ["de-DE", "Deutsch"], ["it-IT", "Italiano"], ["pt-PT", "Português"], ["nl-NL", "Nederlands"], ["pl-PL", "Polski"], ["tr-TR", "Türkçe"], ["sv-SE", "Svenska"], ["ro-RO", "Română"], ["el-GR", "Ελληνικά"], ["ru-RU", "Русский"], ["uk-UA", "Українська"], ["he-IL", "עברית"], ["ar-SA", "العربية"], ["hi-IN", "हिन्दी"], ["zh-CN", "中文"], ["ja-JP", "日本語"], ["ko-KR", "한국어"]];
