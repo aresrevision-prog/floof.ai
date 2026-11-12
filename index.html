@@ -1725,7 +1725,9 @@ async function loadModel() {
   let adapter = null; try { adapter = navigator.gpu && await navigator.gpu.requestAdapter(); } catch {}
   if (!adapter) { status("WebGPU isn't available here. Use Chrome (v113+). Grid mode still works.", "err"); return; }
   const f16 = adapter.features.has("shader-f16");
-  const id = $("#model").value + (f16 ? "-q4f16_1-MLC" : "-q4f32_1-MLC");
+  const STEP = { "Qwen2.5-Coder-7B-Instruct": "Qwen2.5-Coder-1.5B-Instruct", "Qwen2.5-Coder-1.5B-Instruct": "Llama-3.2-1B-Instruct", "Llama-3.2-3B-Instruct": "Qwen2.5-1.5B-Instruct", "Qwen3-1.7B": "Llama-3.2-1B-Instruct", "Qwen2.5-1.5B-Instruct": "Llama-3.2-1B-Instruct", "Llama-3.2-1B-Instruct": "SmolLM2-360M-Instruct" }; // next smaller brain to try (each try is a download, so it steps down quickly)
+  let pick = $("#model").value, ctxSize = CTX, shrunk = false;
+  let id = pick + (f16 ? "-q4f16_1-MLC" : "-q4f32_1-MLC");
   if (id === loadedModel) return;
   $("#load").disabled = true; busy = true; $("#send").disabled = true;
   try {
@@ -1733,27 +1735,39 @@ async function loadModel() {
     webllm ??= await import("https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.88/+esm");
     const cb = r => { bar(r.progress || 0); status(r.text || "Loading…"); };
     const backends = [ls.get(CKEY, "cache"), "indexeddb", "cache"];
+    const tooBig = e => /device (was )?lost|out of memory|OOM|allocat|exceed|maxBufferSize|maxStorageBufferBindingSize|GPUOutOfMemory/i.test(String(e && (e.message || e)));
     let lastErr;
-    for (let i = 0; i < backends.length; i++) {
-      try {
-        if (engine) { try { await engine.unload(); } catch {} engine = null; }
-        engine = await webllm.CreateMLCEngine(id, { initProgressCallback: cb, appConfig: { ...webllm.prebuiltAppConfig, cacheBackend: backends[i] } }, { context_window_size: CTX });
-        ls.set(CKEY, backends[i]); lastErr = null; break;
-      } catch (e) {
-        lastErr = e; engine = null;
-        if (!/fetch|network|cache|quota/i.test(e.message || "")) break;
-        status(`Download hiccup — retrying (${i + 1}/${backends.length - 1})…`);
-        await new Promise(r => setTimeout(r, 1500));
+    for (;;) { // if the GPU runs out of memory: first a smaller context, then step down to a smaller brain
+      lastErr = null;
+      for (let i = 0; i < backends.length; i++) {
+        try {
+          if (engine) { try { await engine.unload(); } catch {} engine = null; }
+          engine = await webllm.CreateMLCEngine(id, { initProgressCallback: cb, appConfig: { ...webllm.prebuiltAppConfig, cacheBackend: backends[i] } }, { context_window_size: ctxSize });
+          ls.set(CKEY, backends[i]); lastErr = null; break;
+        } catch (e) {
+          lastErr = e; engine = null;
+          if (!/fetch|network|cache|quota/i.test(e.message || "") || tooBig(e)) break;
+          status(`Download hiccup — retrying (${i + 1}/${backends.length - 1})…`);
+          await new Promise(r => setTimeout(r, 1500));
+        }
       }
+      if (!lastErr || !tooBig(lastErr)) break;
+      await new Promise(r => setTimeout(r, 1000)); // let the GPU recover
+      if (ctxSize > 2048) { ctxSize = 2048; status("Not enough graphics memory — retrying with a lighter setting…"); continue; }
+      const smaller = STEP[pick];
+      if (!smaller) break;
+      pick = smaller; shrunk = true; id = pick + (f16 ? "-q4f16_1-MLC" : "-q4f32_1-MLC"); // ctxSize stays 2048: the device is short on memory
+      status("Not enough graphics memory — trying a smaller brain: " + $(`#model option[value="${pick}"]`).textContent.split("—")[0].trim() + "…");
     }
     if (lastErr) throw lastErr;
-    loadedModel = id; ls.set(MKEY, $("#model").value);
+    loadedModel = id; $("#model").value = pick; ls.set(MKEY, pick);
+    if (shrunk || ctxSize < CTX) setTimeout(() => status("Ready ✓ — your device ran out of graphics memory, so Floof loaded " + $("#model").selectedOptions[0].text.split("—")[0].trim() + (ctxSize < CTX ? " with shorter memory" : "") + ". ☁ Floof Cloud is smarter if you're online."), 900);
     bar(1); status("Ready ✓ " + $("#model").selectedOptions[0].text.split("—")[0].trim() + " brain + grid" + (f16 ? "" : " (compat mode)"));
     setTimeout(() => bar(0), 800);
   } catch (e) {
     console.error(e); bar(0); engine = null; loadedModel = null;
     const blocked = /fetch|network/i.test(e.message || "") ? await diagnose() : [];
-    status(blocked.length ? "Blocked by your network/filter: " + blocked.join(", ") + ". Try another Wi-Fi/hotspot." : "Couldn't load: " + (e.message || e) + " — try a smaller brain, or Reset downloads.", "err");
+    status(blocked.length ? "Blocked by your network/filter: " + blocked.join(", ") + ". Try another Wi-Fi/hotspot." : (/device (was )?lost|out of memory|OOM|allocat/i.test(e.message || "") ? "This device doesn't have enough graphics memory for an on-device brain, even the tiny one. Close other tabs and try again — or just use ☁ Floof Cloud (free, smarter, no download)." : "Couldn't load: " + (e.message || e) + " — try a smaller brain, or Reset downloads."), "err");
   } finally { busy = false; $("#load").disabled = false; $("#send").disabled = false; updateMode(); }
 }
 
