@@ -165,6 +165,8 @@ form#form{padding:12px 16px 16px;border-top:1px solid var(--line)}
 @media(max-width:720px){header{flex-wrap:wrap}#status{order:5;flex-basis:100%;font-size:12px}.tabs{flex:1;min-width:0;overflow-x:auto}#acctNm{display:none}}
 @media(max-width:520px){.authtop{position:static;padding:0 0 14px;width:100%;max-width:380px}#auth{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:14px}.authtop a.back{font-size:12px;padding:5px 10px}}
 @media(max-width:720px){#side{position:fixed;inset:0 auto 0 0;z-index:5;transform:translateX(-100%);transition:transform .2s}#side.open{transform:none}#menuBtn{display:block;position:relative;z-index:6}.doc span{white-space:normal;overflow-wrap:anywhere;min-width:0}.tabs button{padding:6px 9px}}
+#gMode{flex-wrap:nowrap}#gMode button{white-space:nowrap}
+@media(max-width:600px){#gMode{flex:1 1 100%}#gMode button{flex:1;padding:6px 4px;font-size:12px}.gtool{flex-wrap:wrap}#gfind{flex:1 1 100%}}
 </style>
 </head>
 <body>
@@ -249,7 +251,7 @@ form#form{padding:12px 16px 16px;border-top:1px solid var(--line)}
 
   <section class="view" id="vGrid">
     <div class="gtool">
-      <div class="tabs" id="gMode"><button type="button" data-m="topics" class="on">🗂 Topics</button><button type="button" data-m="map">🧭 64-D map</button></div>
+      <div class="tabs" id="gMode"><button type="button" data-m="topics" class="on">🗂 Topics</button><button type="button" data-m="map">🧭 64-D map</button><button type="button" data-m="dict">📖 Dictionary</button></div>
       <input type="search" id="gfind" placeholder="Find a word…">
       <div class="legend" id="legend"></div>
     </div>
@@ -991,6 +993,16 @@ async function sendCore(override, extra = {}) {
     const reply = def ? (fixed ? `*(I read "${fixed}" as "${w}")*\n\n` : "") + def : (DICT && DICT.has(w.toLowerCase()) ? `"${w}" is a real word, but I couldn't fetch its meaning — check your internet.` : `I couldn't find "${w}" in the dictionary.`);
     ob.classList.remove("cursor"); ob.innerHTML = md(reply); chat.msgs.push({ role: "assistant", content: reply }); save(); scroll(); status(def ? "📖 Done ✓" : "Ready"); return;
   }
+  const lm = !extra.screen && text.match(/^(?:(?:show me |give me |list )?(?:words|things) (?:like|similar to|related to|close to|near)|similar words to|synonyms? (?:of|for)|what(?:'s| is) (?:the )?sector (?:of|for)|which sector is|what sector is|where is)\s+["']?([a-z][a-z'-]{1,40})["']?(?: in the grid| on the grid)?\s*\??$/i);
+  if (lm) {
+    const ob = bubble("assistant", ""); ob.classList.add("cursor"); status("📖 Finding it on the grid…");
+    let reply;
+    try { await loadLex(p => status(`📖 Downloading the dictionary grid… ${p}%`)); const i = lexFind(lm[1]);
+      if (i < 0) reply = `"${lm[1]}" isn't in my 274k-word dictionary.`;
+      else { const nb = lexNear(i, 12); reply = `**${LEX.words[i]}** — ${lexLabel(i)} *(placed by ${LEX_HOW[LEX.meta[i] >> 5]})*\n\nClosest in 64-D: ${nb.map(([j, s]) => `${LEX.words[j]} (${s * 100 | 0}%)`).join(", ")}`; }
+    } catch (e) { reply = "I couldn't download the dictionary grid (" + (e.message || e) + ") — check your internet."; }
+    ob.classList.remove("cursor"); ob.innerHTML = md(reply); chat.msgs.push({ role: "assistant", content: reply }); save(); scroll(); status("Ready"); return;
+  }
   const newMem = extra.screen || extra.depth ? [] : learnFromText(text);
 
   // 1) read: long messages become part of this chat's grid, so every part can be found later
@@ -1009,6 +1021,10 @@ async function sendCore(override, extra = {}) {
   // AND doesn't make sense on its own — so new questions never get stuck on the old topic
   let query = own;
   let { hits, sector } = info.type === "summary" ? { hits: [], sector: MW.guessSector(CG, text) } : MW.search(CG, own, 4);
+  if (LEX && info.type !== "summary" && (!hits.length || hits[0].score < .5)) { // understand words you haven't used before via their meaning
+    const ex = lexExpand(own, CG);
+    if (ex) { const r2 = MW.search(CG, own + " " + ex, 4); if (r2.hits.length && (!hits.length || r2.hits[0].score > hits[0].score)) ({ hits, sector } = r2); }
+  }
   if (!scr && info.type !== "summary" && prevUser && MW.isFollowUp(text, info.terms) && (!hits.length || hits[0].score < .6)) {
     query = prevUser.content.slice(0, 400) + " " + text;
     const prevSec = [...chat.msgs].reverse().find(m => m.u)?.u.sector || 0;
@@ -1186,13 +1202,13 @@ When fixing: find the root cause, explain it in one line, and return the FULL co
 }
 
 // ---------- dictionary: 274,000 English words — fixes typos and looks up meanings ----------
-let DICT = null, DICT_LEN = null, dictLoading = null;
+let DICT = null, DICT_LEN = null, DICT_WORDS = null, dictLoading = null;
 const COMMON = new Set("the be to of and a in that have i it for not on with he as you do at this but his by from they we say her she or an will my one all would there their what so up out if about who get which go me when make can like time no just him know take people into year your good some could them see other than then now look only come its over think also back after use two how our work first well way even new want because any these give day most us is was are were has had been did does said made should very really thing things please thanks thank sorry help question answer explain mean why where how what which school homework revision exam test lesson teacher maths science history english geography computing physics chemistry biology".split(" "));
 function loadDict() {
   return dictLoading ??= (async () => {
     let txt = null; try { txt = await idb.getRaw("dict.words.v1"); } catch {}
     if (!txt) { const r = await fetch("https://cdn.jsdelivr.net/npm/word-list@4.1.0/words.txt"); if (!r.ok) throw new Error("dict " + r.status); txt = await r.text(); idb.setRaw("dict.words.v1", txt).catch(() => {}); }
-    const words = txt.split("\n").filter(Boolean); DICT = new Set(words); DICT_LEN = new Map();
+    const words = txt.split("\n").filter(Boolean); DICT_WORDS = words; DICT = new Set(words); DICT_LEN = new Map();
     for (const w of words) { const L = w.length; if (!DICT_LEN.has(L)) DICT_LEN.set(L, []); DICT_LEN.get(L).push(w); }
     try { renderStats(); } catch {}
     return DICT;
@@ -1254,6 +1270,79 @@ async function defineWord(word) {
     return `**${e.word}**${e.phonetic ? " " + e.phonetic : ""}\n` + lines.join("\n") + (syn.length ? `\n\nSimilar words: ${syn.join(", ")}` : "");
   } catch { return null; }
 }
+
+// ---------- the whole dictionary on the 64-D grid: every word has a place (similar meanings sit together), a sector and a topic ----------
+// Built from GloVe word meanings (Wikipedia) → 64-D, 1 byte per number. Downloads once (~11 MB), then lives on this device.
+const LEX_URLS = window.FLOOF_LEX ? [window.FLOOF_LEX] : ["https://cdn.jsdelivr.net/gh/aresrevision-prog/floof.ai@lex-v1/lex/lex64.bin.gz", "https://floofai.vercel.app/lex/lex64.bin.gz"];
+const LEX_TOPICS = ["Animals", "Food & drink", "Sport & games", "Music & art", "Body & health", "Feelings & mind", "People & jobs", "Home & things", "Nature & plants", "Transport", "Money & business", "Law & politics", "Religion & myth", "Weather & sky", "Words & talk", "Actions & movement"];
+const LEX_HOW = ["", "meaning", "root word", "compound word", "spelling guess", "placeholder (rare word)"];
+const LEX_HUBS = [[1.0, 0.0], [0.9595, 0.2817], [0.8413, 0.5406], [0.6549, 0.7557], [0.4154, 0.9096], [0.1423, 0.9898], [-0.1423, 0.9898], [-0.4154, 0.9096], [-0.6549, 0.7557], [-0.8413, 0.5406], [-0.9595, 0.2817], [-1.0, 0.0], [-0.9595, -0.2817], [-0.8413, -0.5406], [-0.6549, -0.7557], [-0.4154, -0.9096], [-0.1423, -0.9898], [0.1423, -0.9898], [0.4154, -0.9096], [0.6549, -0.7557], [0.8413, -0.5406], [0.9595, -0.2817], [0.0, 0.0]];
+const LEX_COUNTS = [1682, 2690, 1314, 1931, 1484, 2411, 1901, 2378, 1245, 1310, 1594, 3267, 1720, 2845, 1371, 1705, 4320, 3379, 1447, 1055, 2160, 4120, 226808];
+let LEX = null, lexLoading = null;
+const lexGroup = i => LEX.sec[i] < 7 ? LEX.sec[i] - 1 : (LEX.meta[i] & 31) ? 5 + (LEX.meta[i] & 31) : 22;
+const lexGroupName = g => g < 6 ? SECTORS[g + 1] : g === 22 ? "General" : "General › " + LEX_TOPICS[g - 6];
+const lexGroupSector = g => g < 6 ? g + 1 : 7;
+const LEX_COL = Array.from({ length: 23 }, (_, g) => g < 6 ? COLORS[g + 1] : g === 22 ? "#9fb8a8" : `hsl(${(g - 6) * 22 + 15} 70% 64%)`);
+function lexLabel(i) { const t = LEX.meta[i] & 31; return LEX.sec[i] < 7 ? `Sector ${LEX.sec[i]} · ${SECTORS[LEX.sec[i]]}` : `Sector 7 · General${t ? " › " + LEX_TOPICS[t - 1] : ""}`; }
+async function lexFetch(onPct) {
+  let lastErr;
+  for (const u of LEX_URLS) {
+    try {
+      const r = await fetch(u); if (!r.ok) throw new Error(u.split("/")[2] + " " + r.status);
+      const total = +r.headers.get("content-length") || 11e6, rd = r.body.getReader(), parts = []; let got = 0;
+      for (;;) { const { value, done } = await rd.read(); if (done) break; parts.push(value); got += value.length; onPct && onPct(Math.min(99, got / total * 100 | 0)); }
+      let buf = await new Blob(parts).arrayBuffer();
+      const magic = new TextDecoder().decode(new Uint8Array(buf, 0, 4));
+      if (magic !== "FLX1") buf = await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer();
+      if (new TextDecoder().decode(new Uint8Array(buf, 0, 4)) !== "FLX1") throw new Error("bad file");
+      return buf;
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr || new Error("download failed");
+}
+function loadLex(onPct, cachedOnly = false) {
+  if (LEX) return Promise.resolve(LEX);
+  return lexLoading ??= (async () => {
+    await loadDict(); if (!DICT_WORDS) throw new Error("dictionary not loaded");
+    let buf = null; try { buf = await idb.getRaw("lex.v1"); } catch {}
+    if (!buf) { if (cachedOnly) return null; buf = await lexFetch(onPct); idb.setRaw("lex.v1", buf).catch(() => {}); }
+    const N = new Uint32Array(buf.slice(4, 8))[0], D = 64; let o = 8;
+    if (N !== DICT_WORDS.length) throw new Error("dictionary mismatch");
+    const vec = new Int8Array(buf, o, N * D); o += N * D;
+    const sec = new Uint8Array(buf, o, N); o += N; const meta = new Uint8Array(buf, o, N); o += N;
+    const xy = new Int16Array(buf.slice(o, o + N * 4));
+    const idx = new Map(); DICT_WORDS.forEach((w, i) => idx.set(w, i));
+    LEX = { N, vec, sec, meta, xy, idx, words: DICT_WORDS };
+    try { renderStats(); } catch {}
+    return LEX;
+  })().catch(e => { lexLoading = null; throw e; });
+}
+function lexNear(i, k = 10, filter) { // nearest words by 64-D cosine (int8 dot products over the whole dictionary)
+  const { vec, N } = LEX, D = 64, q = vec.subarray(i * D, i * D + D); let qn = 0; for (let d = 0; d < D; d++) qn += q[d] * q[d]; qn = Math.sqrt(qn) || 1;
+  const best = []; let floor = -2;
+  for (let j = 0; j < N; j++) {
+    if (j === i || (LEX.meta[j] >> 5) !== 1) continue; // neighbours: only words placed by their real meaning (no plurals/compounds/guesses)
+    const o = j * D; let s = 0, n = 0;
+    for (let d = 0; d < D; d++) { const x = vec[o + d]; s += x * q[d]; n += x * x; }
+    s = s / (Math.sqrt(n) || 1) / qn;
+    if (s <= floor) continue; if (filter && !filter(j)) continue;
+    best.push([j, s]); if (best.length > k * 3) { best.sort((a, b) => b[1] - a[1]); best.length = k; floor = best[k - 1][1]; }
+  }
+  return best.sort((a, b) => b[1] - a[1]).slice(0, k);
+}
+function lexFind(word) { if (!LEX) return -1; const w = String(word || "").toLowerCase().trim(); let i = LEX.idx.get(w); if (i === undefined && DICT && !DICT.has(w)) { const sg = suggest(w); if (sg) i = LEX.idx.get(sg); } return i ?? -1; }
+function lexExpand(text, CG) { // words Floof hasn't seen in your notes → the closest words it HAS seen (e.g. "automobile" → "car")
+  if (!LEX || !CG) return "";
+  const add = [];
+  for (const t of MW.tokens(text).slice(0, 8)) {
+    if (CG.vocab.has(t.s)) continue; const i = LEX.idx.get(t.w); if (i === undefined || (LEX.meta[i] >> 5) >= 4) continue;
+    for (const [j, s] of lexNear(i, 40)) { if (s < .55) break; const st = MW.stem(LEX.words[j]); if (CG.vocab.has(st) && !add.includes(LEX.words[j])) { add.push(LEX.words[j]); if (add.length % 2 === 0) break; } }
+    if (add.length >= 6) break;
+  }
+  return add.join(" ");
+}
+setTimeout(() => loadLex(null, true).catch(() => {}), 2500);
+window.FloofLex = { get LEX() { return LEX; }, near: (w, k) => lexNear(LEX.idx.get(w), k), find: lexFind, load: loadLex }; // for tests / console // already downloaded? load it from this device (no internet used)
 
 // ---------- memory: learns about you over time (stored only in this browser) ----------
 let mems = [], memOn = ls.get("mwai.memon", true);
@@ -1692,6 +1781,7 @@ function layoutTopics() {
 const curPts = () => gridMode === "topics" ? TPTS : PTS;
 function drawGrid() {
   if (!$("#vGrid").classList.contains("on")) return;
+  if (gridMode === "dict") return drawLex();
   const r = size(); ctx.clearRect(0, 0, r.width, r.height);
   // background grid
   const step = 40 * view.k; ctx.strokeStyle = "rgba(33,69,47,.45)"; ctx.lineWidth = 1; ctx.beginPath();
@@ -1730,6 +1820,88 @@ function drawGrid() {
     }
   });
   ctx.globalAlpha = 1;
+}
+
+// ---------- dictionary view: all 274k words, one island per sector/topic ----------
+let lexSel = -1, lexHover = -1, lexLabels = [];
+const lexHidden = g => hidden.has(lexGroupSector(g));
+function lexScreen(i, r, S) { return [r.width / 2 + view.x + LEX.xy[i * 2] / 32000 * S, r.height / 2 + view.y - LEX.xy[i * 2 + 1] / 32000 * S]; }
+function drawLex() {
+  const r = size(); ctx.clearRect(0, 0, r.width, r.height);
+  if (!LEX) {
+    ctx.fillStyle = "#8fb29b"; ctx.font = "14px system-ui"; ctx.fillText("📖 Loading all 274,000 dictionary words onto the grid…", 20, 30);
+    loadLex(p => { status(`📖 Downloading the dictionary grid (one time, ~11 MB)… ${p}%`); }).then(() => { status("📖 274k words on the grid ✓ — click any dot, or search a word"); drawGrid(); })
+      .catch(e => { status("Couldn't load the dictionary grid: " + (e.message || e), "err"); });
+    return;
+  }
+  const S = Math.min(r.width, r.height) * .44 * view.k, d = devicePixelRatio || 1, W = can.width, H = can.height;
+  const img = ctx.createImageData(W, H), px = new Uint32Array(img.data.buffer);
+  const col = LEX_COL.map(c => { const t = document.createElement("canvas").getContext("2d"); t.fillStyle = c; t.fillRect(0, 0, 1, 1); const [R, G2, B] = t.getImageData(0, 0, 1, 1).data; return (255 << 24) | (B << 16) | (G2 << 8) | R; });
+  const cx = r.width / 2 + view.x, cy = r.height / 2 + view.y, k = S / 32000, big = view.k > 6 ? 2 : 1;
+  const nb = lexSel >= 0 ? new Set(lexNear(lexSel, 12).map(x => x[0])) : null;
+  for (let i = 0, N = LEX.N; i < N; i++) {
+    const g = lexGroup(i); if (lexHidden(g)) continue;
+    const x = (cx + LEX.xy[i * 2] * k) * d | 0, y = (cy - LEX.xy[i * 2 + 1] * k) * d | 0;
+    if (x < 0 || y < 0 || x >= W - 1 || y >= H - 1) continue;
+    const c = col[g]; px[y * W + x] = c; if (big > 1) { px[y * W + x + 1] = c; px[(y + 1) * W + x] = c; px[(y + 1) * W + x + 1] = c; }
+  }
+  ctx.putImageData(img, 0, 0);
+  // island names
+  ctx.textAlign = "center";
+  LEX_HUBS.forEach(([hx, hy], g) => { if (lexHidden(g) || !LEX_COUNTS[g]) return;
+    const rad = g === 22 ? .58 : .1 + .16 * Math.sqrt(LEX_COUNTS[g] / LEX_COUNTS[22]), name = g < 6 || g === 22 ? lexGroupName(g) : LEX_TOPICS[g - 6];
+    let x, y;
+    if (g === 22) { x = cx; y = cy - rad * S - 18; ctx.textAlign = "center"; }
+    else { const a = Math.atan2(hy, hx), ux = Math.cos(a), uy = Math.sin(a); x = cx + (hx + ux * rad) * S + ux * 8 + (Math.abs(ux) < .35 ? (ux >= 0 ? 6 : -6) : 0); y = cy - (hy + uy * rad) * S - uy * 8 + 4; ctx.textAlign = ux >= 0 ? "left" : "right"; }
+    const small = r.width < 600 && view.k < 2;
+    ctx.fillStyle = LEX_COL[g]; ctx.font = `800 ${g === 22 ? 15 : small ? 10 : 12}px Syne, system-ui`; ctx.fillText(small && g !== 22 ? name.split(" ")[0] : `${lexGroupSector(g)} · ${name}`, x, y);
+    if (!small || g === 22) { ctx.font = "10px system-ui"; ctx.fillStyle = "rgba(233,245,236,.5)"; ctx.fillText(LEX_COUNTS[g].toLocaleString() + " words", x, y + 12); } });
+  ctx.textAlign = "start";
+  // word labels when zoomed in: real (meaning-placed) words in view, spread out
+  lexLabels = [];
+  if (view.k >= 3) {
+    const cell = 70, taken = new Set();
+    for (let i = 0, N = LEX.N; i < N && lexLabels.length < 260; i++) {
+      if ((LEX.meta[i] >> 5) !== 1 || lexHidden(lexGroup(i))) continue;
+      const [x, y] = lexScreen(i, r, S); if (x < 0 || y < 10 || x > r.width - 40 || y > r.height) continue;
+      const key = (x / cell | 0) + "," + (y / 18 | 0); if (taken.has(key)) continue; taken.add(key); lexLabels.push(i);
+    }
+    ctx.font = "11px system-ui"; ctx.fillStyle = "rgba(233,245,236,.78)";
+    for (const i of lexLabels) { const [x, y] = lexScreen(i, r, S); ctx.fillText(LEX.words[i], x + 3, y - 3); }
+  }
+  const mark = (i, main) => { const [x, y] = lexScreen(i, r, S); ctx.fillStyle = LEX_COL[lexGroup(i)]; ctx.beginPath(); ctx.arc(x, y, main ? 6 : 4, 0, 7); ctx.fill();
+    ctx.strokeStyle = "#fff"; ctx.lineWidth = main ? 2 : 1; ctx.stroke(); ctx.lineWidth = 1; ctx.font = (main ? "700 14px" : "600 12px") + " system-ui"; ctx.fillStyle = "#e9f5ec"; ctx.fillText(LEX.words[i], x + 8, y - 5); };
+  if (nb) { const [sx, sy] = lexScreen(lexSel, r, S); ctx.strokeStyle = "rgba(198,240,107,.55)"; for (const j of nb) { const [x, y] = lexScreen(j, r, S); ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(x, y); ctx.stroke(); } for (const j of nb) mark(j, false); mark(lexSel, true); }
+  if (lexHover >= 0 && lexHover !== lexSel) mark(lexHover, false);
+}
+function lexNearestPt(mx, my) {
+  if (!LEX) return -1; const r = can.getBoundingClientRect(), S = Math.min(r.width, r.height) * .44 * view.k, cx = r.width / 2 + view.x, cy = r.height / 2 + view.y, k = S / 32000;
+  let best = -1, bd = (view.k >= 3 ? 10 : 6) ** 2, bestReal = -1, bdr = (view.k >= 3 ? 14 : 9) ** 2;
+  for (let i = 0, N = LEX.N; i < N; i++) {
+    const dx = cx + LEX.xy[i * 2] * k - mx; if (dx > 14 || dx < -14) continue; const dy = cy - LEX.xy[i * 2 + 1] * k - my; const dd = dx * dx + dy * dy;
+    if (dd < bdr && (LEX.meta[i] >> 5) === 1 && !lexHidden(lexGroup(i))) { bdr = dd; bestReal = i; }
+    if (dd < bd && !lexHidden(lexGroup(i))) { bd = dd; best = i; }
+  }
+  return bestReal >= 0 ? bestReal : best;
+}
+function lexSelect(i, fly) {
+  lexSel = i; const box = $("#ginfo");
+  if (i < 0 || !LEX) { box.style.display = "none"; drawGrid(); return; }
+  if (fly) { const r = can.getBoundingClientRect(); view.k = Math.max(view.k, 7); const S = Math.min(r.width, r.height) * .44 * view.k; view.x = -LEX.xy[i * 2] / 32000 * S; view.y = LEX.xy[i * 2 + 1] / 32000 * S; }
+  drawGrid();
+  const nb = lexNear(i, 10), v = LEX.vec.subarray(i * 64, i * 64 + 64);
+  box.style.display = "block";
+  box.innerHTML = `<div class="row" style="justify-content:space-between"><h3>${esc(LEX.words[i])}</h3><button id="gx" style="padding:2px 8px">✕</button></div>
+    <div class="small"><span class="chip" style="background:${LEX_COL[lexGroup(i)]}"></span> ${esc(lexLabel(i))}</div>
+    <div class="small">Placed by its ${LEX_HOW[LEX.meta[i] >> 5]}${G && G.vocab.has(MW.stem(LEX.words[i])) ? " · also in your knowledge" : ""}</div>
+    <div class="small" style="margin-top:10px">Nearest in 64-D</div>
+    <div class="nbrs">${nb.map(([j, s]) => `<button data-j="${j}"><span class="chip" style="background:${LEX_COL[lexGroup(j)]}"></span> ${esc(LEX.words[j])} <span class="small">${(s * 100 | 0)}%</span></button>`).join("")}</div>
+    <div class="small">Its 64 coordinates</div>
+    <div class="coords">${[...v].map(x => `<div title="${x}" style="height:${Math.max(2, Math.abs(x) / 127 * 54)}px;${x < 0 ? "background:var(--accent2);opacity:.75" : ""}"></div>`).join("")}</div>
+    <button id="gdef" style="margin-top:10px;width:100%">📖 What does it mean?</button><div id="gdefout" class="small" style="margin-top:6px"></div>`;
+  $("#gx").onclick = () => lexSelect(-1);
+  $("#gdef").onclick = async () => { $("#gdefout").textContent = "Looking it up…"; const d = await defineWord(LEX.words[i]); $("#gdefout").innerHTML = d ? md(d) : "No definition found (needs internet)."; };
+  box.querySelectorAll(".nbrs button").forEach(b => b.onclick = () => lexSelect(+b.dataset.j, true));
 }
 function nearestPt(mx, my) {
   const r = can.getBoundingClientRect(); let best = null, bd = 14 * 14;
@@ -1772,13 +1944,15 @@ can.addEventListener("pointermove", e => {
     if (!drag.d) drag.d = d; view.k = Math.min(12, Math.max(.4, drag.k * d / drag.d)); drag.moved = true; drawGrid(); return;
   }
   if (drag) { const dx = e.offsetX - drag.x, dy = e.offsetY - drag.y; if (Math.abs(dx) + Math.abs(dy) > 4) drag.moved = true; view.x = drag.vx + dx; view.y = drag.vy + dy; if (drag.moved) drawGrid(); return; }
+  if (gridMode === "dict") { const i = lexNearestPt(e.offsetX, e.offsetY), tip = $("#gtip"); if (i !== lexHover) { lexHover = i; drawGrid(); }
+    if (i >= 0) { tip.style.display = "block"; tip.style.left = e.offsetX + 12 + "px"; tip.style.top = e.offsetY + 12 + "px"; tip.innerHTML = `<b>${esc(LEX.words[i])}</b> · ${esc(lexLabel(i))}`; } else tip.style.display = "none"; return; }
   const h = nearestPt(e.offsetX, e.offsetY), tip = $("#gtip");
   if (h !== hover) { hover = h; drawGrid(); }
   if (h) { tip.style.display = "block"; tip.style.left = e.offsetX + 12 + "px"; tip.style.top = e.offsetY + 12 + "px"; tip.innerHTML = `${secChip(h.sector)} <b>${esc(h.w)}</b> · sector ${h.sector}`; } else tip.style.display = "none";
 });
 function hubAt(mx, my) { if (gridMode !== "topics") return null; const r = can.getBoundingClientRect(), S = Math.min(r.width, r.height) * .44 * view.k; return HUBS.find(h => { const [x, y] = toScreen(h, r); return !hidden.has(h.sector) && Math.hypot(x - mx, y - my) < h.r * S; }) || null; }
 function zoomHub(h) { const r = can.getBoundingClientRect(); view.k = Math.min(10, Math.max(1.6, .5 / h.r)); const S = Math.min(r.width, r.height) * .44 * view.k; view.x = -h.x * S; view.y = h.y * S; drawGrid(); status(`🗂 ${h.sector} · ${SECTORS[h.sector]} — ${h.n} words. Click a word to inspect or destroy it.`); }
-const endDrag = e => { pointers.delete(e.pointerId); if (drag && !drag.moved && pointers.size === 0) { const w = nearestPt(e.offsetX, e.offsetY), h = !w && hubAt(e.offsetX, e.offsetY); if (h) zoomHub(h); else select(w); } if (pointers.size === 0) { drag = null; can.classList.remove("drag"); } };
+const endDrag = e => { pointers.delete(e.pointerId); if (drag && !drag.moved && pointers.size === 0 && gridMode === "dict") lexSelect(lexNearestPt(e.offsetX, e.offsetY)); else if (drag && !drag.moved && pointers.size === 0) { const w = nearestPt(e.offsetX, e.offsetY), h = !w && hubAt(e.offsetX, e.offsetY); if (h) zoomHub(h); else select(w); } if (pointers.size === 0) { drag = null; can.classList.remove("drag"); } };
 can.addEventListener("pointerup", endDrag); can.addEventListener("pointercancel", endDrag);
 can.addEventListener("pointerleave", () => { $("#gtip").style.display = "none"; });
 can.addEventListener("wheel", e => {
@@ -1788,6 +1962,7 @@ can.addEventListener("wheel", e => {
 }, { passive: false });
 $("#gfind").addEventListener("keydown", e => {
   if (e.key !== "Enter") return;
+  if (gridMode === "dict") { if (!LEX) return status("The dictionary grid is still loading…"); const i = lexFind(e.target.value); if (i < 0) return status(`"${e.target.value}" isn't in the dictionary.`, "err"); lexSelect(i, true); status(`Found "${LEX.words[i]}" — ${lexLabel(i)}`); return; }
   const t = MW.tokens(e.target.value)[0]; const v = t && G.vocab.get(t.s);
   if (!v) { status(`"${e.target.value}" isn't on the grid yet.`, "err"); return; }
   const p = curPts().find(p => p.v === v);
@@ -1795,15 +1970,15 @@ $("#gfind").addEventListener("keydown", e => {
   select(v); status(`Found "${v.w}" — sector ${v.sector} (${SECTORS[v.sector]})`);
 });
 new ResizeObserver(() => drawGrid()).observe($("#gwrap"));
-function setGridMode(m) { gridMode = m; ls.set("mwai.gridmode", m); $("#gMode").querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.m === m)); view.k = 1; view.x = view.y = 0; drawGrid();
-  $(".ghint").textContent = m === "topics" ? "Each bubble is a topic, with its words gathered around it (close words have similar meanings). Click a bubble to zoom in · drag to pan · scroll/pinch to zoom." : "Each dot = a word in 64 dimensions, squashed to 2D. Colour = sector. Drag to pan · scroll/pinch to zoom · click a word."; }
+function setGridMode(m) { gridMode = m; ls.set("mwai.gridmode", m === "dict" ? "topics" : m); $("#ginfo").style.display = "none"; sel = null; lexSel = -1; $("#gMode").querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.m === m)); view.k = m === "dict" ? (innerWidth < 600 ? .62 : .78) : 1; view.x = view.y = 0; drawGrid();
+  $(".ghint").textContent = m === "dict" ? "All 274,000 dictionary words in 64 dimensions — one island per sector or topic; similar meanings sit together. Scroll/pinch to zoom (names appear), click a word, or search it." : m === "topics" ? "Each bubble is a topic, with its words gathered around it (close words have similar meanings). Click a bubble to zoom in · drag to pan · scroll/pinch to zoom." : "Each dot = a word in 64 dimensions, squashed to 2D. Colour = sector. Drag to pan · scroll/pinch to zoom · click a word."; }
 $("#gMode").querySelectorAll("button").forEach(b => b.onclick = () => setGridMode(b.dataset.m));
 setGridMode(gridMode);
 
 // ---------- knowledge view ----------
 function renderStats() {
   const words = G.vocab.size, chunks = G.chunks.length;
-  $("#kStats").innerHTML = `<div><b>${words}</b>words</div><div><b>64</b>dimensions</div><div><b>${chunks}</b>facts</div><div><b>${DICT ? (DICT.size / 1000 | 0) + "k" : "…"}</b>dictionary</div>`;
+  $("#kStats").innerHTML = `<div><b>${words}</b>words</div><div><b>64</b>dimensions</div><div><b>${chunks}</b>facts</div><div><b>${DICT ? (DICT.size / 1000 | 0) + "k" : "…"}</b>dictionary${LEX ? " · on grid ✓" : ""}</div>`;
   $("#kStarter").checked = useStarter;
   $("#kDocs").innerHTML = docs.length ? docs.map((d, i) => `<div class="doc">${secChip(d.sector)}<b style="font-size:12px">${d.sector}</b><span>${d.url ? `<a href="${esc(d.url)}" target="_blank" rel="noopener" style="color:var(--text)">${esc(d.title)}</a>` : esc(d.title)} <span class="small">· ${d.text.split(/\s+/).length} words</span></span><button class="x" data-i="${i}" title="Delete">✕</button></div>`).join("") : `<div class="small">Nothing yet. Add your notes and they'll be placed on the grid and used in answers.</div>`;
   $("#kDocs").querySelectorAll(".x").forEach(b => b.onclick = () => { docs.splice(+b.dataset.i, 1); saveDocs(); rebuild(); });
