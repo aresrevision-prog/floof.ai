@@ -21,7 +21,8 @@ const T_TOTAL = 52000;      // whole request budget (vercel.json maxDuration is 
 const T_HARD = 57000;       // absolute cut-off, under Vercel's 60s
 const T_ARES = 16000;       // time kept back for the Ares backup
 const T_PRO = 12000;        // a pro attempt may not eat more than this
-const T_CALL = 22000;       // max for any single Gemini call
+const T_CALL = 40000;       // max for any single Gemini call (it streams, so long answers come back cut rather than failing)
+const T_FIRST = 15000;      // a model must start answering within this
 
 let _models = { t: 0, list: null };
 const _bad = {};            // model → { until, why }
@@ -104,42 +105,70 @@ function tooMany(user, pro) { // gentle per-user limit (per server instance): 20
 
 const _ipHits = new Map();
 function ipOf(req) { const h = req.headers || {}; return String(h["x-real-ip"] || String(h["x-forwarded-for"] || "").split(",")[0] || "?").trim(); }
-function ipTooMany(ip) { // per network (catches lots of throwaway accounts from one place): 60/min, 1500/day per server instance
+function ipTooMany(ip) { // per network (catches lots of throwaway accounts from one place): 300/min, 20000/day per server instance — high enough for a whole school on one network
   const t = now(), h = (_ipHits.get(ip) || []).filter(x => t - x < 86400000); h.push(t); _ipHits.set(ip, h);
   if (_ipHits.size > 20000) _ipHits.clear();
-  return h.filter(x => t - x < 60000).length > 60 || h.length > 1500;
+  return h.filter(x => t - x < 60000).length > 300 || h.length > 20000;
 }
 
 // ----- one Gemini call -----
 class GErr extends Error { constructor(msg, code, status, kind) { super(msg); this.code = code; this.status = status; this.kind = kind; } }
-async function gemini(m, key, body, ms) {
+async function gemini(m, key, body, ms) { // streams, so a long answer that runs out of time returns what it has instead of failing as "busy"
   const tc = thinkCfg(m);
   const gen = { ...body.generationConfig };
   if (tc) { gen.thinkingConfig = tc; if (!(tc.thinkingBudget === 0)) gen.maxOutputTokens = Math.min(gen.maxOutputTokens + 4096, 65536); }
-  let r, d;
+  const ctl = new AbortController(), t0 = now();
+  const killAll = setTimeout(() => ctl.abort(), Math.max(1, ms));
+  let first = setTimeout(() => ctl.abort(), Math.min(T_FIRST, ms)); // nothing at all within T_FIRST → this model is stuck
+  let r;
   try {
-    r = await withTimeout(`${API}/models/${m}:generateContent?key=${key}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...body, generationConfig: gen }) }, ms);
-  } catch (e) { throw new GErr(e.name === "AbortError" ? "timeout" : "network: " + e.message, 0, "", e.name === "AbortError" ? "timeout" : "network"); }
-  try { d = await r.json(); } catch (e) { d = null; }
-  if (!d || d.error || !r.ok) {
-    const er = (d && d.error) || {}, msg = er.message || "HTTP " + r.status, st = er.status || "", code = er.code || r.status;
-    const det = JSON.stringify(er.details || "");
-    let kind = "other";
-    if (code === 404 || st === "NOT_FOUND" || /no longer available|not found|not supported for generateContent/i.test(msg)) kind = "gone";
-    else if (code === 429 || st === "RESOURCE_EXHAUSTED") kind = /limit: ?0\b/.test(msg) ? "noquota" : "quota";
-    else if (/API_KEY_INVALID|API key not valid|API key expired/i.test(msg + det) || (code === 403 && /key|leaked|PERMISSION_DENIED|SERVICE_DISABLED/i.test(msg + st + det))) kind = "key";
-    else if (/FAILED_PRECONDITION/.test(st) && /free tier|location|region|billing/i.test(msg)) kind = "region";
-    else if (code === 400 && /think/i.test(msg)) kind = "think";
-    else if (code === 503 || code === 500 || code === 504 || /UNAVAILABLE|overload|INTERNAL|DEADLINE/i.test(st + msg)) kind = "busy";
-    else if (code === 400) kind = "bad";
-    const e = new GErr(msg, code, st, kind);
-    const ra = det.match(/"retryDelay":"(\d+)/); if (ra) e.retry = +ra[1];
-    throw e;
-  }
-  const c = (d.candidates || [])[0] || {};
-  const text = ((c.content && c.content.parts) || []).filter(p => typeof p.text === "string" && !p.thought).map(p => p.text).join("");
-  const why = c.finishReason || (d.promptFeedback && d.promptFeedback.blockReason) || "";
-  return { text, why, blocked: /SAFETY|BLOCK|PROHIBITED|SPII|IMAGE_SAFETY/.test(why) || !!(d.promptFeedback && d.promptFeedback.blockReason), usage: d.usageMetadata || null };
+    try {
+      r = await fetch(`${API}/models/${m}:streamGenerateContent?alt=sse&key=${key}`, { method: "POST", signal: ctl.signal, headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...body, generationConfig: gen }) });
+    } catch (e) { throw new GErr(e.name === "AbortError" ? "timeout" : "network: " + e.message, 0, "", e.name === "AbortError" ? "timeout" : "network"); }
+    if (!r.ok) {
+      let d = null; try { d = await r.json(); } catch (e) {}
+      if (Array.isArray(d)) d = d[0];
+      const er = (d && d.error) || {}, msg = er.message || "HTTP " + r.status, st = er.status || "", code = er.code || r.status;
+      const det = JSON.stringify(er.details || "");
+      let kind = "other";
+      if (code === 404 || st === "NOT_FOUND" || /no longer available|not found|not supported for generateContent/i.test(msg)) kind = "gone";
+      else if (code === 429 || st === "RESOURCE_EXHAUSTED") kind = /limit: ?0\b/.test(msg) ? "noquota" : "quota";
+      else if (/API_KEY_INVALID|API key not valid|API key expired/i.test(msg + det) || (code === 403 && /key|leaked|PERMISSION_DENIED|SERVICE_DISABLED/i.test(msg + st + det))) kind = "key";
+      else if (/FAILED_PRECONDITION/.test(st) && /free tier|location|region|billing/i.test(msg)) kind = "region";
+      else if (code === 400 && /think/i.test(msg)) kind = "think";
+      else if (code === 503 || code === 500 || code === 504 || /UNAVAILABLE|overload|INTERNAL|DEADLINE/i.test(st + msg)) kind = "busy";
+      else if (code === 400) kind = "bad";
+      const e = new GErr(msg, code, st, kind);
+      const ra = det.match(/"retryDelay":"(\d+)/); if (ra) e.retry = +ra[1];
+      throw e;
+    }
+    let text = "", why = "", usage = null, blocked = false, buf = "", alive = false;
+    const rd = r.body.getReader(), dec = new TextDecoder();
+    try {
+      for (;;) {
+        const { value, done } = await rd.read(); if (done) break;
+        buf += dec.decode(value, { stream: true }); let i;
+        while ((i = buf.indexOf("\n")) >= 0) {
+          const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+          if (!line.startsWith("data:")) continue;
+          let d; try { d = JSON.parse(line.slice(5)); } catch (e) { continue; }
+          if (!alive) { alive = true; clearTimeout(first); first = null; } // thinking chunks count as alive too
+          if (d.error) throw new GErr(d.error.message || "stream error", d.error.code || 500, d.error.status || "", "busy");
+          const c = (d.candidates || [])[0] || {};
+          text += ((c.content && c.content.parts) || []).filter(p => typeof p.text === "string" && !p.thought).map(p => p.text).join("");
+          if (c.finishReason) why = c.finishReason;
+          if (d.promptFeedback && d.promptFeedback.blockReason) { why = d.promptFeedback.blockReason; blocked = true; }
+          if (d.usageMetadata) usage = d.usageMetadata;
+        }
+      }
+    } catch (e) {
+      if (e instanceof GErr) throw e;
+      if (!(e.name === "AbortError" && text.trim())) throw new GErr(e.name === "AbortError" ? "timeout" : "network: " + e.message, 0, "", e.name === "AbortError" ? "timeout" : "network");
+      why = "MAX_TOKENS"; text += " …"; // out of time mid-answer: keep what we have
+    }
+    if (/SAFETY|BLOCK|PROHIBITED|SPII|IMAGE_SAFETY/.test(why)) blocked = true;
+    return { text, why, blocked, usage, secs: (now() - t0) / 1000 };
+  } finally { clearTimeout(killAll); if (first) clearTimeout(first); }
 }
 
 // ----- Ares backup: one flat prompt -----
@@ -244,7 +273,7 @@ function noteFail(m, e, key) {
   if (k === "gone") { markBad(m, 6 * 3600e3, "retired/404"); _models.t = 0; }
   else if (k === "noquota") markBad(m, 3600e3, "no free quota (limit: 0)");
   else if (k === "quota") markBad(m, Math.min(Math.max((e.retry || 60) * 1000, 20000), 600000), "quota");
-  else if (k === "timeout") markBad(m, 120000, "timeout");
+  else if (k === "timeout") markBad(m, 30000, "timeout");
   else if (k === "busy") markBad(m, 30000, "overloaded");
   else if (k === "bad" || k === "other" || k === "network") markBad(m, 60000, k);
   lastError = { at: new Date().toISOString(), model: m, kind: k, code: e.code || null, msg: clean(e.message, key) };
@@ -408,7 +437,7 @@ export default async function handler(req, res) {
     if (sys.trim()) body.systemInstruction = { parts: [{ text: sys }] };
     for (const m of order) {
       if (stop) break;
-      const reserve = (aresOn ? T_ARES : 0) + (extra.length ? 15000 : 0), budget = Math.min(left() - reserve, isPro(m) ? T_PRO : extra.length && !hasImg ? 15000 : T_CALL);
+      const reserve = (aresOn ? T_ARES : 0) + (extra.length && !hasImg ? 12000 : 0), budget = Math.min(left() - reserve, isPro(m) ? T_PRO : T_CALL);
       if (budget < 4000) { errs.push("out of time"); break; }
       for (let attempt = 0; attempt < 2; attempt++) { // 2nd attempt only if the model rejected our thinkingConfig
         try {
