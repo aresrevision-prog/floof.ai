@@ -2419,7 +2419,7 @@ function gwMaths(text) { // sums go to a real calculator, never to word-guessing
 async function gwAnswer(text, facts, onTextAll, signal, hist) {
   let sent = ""; const onText = full => { if (full.startsWith(sent)) { const d = full.slice(sent.length); if (d) onTextAll(d); } else onTextAll(full); sent = full; }; // Floof adds each piece to the reply, so send only what's new
   const calc = gwMaths(text); if (calc) { onText(calc + "\n\n*(worked out with the calculator — Avish AI never guesses sums)*"); return; }
-  if (/\b(which|what) (ai|model|brain)\b|\bwho (are|made|built|created) (you|u)\b|\byour name\b|\bwhat are you\b/i.test(text)) { onText("I'm **Avish AI 1.3**, made by AdminAT at MagicWinter. I run fully on your device: word types (Markov) → context areas on a 64-D word grid → a team: 1 reader, 2 interpreters, 2 drafters, 2 checkers, 2 deciders and 1 judge."); return; }
+  if (/\b(which|what) (ai|model|brain)\b|\bwho (are|made|built|created) (you|u)\b|\byour name\b|\bwhat are you\b/i.test(text)) { onText("I'm **Avish AI 1.3**, made by AdminAT at MagicWinter. I run fully on your device: word types (Markov) → context areas on a 64-D word grid → a team: 1 reader, 2 interpreters, 3 drafters, 2 checkers, 2 deciders and 1 judge."); return; }
   const M = await gwLoad(p => status(`🧪 Downloading Avish AI 1.3 grid (one time, ~3 MB)… ${p}%`));
   try { if (await avishTeam(M, text, facts, hist, onText, signal)) return; } catch (e) { if (e.name === "AbortError" || (signal && signal.aborted)) return; console.warn("Avish team failed, tiny transformer only", e); }
   const C = gwContext(M, text, facts), ctxSc = gwCtxScores(M, C.areas, C.aw), used = new Set();
@@ -2452,7 +2452,7 @@ let _avBrain = null; // parallel team members share one load
 function avishBrain() { if (engine && loadedModel) return Promise.resolve(engine); if (!_avBrain) _avBrain = avishBrain1().finally(() => { _avBrain = null; }); return _avBrain; }
 // The transformer does NOT write the answer: for each sentence it picks the best of Avish's 5 drafts and only fixes the grammar.
 // Code then checks it kept Avish's words — if it slipped in its own content, Avish's draft is used as it is.
-const AV_SMALL = new Set("a an the of in on at by to for from with and or but so as is are was were be been being has have had do does did it its this that these those there their they them he she his her we our you your i my me not no very also than then which who what when where how can could will would should may might into onto over under about".split(" "));
+const AV_SMALL = new Set("a an the of in on at by to for from with and or but so as is are was were be been being has have had do does did it its this that these those there their they them he she his her we our you your i my me not no very also than then which who what when where how can could will would should may might into onto over under about between after before during because through against without within around across among until while since if although though both some any many much more most such each all".split(" "));
 function avishKept(fixed, draft) { // share of the transformer's content words that came from Avish's draft
   const stem = w => w.toLowerCase().replace(/(ies|es|s|ed|ing|ly)$/, "");
   const src = new Set((draft.match(/[a-z']+/gi) || []).map(stem)), ws = (fixed.match(/[a-z']+/gi) || []).filter(w => !AV_SMALL.has(w.toLowerCase()));
@@ -2538,12 +2538,34 @@ async function avishTeam(M, text, facts, hist, onText, signal) {
     short[k].sort((a, b) => b.chk.total - a.chk.total); short[k][0].toks.forEach(t => used.add(t));
     if (signal && signal.aborted) return true;
   }
-  log.push(`✍ Drafters: 2 × 5 drafts per sentence (20 total)`, `✅ Checkers: grammar + topic → shortlist of ${short[0].length} per sentence`);
-  const lists = short.map(l => l.map(d => gwDetok(M, d.toks)));
+  const lists = short.map(l => l.map(d => gwDetok(M, d.toks))); let via = "";
+  // ✍ Drafter C (transformer): writes fluent drafts but may ONLY use content words from the context areas (closest to the centre first) — checked in code
+  status("🧪 Avish team: drafting (transformer)…");
+  const areaWords = [...Array(M.UNK0).keys()].filter(t => ctxSc.inA && ctxSc.inA[t] && M.content.has(M.tokTag[t]) && /^[a-z]/i.test(M.words[t])).sort((a, b) => ctxSc[b] - ctxSc[a]).map(t => M.words[t].toLowerCase()).filter((w, i, a) => a.indexOf(w) === i).slice(0, 90);
+  let nC = 0;
+  try {
+    const stem = w => w.toLowerCase().replace(/(ies|es|s|ed|ing|ly|er|est)$/, "");
+    const allowed = new Set([...areaWords, ...topics, ...(R.text.toLowerCase().match(/[a-z']+/g) || []), ..."because start started began begin cause caused make made get got take took give gave come came go went see saw know knew think use used find found want need call called many much more most some other others such only also often usually very well each every all both lot lots kind way thing things people time part one two first new old good bad big small long little right same different help helps keep kept become became led lead happen happened".split(" ")].map(stem)); // + everyday words any sentence needs
+    const r = await avishAsk(`You are Drafter C in Avish AI's team (made by AdminAT). Write clear, simple, fluent English.
+For the question, write 5 different versions of sentence 1 (a direct answer) and 5 versions of sentence 2 (one extra useful detail). Each sentence 6-16 words.
+RULE: every noun, verb, adjective and adverb MUST come from the WORD LIST (any form, e.g. plural or past tense is fine) or be a very common everyday word (start, cause, make, many, people…); words earlier in the list are closer to the topic's centre, so prefer them. Small words (the, a, of, is, was, and, to, in, it, they, can, by…) are free. Be as correct as the words allow.
+Reply with ONLY JSON: {"s1":["…5 sentences"],"s2":["…5 sentences"]}`,
+      `Question: ${R.text}${I1 && I1.opener ? `\nSuggested starts: "${I1.opener}…" and "${I1.opener2}…"` : ""}\nWORD LIST: ${areaWords.join(", ")}`, signal, 500);
+    const m = r && r.text.match(/\{[\s\S]*\}/); const j = m ? JSON.parse(m[0]) : {};
+    [j.s1, j.s2].forEach((arr, k) => {
+      const good = (Array.isArray(arr) ? arr : []).map(x => String(x).replace(/\s+/g, " ").trim()).filter(x => {
+        const ws = (x.match(/[a-z']+/gi) || []).filter(w => !AV_SMALL.has(w.toLowerCase()) && w.length > 2);
+        return x.length > 10 && ws.length && ws.filter(w => allowed.has(stem(w))).length / ws.length >= .8; // only area words (+ everyday words)
+      }).slice(0, 3);
+      nC += good.length; lists[k].unshift(...good);
+    });
+    if (r && !via) via = r.via;
+  } catch (e) { if (e.name === "AbortError") throw e; console.warn("Avish: drafter C unavailable", e); }
+  log.push(`✍ Drafters: A + B wrote 2 × 5 per sentence; C (transformer) wrote fluent drafts from the area words only — ${nC} passed the word check`, `✅ Checkers: grammar + topic → shortlist of ${lists[0].length} per sentence`);
   // ⚖⚖ Deciders (in parallel) → 👩‍⚖️ Judge if they disagree
   status("🧪 Avish team: deciding…");
   const Ds = await Promise.all([0, 1].map(n => avishDecide(n, R, lists, signal).catch(e => { if (e.name === "AbortError") throw e; return null; }))); if (signal && signal.aborted) return true;
-  let final, via = (Ds[0] || Ds[1] || I1 || {}).via || "";
+  let final; via = via || (Ds[0] || Ds[1] || I1 || {}).via || "";
   if (Ds[0] && Ds[1]) {
     const same = Ds[0].out.every((o, k) => o.pick === Ds[1].out[k].pick);
     log.push(`⚖ Deciders: ${Ds.map((D, n) => `${n + 1} picked ${D.out.map(o => o.pick + 1).join(" & ")}`).join(", ")}`);
@@ -2556,7 +2578,7 @@ async function avishTeam(M, text, facts, hist, onText, signal) {
   return true;
 }
 window.Floof.addProvider({ id: "gridwriter", label: "🧪 Avish AI 1.3 — by AdminAT", ph: "", nokey: true, ok: () => true, vision: false,
-  help: "Avish AI 1.3 by AdminAT — a team built on your design: 👀 1 reader → 🧠 2 interpreters (a transformer works out what you mean and picks the context areas) → ✍ 2 drafters (Markov word types + words from the 64-D grid areas, 5 drafts each per sentence) → ✅ 2 checkers (grammar + topic) → ⚖ 2 deciders (pick a draft, fix grammar only) → 👩‍⚖️ 1 judge (only if the deciders disagree). Transformer: Floof Cloud when signed in, else the top-menu brain or 🪶 Mini. Sums go to a calculator.",
+  help: "Avish AI 1.3 by AdminAT — a team built on your design: 👀 1 reader → 🧠 2 interpreters (a transformer works out what you mean and picks the context areas) → ✍ 3 drafters (A + B: Markov word types + words from the 64-D grid areas; C: the transformer writes fluent drafts using only the area words) → ✅ 2 checkers (grammar + topic) → ⚖ 2 deciders (pick a draft, fix grammar only) → 👩‍⚖️ 1 judge (only if the deciders disagree). Transformer: Floof Cloud when signed in, else the top-menu brain or 🪶 Mini. Sums go to a calculator.",
   list: async () => [{ id: "gw1", name: "Avish AI 1.3" }],
   stream: async ({ sys, msgs, onText, signal }) => {
     const last = [...msgs].reverse().find(m => m.role === "user"), text = String(last && last.content || "");
