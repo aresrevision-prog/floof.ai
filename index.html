@@ -172,6 +172,15 @@ form#form{border-top:0;padding:10px 16px 14px;background:linear-gradient(0deg,va
 #send{border-radius:14px;padding:10px 18px;flex-shrink:0;box-shadow:0 4px 14px rgba(61,220,132,.25)}
 #send:hover:not(:disabled){filter:brightness(1.07)}
 @media(max-width:560px){.inrow .tog{width:32px;height:32px;font-size:15px}#send{padding:9px 13px}}
+
+/* 🎨 Arti images */
+figure.arti{margin:6px 0;max-width:520px}
+figure.arti img{width:100%;border-radius:14px;border:1px solid var(--line);display:block;min-height:220px;background:linear-gradient(110deg,#0f2419 30%,#1a3a28 50%,#0f2419 70%);background-size:300% 100%;animation:artiload 1.4s linear infinite}
+figure.arti.ok img{min-height:0;animation:none;background:none}
+figure.arti.bad img{display:none}figure.arti.bad::before{content:"🎨 Arti couldn't paint that one — try again in a moment.";color:var(--dim);font-size:13px}
+@keyframes artiload{to{background-position:-300% 0}}
+figure.arti figcaption{display:flex;gap:10px;align-items:center;margin-top:6px;font-size:12px}
+figure.arti figcaption a{color:var(--dim)}
 /* grid view */
 .gtool{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--line)}
 .gtool input{max-width:220px}
@@ -963,7 +972,8 @@ function md(src) {
       const run = /^(js|javascript|python|py)$/.test(lang) ? `<button class="run">▶ Run</button>` : /^(html|svg)$/.test(lang) ? `<button class="open">▶ Open</button>` : "";
       return `<pre data-lang="${esc(lang)}"><div class="cbtns">${run}<button class="dl" title="Download">⬇</button><button class="copy">Copy</button></div><code>${esc(code.replace(/\n$/, ""))}</code></pre>`;
     }
-    const h = esc(p).replace(/`([^`\n]+)`/g, "<code>$1</code>").replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>")
+    const h = esc(p).replace(/!\[([^\]\n]*)\]\((https:\/\/image\.pollinations\.ai\/[^)\s]+)\)/g, (m, alt, url) => `<figure class="arti"><img src="${url}" alt="${alt}" loading="lazy" onload="this.parentNode.classList.add('ok')" onerror="this.parentNode.classList.add('bad')"><figcaption><button type="button" class="artidl" data-u="${url}">⬇ Download</button><a href="${url}" target="_blank" rel="noopener">Open full size ↗</a></figcaption></figure>`)
+      .replace(/`([^`\n]+)`/g, "<code>$1</code>").replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>")
       .replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<i>$2</i>").replace(/^#{1,6} (.+)$/gm, "<b>$1</b>").replace(/^\s*[-*] (.+)$/gm, "• $1");
     return h.split(/\n{2,}/).filter(x => x.trim()).map(x => `<p>${x.replace(/\n/g, "<br>")}</p>`).join("");
   }).join("");
@@ -1544,7 +1554,7 @@ idb.get("mwai.mem").then(v => { if (Array.isArray(v)) mems = v; renderMems(); })
 const PV = {};
 let cloud = ls.get("mwai.cloud", null), abortCtl = null, modelList = [];
 if (!cloud) cloud = { pv: "", keys: {}, model: {}, fix: true };
-if (cloud.pv && !PV[cloud.pv] && !["floof", "athena", "gridwriter", "construct"].includes(cloud.pv)) cloud.pv = ""; delete cloud.keys.claude; delete cloud.model.claude; ls.del("mwai.claude"); ls.set("mwai.cloud", cloud); // paid option removed: wipe any old key
+if (cloud.pv && !PV[cloud.pv] && !["floof", "athena", "gridwriter", "construct", "arti"].includes(cloud.pv)) cloud.pv = ""; delete cloud.keys.claude; delete cloud.model.claude; ls.del("mwai.claude"); ls.set("mwai.cloud", cloud); // paid option removed: wipe any old key
 let cloudBad = false, cloudBadTimer = 0; // set when the key/server was rejected, so Floof falls back instead of erroring
 const cloudReady = () => !cloudBad && !!PV[cloud.pv] && PV[cloud.pv].ok(cloud.keys[cloud.pv] || "");
 // keyless backup brain (Pollinations): used when no other brain works, so Floof still understands instead of only matching grid sentences
@@ -2591,7 +2601,14 @@ async function avishFixTypos(text, M) { // "wat causd wolrd war 1" → "what cau
       const d = editDist(lw, c, max); if (d > max) continue;
       const sc = d * 10 + Math.log(rank) - (isSwap(lw, c) ? 4 : 0) - (c[0] === lw[0] ? 1 : 0) - (c.length === lw.length + 1 && subseq(lw, c) ? 4 : 0); /* a missed letter is the commonest typo */ if (sc < bs) { bs = sc; best = c; }
     }
-    if (!best && DICT && !DICT.has(lw)) { const sg = suggest(lw); if (sg) best = sg; } // rarer words from the 274k dictionary
+    if (DICT && !DICT.has(lw)) { // rarer words from the 274k dictionary — and a missed letter beats a changed letter ("dragn" → dragon, not drawn)
+      const miss = c => c && c.length === lw.length + 1 && subseq(lw, c);
+      if (!best) best = suggest(lw);
+      else if (!miss(best) && !isSwap(lw, best) && lw.length >= 4) { // try every one-missing-letter spelling that's a real word
+        const ins = []; for (let i = 0; i <= lw.length; i++) for (const ch of "abcdefghijklmnopqrstuvwxyz") { const c = lw.slice(0, i) + ch + lw.slice(i); if (DICT.has(c) && !ins.includes(c)) ins.push(c); }
+        if (ins.length === 1) best = ins[0];
+      }
+    }
     if (!best || (DICT && DICT.has(lw) && bs >= 20)) return w; // a real (rare) word, not a typo
     fixes.push(w + "→" + best); return w[0] === w[0].toUpperCase() && w.length > 1 ? best[0].toUpperCase() + best.slice(1) : best;
   });
@@ -2773,6 +2790,41 @@ async function dlDel(it, b) {
 }
 $("#dlBtn").onclick = () => { $("#dlm").classList.add("on"); dlRender(); };
 $("#dlX").onclick = () => $("#dlm").classList.remove("on");
+// ---------- 🎨 Arti — free image maker (Pollinations FLUX, no key, 25 images per person per day on this device) ----------
+const ARTI_MAX = 25;
+const ARTI_BAD = /\b(nude|naked|nsfw|porn|sex|sexy|sexual|explicit|erotic|hentai|lingerie|underwear|bikini|topless|breasts?|genitals?|gore|gory|beheaded|dismember|corpse|blood ?bath|suicide|self[- ]harm|swastika|nazi|terroris|bomb making|weapon blueprint)\w*/i;
+const ARTI_KID = /\b(child|children|kid|kids|boy|girl|teen|teenager|minor|baby|toddler|schoolgirl|schoolboy|young)\b/i;
+function artiDayKey() { const d = new Date(); return "arti." + d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate(); }
+function artiUsed() { return ls.get(artiDayKey(), 0); }
+window.Floof.addProvider({ id: "arti", label: "🎨 Arti — free image maker (25 a day)", ph: "", nokey: true, ok: () => true, vision: false,
+  help: "Arti makes pictures from your description — free, no key (FLUX model via Pollinations). Say the style (photo, cartoon, anime, pixel art, watercolour, 3D…) and the shape (wide / tall). 25 images per person per day on this device. Pictures only — no videos.",
+  list: async () => [{ id: "arti1", name: `Arti · ${Math.max(0, ARTI_MAX - artiUsed())} of ${ARTI_MAX} left today` }],
+  stream: async ({ msgs, onText }) => {
+    const last = [...msgs].reverse().find(m => m.role === "user"); let text = String(last && last.content || "").trim();
+    const done = t => { onText(t); return { in: 0, out: 0, model: "🎨 Arti", finish: "" }; };
+    if (/\b(who|what) (are|is) (you|u|arti)\b|\byour name\b/i.test(text)) return done("I'm **Arti** 🎨, Floof AI's image maker. Describe a picture — the subject, the style (photo, cartoon, anime, pixel art, watercolour, 3D) and the shape (wide or tall) — and I'll paint it. I can make 25 images per person per day, for free.");
+    if (/\b(video|animation|animate|movie|clip|gif)\b/i.test(text) && !/\b(picture|image|poster|thumbnail|cover)\b/i.test(text)) return done("I can only make **pictures**, not videos — free video AI isn't available without paying. I can make a still image of the scene instead: just describe it.");
+    if (ARTI_BAD.test(text) || (ARTI_KID.test(text) && /\b(hot|sexy|kiss|date|dating|romantic|love|bed|bath|swim)\w*/i.test(text))) return done("I can't make that picture. Try something else — a scene, a character, a poster, a landscape or a cool object.");
+    const used = artiUsed(); if (used >= ARTI_MAX) return done(`You've used all **${ARTI_MAX}** of today's images. Arti refills at midnight — see you tomorrow! 🎨`);
+    try { text = await avishFixTypos(text, null); } catch {} // "a dragn in spcae" → "a dragon in space"
+    const prompt = text.replace(/^(please\s+)?(can you\s+|could you\s+)?(make|draw|create|generate|paint|show)( me)?( an?| the)?( image| picture| pic| drawing)?( of)?\s*/i, "").slice(0, 600) || text;
+    const wide = /\b(wide|landscape|banner|wallpaper for (pc|laptop|desktop)|youtube thumbnail|16:9)\b/i.test(text), tall = /\b(tall|portrait|phone wallpaper|poster|9:16)\b/i.test(text);
+    const [w, h] = wide ? [1280, 720] : tall ? [768, 1152] : [1024, 1024];
+    const seed = Math.floor(Math.random() * 1e9);
+    const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt + ", high quality, detailed")}?width=${w}&height=${h}&model=flux&seed=${seed}&nologo=true&safe=true&referrer=floofai`;
+    ls.set(artiDayKey(), used + 1); refreshModels?.();
+    status("🎨 Arti is painting… (about 5-15 seconds)");
+    setTimeout(() => status("Ready"), 15000);
+    return done(`![${prompt.replace(/[\[\]()]/g, "")}](${url})\n\n🎨 *Arti · image ${used + 1} of ${ARTI_MAX} today*`);
+  }
+});
+document.addEventListener("click", async e => { // download the picture as a file
+  const b = e.target.closest(".artidl"); if (!b) return;
+  b.disabled = true; b.textContent = "Saving…";
+  try { const r = await fetch(b.dataset.u); const bl = await r.blob(); const a = document.createElement("a"); a.href = URL.createObjectURL(bl); a.download = "arti-" + Date.now() + ".jpg"; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); b.textContent = "✓ Saved"; }
+  catch { window.open(b.dataset.u, "_blank"); b.textContent = "⬇ Download"; }
+  b.disabled = false;
+});
 // ---------- 🏗 Construct AI 1.4 — by AdminHF: a coding team built from our AIs ----------
 // 👀 Reader (Avish's typo fixer + task/language detection) → 🗺 Planner → ⌨ Coder → 🔍 Checker (syntax checks in code) → 🔧 Fixer (up to 2 rounds)
 // → then Floof's Auto-test runs the program for real (HTML / JS / Python) and sends any crash back to Construct to fix.
