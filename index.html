@@ -119,6 +119,15 @@ body.aurora main{background:radial-gradient(900px 500px at 10% -10%,color-mix(in
 .chip{font-size:11px;padding:2px 8px;border-radius:99px;border:1px solid var(--line);color:var(--dim);background:var(--panel)}
 .chip b{font-weight:700}
 .cursor::after{content:"▍";color:var(--accent);animation:b 1s steps(1) infinite}@keyframes b{50%{opacity:0}}
+.thinking{display:inline-flex;align-items:center;gap:10px;color:var(--dim);font-size:13.5px;padding:2px 0}
+.thinking .dots{display:inline-flex;gap:4px}.thinking .dots i{width:7px;height:7px;border-radius:50%;background:var(--accent);animation:fb 1.1s ease-in-out infinite}
+.thinking .dots i:nth-child(2){animation-delay:.15s;background:var(--accent2)}.thinking .dots i:nth-child(3){animation-delay:.3s}
+@keyframes fb{0%,80%,100%{transform:translateY(0) scale(.7);opacity:.45}40%{transform:translateY(-5px) scale(1);opacity:1}}
+.thinking b{font-variant-numeric:tabular-nums;color:var(--text);font-weight:600}
+.thinking .ph{opacity:.85;animation:fp 2.4s ease-in-out infinite}@keyframes fp{50%{opacity:.45}}
+.typing>*:last-child::after,.typing:not(:has(*))::after{content:"";display:inline-block;width:8px;height:1.05em;margin-left:2px;vertical-align:-2px;border-radius:2px;background:linear-gradient(var(--accent),var(--accent2));box-shadow:0 0 8px var(--accent);animation:b .8s steps(1) infinite}
+.chip.took{color:var(--accent)}
+@media (prefers-reduced-motion:reduce){.thinking .dots i,.thinking .ph}
 #empty{text-align:center;color:var(--dim);margin-top:10vh}
 #empty .logo{width:84px;height:84px;margin:0 auto 14px}
 .sugs{display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-top:16px}
@@ -891,8 +900,38 @@ function renderChats() {
     box.appendChild(d);
   });
 }
+// working timer + typing animation for brain replies
+function thinker(out) {
+  const t0 = performance.now(), phases = ["Reading your message", "Thinking", "Working it out", "Writing"];
+  out.classList.remove("cursor");
+  out.innerHTML = `<span class="thinking"><span class="dots"><i></i><i></i><i></i></span><span class="ph">Reading your message</span><b>0.0s</b></span>`;
+  const ph = out.querySelector(".ph"), sec = out.querySelector(".thinking b");
+  const iv = setInterval(() => { const s = (performance.now() - t0) / 1000; if (sec?.isConnected) { sec.textContent = s.toFixed(1) + "s"; ph.textContent = phases[Math.min(phases.length - 1, Math.floor(s / 2.5))] + "…"; } }, 100);
+  return { secs: () => (performance.now() - t0) / 1000, stop: () => clearInterval(iv) };
+}
+function typer(out, onStart) { // reveals text smoothly; long answers speed up so they never take more than ~2.5s to finish appearing
+  let target = "", shown = 0, raf = 0, last = 0, started = false, resolve = null, fast = false;
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const render = () => { out.innerHTML = md(target.slice(0, shown)); scroll(); };
+  const tick = now => {
+    raf = 0; const dt = Math.min(100, now - (last || now)); last = now;
+    const left = target.length - shown;
+    if (left > 0) {
+      const cps = fast || reduce ? 1e9 : Math.max(90, left / 1.6); // at least 90 chars/s, faster when there's a lot waiting
+      let n = Math.max(1, Math.round(cps * dt / 1000));
+      let k = shown + n; while (k < target.length && /\S/.test(target[k]) && k - shown < n + 12) k++; // end on a word boundary
+      shown = Math.min(target.length, k); render();
+    }
+    if (shown < target.length) raf = requestAnimationFrame(tick); else { last = 0; if (resolve) { resolve(); resolve = null; } }
+  };
+  return {
+    push(d) { if (!started) { started = true; onStart?.(); out.classList.add("typing"); } target += d; if (!raf) raf = requestAnimationFrame(tick); },
+    done() { return shown >= target.length ? Promise.resolve() : new Promise(r => { resolve = r; setTimeout(() => { fast = true; }, 4000); }); },
+    finish() { fast = true; shown = target.length; if (raf) cancelAnimationFrame(raf); raf = 0; out.classList.remove("typing"); if (resolve) { resolve(); resolve = null; } }
+  };
+}
 function srcHTML(src, u) {
-  const chips = (u?.fix ? [`<span class="chip">✏️ Read as: ${esc(u.fix)}</span>`] : []).concat(u?.mem?.length ? [`<span class="chip" style="color:var(--accent2)">💾 Remembered: ${u.mem.map(esc).join(" · ")}</span>`] : []).concat(u ? [`<span class="chip">🧠 <b>${esc(u.type)}</b>${u.terms ? " · " + esc(u.terms) : ""}${u.sector ? " · " + secChip(u.sector) + " " + u.sector : ""}</span>`] : [])
+  const chips = (u?.secs ? [`<span class="chip took">⏱ ${u.secs < 60 ? u.secs.toFixed(1) + "s" : Math.floor(u.secs / 60) + "m " + Math.round(u.secs % 60) + "s"}</span>`] : []).concat(u?.fix ? [`<span class="chip">✏️ Read as: ${esc(u.fix)}</span>`] : []).concat(u?.mem?.length ? [`<span class="chip" style="color:var(--accent2)">💾 Remembered: ${u.mem.map(esc).join(" · ")}</span>`] : []).concat(u ? [`<span class="chip">🧠 <b>${esc(u.type)}</b>${u.terms ? " · " + esc(u.terms) : ""}${u.sector ? " · " + secChip(u.sector) + " " + u.sector : ""}</span>`] : [])
     .concat((src || []).map(s => s.url ? `<a class="chip" href="${esc(s.url)}" target="_blank" rel="noopener">${secChip(s.sector)} <b>${s.sector}</b> ${esc(s.title)} ↗</a>` : `<span class="chip">${secChip(s.sector)} <b>${s.sector}</b> ${esc(s.title)}</span>`));
   return chips.length ? `<div class="srcs">${chips.join("")}</div>` : "";
 }
@@ -1094,7 +1133,7 @@ async function sendCore(override, extra = {}) {
   busy = true; $("#send").disabled = true; $("#stop").hidden = false;
   let stopped = false, fallBack = false;
   status(hits.length ? `Understood (${u.type}) · grid found ${hits.length} fact${hits.length > 1 ? "s" : ""} — writing…` : `Understood (${u.type}) — writing…`);
-  let reply = "", finishWhy = "";
+  let reply = "", finishWhy = "", typing = null, timer = null;
   try {
     const facts = hits.length ? "\n\nNotes found by a keyword search of the user's knowledge (they may be off-topic). Use a note only if it clearly answers what the user actually asked; otherwise ignore it and answer from your own knowledge. Never mention the notes or the search:\n" + hits.map((h, i) => `[${i + 1}] ${h.text}`).join("\n") : "";
     const guide = (chat.msgs.length > 2 ? "\n\nThis is an ongoing conversation: use everything said earlier in this chat (names, details, decisions, code) and answer in that context. Resolve words like 'it', 'that' or 'the code' from the previous messages." : "") + (ty.fixes.length ? `\n\nA spell-checker guessed the message might mean: "${ty.text}" — use that only if it makes more sense than the original.` : "") + `\n\nWork out what the user really means (they may write casually, briefly or with typos), then answer that directly. Answer every part of the message. If it's genuinely ambiguous, give your best reading and briefly say what you assumed.` + (info.type === "summary" ? (words > 120 && !/\b(summari[sz]e|summary|tl;?dr|main points|key points)\b/i.test(text) ? " It is long: read ALL of it. If it contains a question, task or instructions anywhere (start, middle or end), do exactly that. Only if it is just pasted text with no request, summarise its main points and offer to go deeper." : " Summarise its main points clearly, then offer to go deeper.") : "")
@@ -1112,7 +1151,8 @@ async function sendCore(override, extra = {}) {
 When fixing: find the root cause, explain it in one line, and return the FULL corrected program.` : "";
     const plug = extra.plugin ? `\n\n🧩 PLUGIN "${extra.plugin.name}" is on for this message — follow it: ${extra.plugin.prompt}` : "";
     const sys = SYSTEM + edu + memoryPrompt() + guide + tools + coder + plug + (coderOn ? "" : facts);
-    let t = 0; const onT = d => { reply += d; const now = performance.now(); if (now - t > 50) { out.innerHTML = md(reply); scroll(); t = now; } };
+    const tk = thinker(out), tw = typer(out, () => tk.stop()); typing = tw; timer = tk; window.__typer = tw;
+    const onT = d => { reply += d; tw.push(d); };
     if (cloudReady()) {
       const hist = [];
       for (const m of fitHistory(chat.msgs, sys.length, 120000)) { // turns must alternate, starting with the user
@@ -1121,10 +1161,12 @@ When fixing: find the root cause, explain it in one line, and return the FULL co
       }
       if (extra.full && hist.length) hist.at(-1).img = extra.full;
       const us = await cloudStream(sys, hist, onT); finishWhy = us.finish || "";
+      await tw.done();
       status(`Ready ✓ · ${us.model || curModel()} · ${us.in + us.out} tokens · free`);
     } else if (!engine) { // no key / server down: keyless backup brain
       const hist = fitHistory(chat.msgs, sys.length, 40000);
       const us = await freeStream(sys, hist, onT); finishWhy = us.finish || "";
+      await tw.done();
       status("Ready ✓ · free backup brain");
     } else {
       const history = fitHistory(chat.msgs, sys.length);
@@ -1134,6 +1176,7 @@ When fixing: find the root cause, explain it in one line, and return the FULL co
         extra_body: loadedModel.startsWith("Qwen3") ? { enable_thinking: false } : undefined
       });
       for await (const chunk of stream) onT(chunk.choices[0]?.delta?.content || "");
+      await tw.done();
       status("Ready ✓");
     }
   } catch (e) {
@@ -1151,6 +1194,7 @@ When fixing: find the root cause, explain it in one line, and return the FULL co
     else status("Error: " + (e.message || e), "err");
   } finally {
     unlockUI(); // first, so nothing below can leave the app locked
+    typing?.finish(); timer?.stop(); if (timer) u.secs = +timer.secs().toFixed(1);
     out.classList.remove("cursor");
     const raw = reply;
     reply = reply.replace(/<think>[\s\S]*?<\/think>/g, "");
@@ -2103,7 +2147,7 @@ $("#input").addEventListener("keydown", e => { if (e.key === "Enter" && !e.shift
 $("#form").onsubmit = e => { e.preventDefault(); send(); };
 $("#load").onclick = loadModel;
 let stopLoop = false;
-$("#stop").onclick = () => { stopLoop = true; abortCtl?.abort(); engine?.interruptGenerate(); };
+$("#stop").onclick = () => { stopLoop = true; window.__typer?.finish(); abortCtl?.abort(); engine?.interruptGenerate(); };
 function showPv() {
   const pv = cloud.pv; $("#pv").value = pv; $("#cKey").style.display = pv && !PV[pv]?.nokey ? "" : "none";
   $("#cKey").placeholder = pv ? PV[pv].ph : ""; if (pv && !cloud.keys[pv] && PV[pv].def) cloud.keys[pv] = PV[pv].def; $("#cKey").value = pv ? cloud.keys[pv] || "" : ""; $("#cKey").type = pv === "ollama" ? "text" : "password"; $("#pvHelp").innerHTML = pv ? PV[pv].help : "Pick Gemini or OpenRouter for a free, much smarter brain.";
