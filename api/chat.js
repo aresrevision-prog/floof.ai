@@ -11,7 +11,7 @@
 const SB = "https://lakjmdyzuqrwcncxybcw.supabase.co", SB_KEY = "sb_publishable__m0zTZ3-ThJVk0pktI65Ag_yDFPPD5s";
 const API = "https://generativelanguage.googleapis.com/v1beta";
 const ARES = "https://ares-revision.vercel.app/api/ai";
-const VERSION = "floof-cloud 11";
+const VERSION = "floof-cloud 12";
 // Used only when the live model list can't be fetched. Free-tier models first (checked against Google's
 // pricing page, Nov 2026). gemini-2.5-* still work for keys that used them before, but new keys get
 // 404 "no longer available", so they are last and get cached as bad on the first 404.
@@ -87,7 +87,9 @@ async function account(token) { // checks the MagicWinter sign-in token with the
   if (!token || typeof token !== "string" || token.length > 100) return null;
   let j;
   try {
-    const r = await withTimeout(SB + "/rest/v1/rpc/mw_status", { method: "POST", headers: { "Content-Type": "application/json", apikey: SB_KEY }, body: JSON.stringify({ p_token: token }) }, 5000);
+    const call = fn => withTimeout(SB + "/rest/v1/rpc/" + fn, { method: "POST", headers: { "Content-Type": "application/json", apikey: SB_KEY }, body: JSON.stringify({ p_token: token }) }, 5000);
+    let r = await call("mw_status");
+    if (r.status === 404 || r.status === 400) r = await call("mw_whoami"); // database not updated yet (no Pro): the older sign-in check still works
     if (r.status >= 500) return { err: "net" };
     j = await r.json();
   } catch (e) { return { err: "net" }; } // account server slow/down: not the user's fault
