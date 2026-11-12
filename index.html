@@ -1136,7 +1136,7 @@ async function sendCore(override, extra = {}) {
   let reply = "", finishWhy = "", typing = null, timer = null;
   try {
     const facts = hits.length ? "\n\nNotes found by a keyword search of the user's knowledge (they may be off-topic). Use a note only if it clearly answers what the user actually asked; otherwise ignore it and answer from your own knowledge. Never mention the notes or the search:\n" + hits.map((h, i) => `[${i + 1}] ${h.text}`).join("\n") : "";
-    const guide = (chat.msgs.length > 2 ? "\n\nThis is an ongoing conversation: use everything said earlier in this chat (names, details, decisions, code) and answer in that context. Resolve words like 'it', 'that' or 'the code' from the previous messages." : "") + (ty.fixes.length ? `\n\nA spell-checker guessed the message might mean: "${ty.text}" — use that only if it makes more sense than the original.` : "") + `\n\nWork out what the user really means (they may write casually, briefly or with typos), then answer that directly. Answer every part of the message. If it's genuinely ambiguous, give your best reading and briefly say what you assumed.` + (info.type === "summary" ? (words > 120 && !/\b(summari[sz]e|summary|tl;?dr|main points|key points)\b/i.test(text) ? " It is long: read ALL of it. If it contains a question, task or instructions anywhere (start, middle or end), do exactly that. Only if it is just pasted text with no request, summarise its main points and offer to go deeper." : " Summarise its main points clearly, then offer to go deeper.") : "")
+    const guide = (chat.msgs.length > 2 ? "\n\nThis is an ongoing conversation: use everything said earlier in this chat (names, details, decisions, code) and answer in that context. Resolve words like 'it', 'that' or 'the code' from the previous messages." : "") + (ty.fixes.length ? `\n\nA spell-checker guessed the message might mean: "${ty.text}" — use that only if it makes more sense than the original.` : "") + `\n\nWork out what the user really means (they may write casually, briefly or with typos), then answer that directly. Answer every part of the message. If it's genuinely ambiguous, give your best reading and briefly say what you assumed.` + (info.type === "summary" ? " It is long: summarise its main points clearly, then offer to go deeper." : "")
       + (extra.full ? " The user attached a picture (a screenshot or a camera photo). If it shows questions, solve them step by step with a clear final answer for each; otherwise describe or explain what it shows and help with what they asked." : scr ? " It was read from the user's screen with OCR, so it may contain small reading errors. Find the question(s) on it and solve them step by step, giving a clear final answer for each." + (solved.length ? " Exact results already worked out (use these): " + solved.join("; ") : "") : "");
     const coding = coderOn || CODEY.test(own);
     const tools = "\n\nCODE TOOLS: ```js blocks run in a sandbox (console.log prints). ```python blocks run real Python 3 in the browser (standard library only; no input() — set values in variables and print results). ```html blocks open as a live preview in a side panel." + (cloud.fix !== false ? " After you reply, your last runnable block is tested automatically; if it errors, you'll get the error to fix." : "")
@@ -1183,10 +1183,9 @@ When fixing: find the root cause, explain it in one line, and return the FULL co
     console.error(e);
     if (e.name === "AbortError") { stopped = true; status("Stopped."); }
     else if (e.free) { freeBad = Date.now() + 300000; fallBack = true; status("Free backup brain busy — answering from the grid for now.", "err"); }
-    else if (e.kind && PV[cloud.pv]?.nokey && !extra.depth && !extra.retry) { // Floof Cloud / Athena busy or unreachable: retry with the free backup brain (then the grid) instead of erroring
-      const brief = /busy|quota/.test(e.kind);
-      cloudBad = true; fallBack = true; clearTimeout(cloudBadTimer); cloudBadTimer = setTimeout(() => { cloudBad = false; updateMode(); }, brief ? 60000 : 300000); updateMode();
-      status(`☁ ${pvName(cloud.pv)} ${brief ? "busy" : "unreachable"} — using the free backup brain for now.`, "err");
+    else if ((e.kind === "net" || e.kind === "server") && PV[cloud.pv]?.nokey && !extra.depth) { // Floof Cloud / Athena unreachable: answer from the grid for a while instead of erroring every message
+      cloudBad = true; fallBack = true; clearTimeout(cloudBadTimer); cloudBadTimer = setTimeout(() => { cloudBad = false; updateMode(); }, 300000); updateMode();
+      status(`☁ ${pvName(cloud.pv)} unreachable — answering from the grid for now.`, "err");
     }
     else if (e.kind || cloudReady()) { status(e.kind ? "☁ " + e.message : /failed to fetch|network|load failed/i.test(e.message || "") ? "☁ Can't reach the AI service — check your internet, or switch ☁ off to use basic mode." : "☁ " + (e.message || e), "err"); if (e.kind) finishWhy = "ERR:" + e.message.replace(/[.\s]+$/, "") + " (press 🩺 Test brain in the sidebar for details)"; }
     else if (/context|window|prompt.*(long|exceed)/i.test(e.message || "")) reply += "\n\n_(That was more than the brain can hold at once — start a new chat, or ask about one part.)_";
@@ -1466,20 +1465,19 @@ const PV = {
 };
 let cloud = ls.get("mwai.cloud", null), abortCtl = null, modelList = [];
 if (!cloud) cloud = { pv: "", keys: {}, model: {}, fix: true };
-if (cloud.pv && !PV[cloud.pv] && !["floof", "athena"].includes(cloud.pv)) cloud.pv = ""; delete cloud.keys.claude; delete cloud.model.claude; ls.del("mwai.claude"); ls.set("mwai.cloud", cloud); // paid option removed: wipe any old key
+if (cloud.pv && !PV[cloud.pv] && !["floof", "athena", "gridwriter"].includes(cloud.pv)) cloud.pv = ""; delete cloud.keys.claude; delete cloud.model.claude; ls.del("mwai.claude"); ls.set("mwai.cloud", cloud); // paid option removed: wipe any old key
 let cloudBad = false, cloudBadTimer = 0; // set when the key/server was rejected, so Floof falls back instead of erroring
 const cloudReady = () => !cloudBad && !!PV[cloud.pv] && PV[cloud.pv].ok(cloud.keys[cloud.pv] || "");
 // keyless backup brain (Pollinations): used when no other brain works, so Floof still understands instead of only matching grid sentences
 let freeBad = 0;
 const freeReady = () => !engine && !cloudReady() && freeBad < Date.now() && navigator.onLine !== false && !(cloud.pvChosen && !cloud.pv);
-const cut = (t, n = 12000) => t.length <= n ? t : t.slice(0, n * .65) + "\n\n[… middle of a long message left out …]\n\n" + t.slice(-n * .35); // keep both ends: questions are usually at the start or end
 async function freeStream(sys, msgs, onText) {
   abortCtl = new AbortController(); let late = false; const tm = setTimeout(() => { late = true; abortCtl.abort(); }, 45000);
   const fail = m => Object.assign(new Error(m), { free: true });
   let r, j = {};
   try {
     r = await fetch("https://text.pollinations.ai/openai", { method: "POST", signal: abortCtl.signal, headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model: "openai", private: true, messages: [{ role: "system", content: sys.slice(0, 12000) }, ...msgs.slice(-12).map(m => ({ role: m.role === "assistant" ? "assistant" : "user", content: cut(String(m.content)) }))] }) });
+      body: JSON.stringify({ model: "openai", private: true, messages: [{ role: "system", content: sys.slice(0, 12000) }, ...msgs.slice(-12).map(m => ({ role: m.role === "assistant" ? "assistant" : "user", content: String(m.content).slice(-6000) }))] }) });
     try { j = await r.json(); } catch {}
   } catch (e) { clearTimeout(tm); if (e.name === "AbortError" && !late) throw e; /* Stop pressed */ throw fail("Free backup brain unreachable"); }
   clearTimeout(tm);
@@ -2212,6 +2210,225 @@ window.Floof.addProvider({ id: "floof", label: "☁ Floof Cloud — free, no key
     if (j.text) onText(j.text); const u = j.usage || {};
     return { in: u.promptTokenCount || 0, out: u.candidatesTokenCount || 0, model: "Floof Cloud · " + (j.backup ? "backup brain" + (j.via && !/^ares/i.test(j.via) ? " · " + j.via : " (Ares)") : (j.via || "")) + (j.pro ? " ⭐" : ""), finish: j.finish || "" };
   } });
+// ---------- 🧪 Grid Writer — dvxnm's own AI design, running fully on this device ----------
+// 1) every word is stored as numbers: its place on the 64-D meaning grid + its word type (96 types); same spelling, different type or meaning = separate entries
+// 2) a Markov model over word types writes a grammatical type pattern, starting from the beginning of the sentence
+// 3) context areas on the grid come from your message (+ any matching notes)
+// 4) for each slot the engine picks words of that type from the context areas; a tiny transformer (2 layers, ~0.7M numbers) judges the fit
+// 5) it writes 5 drafts, the transformer picks the one that makes the most sense, and the numbers are turned back into words
+const GW_BASES = window.FLOOF_GW ? [window.FLOOF_GW] : ["https://cdn.jsdelivr.net/gh/aresrevision-prog/floof.ai@f3e00eaf7b18cc7379258fb4ad0dc21cd8392ad0/lex/", "https://floofai.vercel.app/lex/"], GW_PARTS = 2; // download in 2 parts
+let GWM = null, gwLoading = null;
+async function gwFetch(onPct) {
+  let lastErr;
+  for (const base of GW_BASES) {
+    try {
+      const parts = []; let got = 0; const total = 3.2e6;
+      for (let k = 0; k < GW_PARTS; k++) {
+        const r = await fetch(base + "gw1.gz.part" + k); if (!r.ok) throw new Error(base.split("/")[2] + " " + r.status);
+        const rd = r.body.getReader(); for (;;) { const { value, done } = await rd.read(); if (done) break; parts.push(value); got += value.length; onPct && onPct(Math.min(99, got / total * 100 | 0)); }
+      }
+      const buf = await new Response(new Blob(parts).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer();
+      if (new TextDecoder().decode(new Uint8Array(buf, 0, 4)) !== "FGW1") throw new Error("bad file");
+      return buf;
+    } catch (e) { lastErr = e; }
+  }
+  throw lastErr || new Error("download failed");
+}
+function gwLoad(onPct) {
+  if (GWM) return Promise.resolve(GWM);
+  return gwLoading ??= (async () => {
+    let buf = null; try { buf = await idb.getRaw("gw.v1"); } catch {}
+    if (!buf) { buf = await gwFetch(onPct); idb.setRaw("gw.v1", buf).catch(() => {}); }
+    const hl = new Uint32Array(buf.slice(4, 8))[0], H = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 8, hl)));
+    const arr = (name) => { const s = H.sec[name]; return s.t === "i8" ? new Int8Array(buf, s.o, s.n) : new Float32Array(buf, s.o, s.n); };
+    const M = { H, V: H.V, tags: H.tags, words: H.words, tokTag: Int16Array.from(H.tokTag), BOS: H.BOS, EOS: H.EOS, UNK0: H.UNK0 };
+    // entries (word+type+meaning) → unit vectors
+    const ev = arr("entVec"), nE = H.entTok.length, E = new Float32Array(nE * 64);
+    for (let i = 0; i < nE; i++) { let n = 0; for (let d = 0; d < 64; d++) { const x = ev[i * 64 + d]; E[i * 64 + d] = x; n += x * x; } n = Math.sqrt(n) || 1; if (n > 1) for (let d = 0; d < 64; d++) E[i * 64 + d] /= n; else for (let d = 0; d < 64; d++) E[i * 64 + d] = 0; }
+    { // centre the grid: remove the direction every common word shares, so "close" means close in meaning, not just "frequent"
+      const mu = new Float32Array(64); let cnt = 0; for (let i = 0; i < nE; i++) { if (!E[i * 64] && !E[i * 64 + 1]) continue; for (let d = 0; d < 64; d++) mu[d] += E[i * 64 + d]; cnt++; }
+      for (let d = 0; d < 64; d++) mu[d] /= cnt || 1; M.mu = mu;
+      M.Ec = new Float32Array(nE * 64);
+      for (let i = 0; i < nE; i++) { let n = 0; for (let d = 0; d < 64; d++) { const x = E[i * 64 + d] ? E[i * 64 + d] - mu[d] : 0; M.Ec[i * 64 + d] = x; n += x * x; } n = Math.sqrt(n) || 1; for (let d = 0; d < 64; d++) M.Ec[i * 64 + d] /= n; }
+    }
+    M.E = E; M.entTok = Int32Array.from(H.entTok); M.entSense = Uint8Array.from(H.entSense);
+    M.tokEnts = Array.from({ length: M.V }, () => []); for (let i = 0; i < nE; i++) M.tokEnts[M.entTok[i]].push(i);
+    const tv = new Float32Array(M.V * 64);
+    M.tokEnts.forEach((es, t) => { if (!es.length) return; for (const e of es) for (let d = 0; d < 64; d++) tv[t * 64 + d] += E[e * 64 + d] / es.length; });
+    // model weights
+    const P = {}; for (const k of H.mats) P[k] = arr(k);
+    const own = arr("own"), ownS = H.ownScale, d = 64;
+    const Ea = new Float32Array(M.V * d);  // every token's input vector = grid place·Win + type + own fingerprint
+    for (let t = 0; t < M.V; t++) {
+      const o = t * d, tg = M.tokTag[t];
+      for (let j = 0; j < d; j++) { let s = P.tag[tg * d + j]; for (let i = 0; i < 64; i++) s += tv[t * 64 + i] * P.Win[i * d + j]; for (let i = 0; i < 16; i++) s += own[t * 16 + i] * ownS * P.Wown[i * d + j]; Ea[o + j] = s; }
+    }
+    M.Ea = Ea; M.P = P; M.bias = arr("bias");
+    M.byTag = Array.from({ length: M.tags.length + 2 }, () => []); for (let t = 0; t < M.UNK0; t++) M.byTag[M.tokTag[t]].push(t);
+    M.idx = new Map(); for (let t = 0; t < M.UNK0; t++) { const w = M.words[t].toLowerCase(); if (!M.idx.has(w)) M.idx.set(w, []); M.idx.get(w).push(t); }
+    M.tagIdx = Object.fromEntries(M.tags.map((t, i) => [t, i]));
+    M.content = new Set(M.tags.map((t, i) => /^(nn|np|vb|jj|rb$|rbr|rbs|cd)/.test(t) ? i : -1).filter(i => i >= 0));
+    GWM = M; return M;
+  })().catch(e => { gwLoading = null; throw e; });
+}
+const gwLN = (x, g) => { let m = 0, v = 0; for (const a of x) m += a; m /= x.length; for (const a of x) v += (a - m) ** 2; v = Math.sqrt(v / x.length + 1e-5); return x.map((a, i) => (a - m) / v * g[i]); };
+function gwLogits(M, ids) { // the tiny transformer: scores every possible next word given the sentence so far
+  const P = M.P, d = 64, NH = 4, hd = 16, n = ids.length;
+  let h = ids.map((t, i) => { const r = new Float32Array(d); for (let j = 0; j < d; j++) r[j] = M.Ea[t * d + j] + P.pos[i * d + j]; return r; });
+  for (let l = 0; l < M.H.layers; l++) {
+    const qkv = P[`l${l}.qkv`], o = P[`l${l}.o`], f1 = P[`l${l}.f1`], f2 = P[`l${l}.f2`], F = M.H.ffn;
+    const a = h.map(x => { const y = gwLN(x, P[`l${l}.ln1`]), r = new Float32Array(3 * d); for (let j = 0; j < 3 * d; j++) { let s = 0; for (let i = 0; i < d; i++) s += y[i] * qkv[i * 3 * d + j]; r[j] = s; } return r; });
+    const att = h.map(() => new Float32Array(d));
+    for (let hh = 0; hh < NH; hh++) for (let t = 0; t < n; t++) {
+      const sc = new Float32Array(t + 1); let mx = -1e9;
+      for (let u = 0; u <= t; u++) { let s = 0; for (let k = 0; k < hd; k++) s += a[t][hh * hd + k] * a[u][d + hh * hd + k]; sc[u] = s / 4; if (sc[u] > mx) mx = sc[u]; }
+      let z = 0; for (let u = 0; u <= t; u++) { sc[u] = Math.exp(sc[u] - mx); z += sc[u]; }
+      for (let u = 0; u <= t; u++) { const w = sc[u] / z; for (let k = 0; k < hd; k++) att[t][hh * hd + k] += w * a[u][2 * d + hh * hd + k]; }
+    }
+    h = h.map((x, t) => { const r = Float32Array.from(x); for (let j = 0; j < d; j++) { let s = 0; for (let i = 0; i < d; i++) s += att[t][i] * o[i * d + j]; r[j] += s; } return r; });
+    h = h.map(x => { const y = gwLN(x, P[`l${l}.ln2`]), mid = new Float32Array(F), r = Float32Array.from(x);
+      for (let j = 0; j < F; j++) { let s = 0; for (let i = 0; i < d; i++) s += y[i] * f1[i * F + j]; mid[j] = .5 * s * (1 + Math.tanh(.7978845608 * (s + .044715 * s * s * s))); }
+      for (let j = 0; j < d; j++) { let s = 0; for (let i = 0; i < F; i++) s += mid[i] * f2[i * d + j]; r[j] += s; } return r; });
+  }
+  const y = gwLN(h[n - 1], P.lnf), q = new Float32Array(d);
+  for (let j = 0; j < d; j++) { let s = 0; for (let i = 0; i < d; i++) s += y[i] * P.Wq[i * d + j]; q[j] = s; }
+  const lg = new Float32Array(M.V); let mx = -1e9;
+  for (let t = 0; t < M.V; t++) { let s = M.bias[t]; const o = t * d; for (let j = 0; j < d; j++) s += q[j] * M.Ea[o + j]; lg[t] = s; if (s > mx) mx = s; }
+  let z = 0; for (let t = 0; t < M.V; t++) z += Math.exp(lg[t] - mx); const lz = mx + Math.log(z);
+  for (let t = 0; t < M.V; t++) lg[t] -= lz; return lg; // log-probabilities
+}
+function gwTagProbs(M, hist) { // Markov over word types, from the start of the sentence (backs off to shorter histories)
+  const ng = M.H.tagModel, out = new Map(); let wsum = 0;
+  for (const [n, w] of [[3, .55], [2, .25], [1, .14], [0, .06]]) {
+    const ctx = hist.slice(-n).join(","), row = n ? ng[ctx] : ng[""]; if (!row || (n && hist.length < n)) continue;
+    for (const [t, p] of row) out.set(t, (out.get(t) || 0) + w * p); wsum += w;
+  }
+  for (const [t, p] of out) out.set(t, p / wsum); return out;
+}
+function gwContext(M, text, facts) { // context areas on the grid: where your words (and matching notes) sit
+  const ASK = new Set("tell me about describe explain write give show make know think say said what how why when where who which does do did is are was were can could would should please talk thing things something anything stuff kind sort lot a an the of in on at by to for from with and or but if then than as into onto about over under up down out off this that these those it its i you he she we they me him her us them my your his our their be been being have has had get got go goes went one two some any all no not very more most much many also just like there here".split(" ")); // request words and little words aren't the topic
+  const words = (s, wt) => (s.toLowerCase().match(/[a-z][a-z'-]*/g) || []).filter(w => w.length > 2 && !ASK.has(w)).map(w => [w, wt]);
+  const all = [...words(text, 1), ...words(facts || "", .6)], pts = [], factToks = new Set();
+  const cen = new Float32Array(64);
+  for (const [w, wt] of all) for (const t of M.idx.get(w) || []) if (M.content.has(M.tokTag[t])) for (const e of M.tokEnts[t]) for (let d = 0; d < 64; d++) cen[d] += M.Ec[e * 64 + d] * wt;
+  const extra = []; // words Grid Writer doesn't know (e.g. "photosynthesis") borrow their place from the 274k dictionary grid
+  if (typeof LEX !== "undefined" && LEX) for (const [w, wt] of all) if (!M.idx.has(w) && w.length > 3) { const i = LEX.idx.get(w); if (i !== undefined && (LEX.meta[i] >> 5) <= 3) { const v = new Float32Array(64); let n = 0; let m0 = 0; for (let d = 0; d < 64; d++) m0 += LEX.vec[i * 64 + d] ** 2; m0 = Math.sqrt(m0) || 1; for (let d = 0; d < 64; d++) { v[d] = LEX.vec[i * 64 + d] / m0 - M.mu[d]; n += v[d] * v[d]; } n = Math.sqrt(n) || 1; for (let d = 0; d < 64; d++) v[d] /= n; extra.push({ v, w: wt }); for (let d = 0; d < 64; d++) cen[d] += v[d] * wt; } }
+  const base = w => M.idx.has(w) ? w : [w.replace(/ies$/, "y"), w.replace(/oes$/, "o"), w.replace(/es$/, ""), w.replace(/s$/, ""), w.replace(/ing$/, ""), w.replace(/ing$/, "e"), w.replace(/ed$/, ""), w.replace(/ed$/, "e")].find(x => x !== w && M.idx.has(x)) || w;
+  for (let i = 0; i < all.length; i++) all[i][0] = base(all[i][0]);
+  for (const [w, wt] of all) {
+    for (const t of M.idx.get(w) || []) {
+      if (!M.content.has(M.tokTag[t])) continue; if (wt < 1) factToks.add(t);
+      let best = -1, bs = -9; for (const e of M.tokEnts[t]) { let s = 0; for (let d = 0; d < 64; d++) s += M.Ec[e * 64 + d] * cen[d]; if (s > bs) { bs = s; best = e; } } // pick the meaning that fits the rest of the message
+      if (best >= 0) { let n = 0; for (let d = 0; d < 64; d++) n += M.Ec[best * 64 + d] ** 2; const tg = M.tags[M.tokTag[t]]; if (n > .5) pts.push({ v: M.Ec.subarray(best * 64, best * 64 + 64), w: wt * (/^(nn|np)/.test(tg) ? 1 : .35), t }); } // nouns lead the topic
+    }
+  }
+  for (const x of extra) pts.push(x);
+  pts.sort((a, b) => b.w - a.w); // areas start at the strongest topic words (nouns first)
+  const askToks = new Set(pts.filter(x => x.t !== undefined && x.w >= .35).map(x => x.t));
+  if (!pts.length) return { areas: [], factToks, pts, askToks };
+  const k = Math.min(3, pts.length), areas = []; // up to 3 areas: each topic word can get its own
+  for (let i = 0; i < k; i++) areas.push(Float32Array.from(pts[Math.floor(i * pts.length / k)].v));
+  for (let it = 0; it < 6; it++) { // k-means: each area moves to the middle of its words
+    const sum = areas.map(() => new Float32Array(64)), cnt = areas.map(() => 0);
+    for (const p of pts) { let bi = 0, bs = -9; areas.forEach((a, i) => { let s = 0; for (let d = 0; d < 64; d++) s += a[d] * p.v[d]; if (s > bs) { bs = s; bi = i; } }); for (let d = 0; d < 64; d++) sum[bi][d] += p.v[d] * p.w; cnt[bi] += p.w; }
+    areas.forEach((a, i) => { if (!cnt[i]) return; let n = 0; for (let d = 0; d < 64; d++) n += sum[i][d] ** 2; n = Math.sqrt(n) || 1; for (let d = 0; d < 64; d++) a[d] = sum[i][d] / n; });
+  }
+  const aw = areas.map(a => { let w = 0; for (const p of pts) { let bi = 0, bs = -9; areas.forEach((b, i) => { let x = 0; for (let d = 0; d < 64; d++) x += b[d] * p.v[d]; if (x > bs) { bs = x; bi = i; } }); if (areas[bi] === a) w += p.w; } return w; });
+  return { areas, aw, factToks, pts, askToks };
+}
+function gwCtxScores(M, areas, aw) { // each area gets its own size: strong topic areas hold more words, weak/general ones only a few
+  const sc = new Float32Array(M.V).fill(0); sc.radius = -1; if (!areas.length) return sc;
+  const per = areas.map(() => new Float32Array(M.UNK0)), mw = Math.max(...(aw || areas.map(() => 1)));
+  for (let t = 0; t < M.UNK0; t++) areas.forEach((a, k) => { let b = 0; for (const e of M.tokEnts[t]) { let s = 0; for (let d = 0; d < 64; d++) s += a[d] * M.Ec[e * 64 + d]; if (s > b) b = s; } per[k][t] = b; });
+  const inA = new Uint8Array(M.V);
+  areas.forEach((a, k) => {
+    const size = Math.max(30, Math.round(160 * ((aw ? aw[k] : 1) / mw))), vals = [];
+    for (let t = 0; t < M.UNK0; t++) if (M.content.has(M.tokTag[t])) vals.push(per[k][t]);
+    vals.sort((x, y) => y - x); const thr = Math.max(.3, vals[Math.min(vals.length - 1, size)] || 0);
+    for (let t = 0; t < M.UNK0; t++) { if (per[k][t] >= thr) inA[t] = 1; if (per[k][t] > sc[t]) sc[t] = per[k][t]; }
+  });
+  sc.inA = inA; sc.radius = 0; return sc;
+}
+function gwSentence(M, C, ctxSc, used, rnd) {
+  const ids = [M.BOS], hist = [M.H.start, M.H.start, M.H.start], typesOut = [], local = new Set(); let lpSum = 0, ctxSum = 0, nContent = 0, facts = 0;
+  for (let step = 0; step < 26; step++) {
+    const lp = gwLogits(M, ids);
+    // word type: Markov (from sentence start) blended with what the transformer expects
+    const tm = new Map(); for (let t = 0; t < M.V; t++) { const p = Math.exp(lp[t]); if (p > 1e-4) tm.set(M.tokTag[t], (tm.get(M.tokTag[t]) || 0) + p); }
+    const mk = gwTagProbs(M, hist), cand = new Map();
+    for (const [t, p] of mk) cand.set(t, .5 * p + .5 * (tm.get(t) || 0));
+    if (step < 3) cand.delete(M.H.end); if (step < 3) cand.delete(M.tagIdx["."]);
+    if (step > 20) cand.set(M.tagIdx["."], (cand.get(M.tagIdx["."]) || 0) + .5);
+    const inArea = t => !M.content.has(t) || ctxSc.radius < 0 || M.byTag[t].some(w => ctxSc.inA[w] && !local.has(w)); // grammar adapts to the words available in the context areas
+    const tops = [...cand].filter(([t]) => t === M.H.end || t === M.tagIdx["."] || M.byTag[t] && M.byTag[t].length && inArea(t)).sort((a, b) => b[1] - a[1]).slice(0, 4);
+    if (!tops.length) break;
+    let r = rnd() * tops.reduce((s, x) => s + x[1] ** 1.5, 0), tag = tops[0][0]; for (const [t, p] of tops) { r -= p ** 1.5; if (r <= 0) { tag = t; break; } }
+    if (tag === M.H.end) break;
+    // fill the slot: words of that type, scored by the transformer + closeness to the context areas
+    const isC = M.content.has(tag), opts = [];
+    for (const t of M.byTag[tag]) {
+      if (isC && ctxSc.radius >= 0 && !ctxSc.inA[t]) continue; // content words only from inside the context areas
+      let s = lp[t];
+      if (isC) { s += 5 * ctxSc[t]; if ((C.factToks.has(t) || C.askToks.has(t)) && !used.has(t)) s += 1.5; if (used.has(t)) s -= 3; if (local.has(t)) s -= 6; }
+      opts.push([t, s]);
+    }
+    if (!opts.length) break;
+    opts.sort((a, b) => b[1] - a[1]); const five = opts.slice(0, 5);
+    const mx = five[0][1], ws = five.map(([, s]) => Math.exp((s - mx) / .7)), Z = ws.reduce((a, b) => a + b, 0);
+    let rr = rnd() * Z, pick = five[0][0]; for (let i = 0; i < five.length; i++) { rr -= ws[i]; if (rr <= 0) { pick = five[i][0]; break; } }
+    ids.push(pick); hist.push(tag); typesOut.push(tag); lpSum += lp[pick]; if (isC) local.add(pick);
+    if (isC) { ctxSum += ctxSc[pick]; nContent++; if (C.factToks.has(pick)) facts++; }
+    if (tag === M.tagIdx["."]) break;
+  }
+  const toks = ids.slice(1), n = Math.max(1, toks.length);
+  const content = toks.filter(t => M.content.has(M.tokTag[t])), rep = content.length - new Set(content).size;
+  const score = lpSum / n + 1.6 * (nContent ? ctxSum / nContent : 0) + .4 * facts - .8 * rep - (toks.length < 5 ? 2 : 0) - (M.tokTag[toks.at(-1)] !== M.tagIdx["."] ? 1 : 0);
+  return { toks, types: typesOut, score };
+}
+function gwDetok(M, toks) {
+  let s = "";
+  for (const t of toks) {
+    let w = M.words[t]; if (w === "``" || w === "''") continue;
+    if (/^[.,;:?!)]$/.test(w) || /^'(s|t|re|ve|ll|d|m)$/.test(w) || w === "n't") s += w; else s += (s ? " " : "") + w;
+  }
+  s = s.replace(/\s+/g, " ").trim(); s = s.replace(/\bi\b/g, "I");
+  if (s && !/[.?!]$/.test(s)) s += ".";
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+function gwMaths(text) { // sums go to a real calculator, never to word-guessing
+  const m = String(text).toLowerCase().replace(/what(?:'s| is)|calculate|work out|equals|=|\?/g, " ").replace(/×|x(?=\s*\d)/g, "*").replace(/÷/g, "/").replace(/\^/g, "**").trim();
+  if (!/^[\d\s.+\-*/()]+$/.test(m) || !/\d\s*[+\-*/]/.test(m)) return null;
+  try { const v = Function(`"use strict";return (${m})`)(); if (typeof v === "number" && isFinite(v)) return `${m.replace(/\*\*/g, "^").replace(/\s+/g, " ")} = ${+v.toFixed(10)}`; } catch {}
+  return null;
+}
+async function gwAnswer(text, facts, onTextAll, signal) {
+  let sent = ""; const onText = full => { if (full.startsWith(sent)) { const d = full.slice(sent.length); if (d) onTextAll(d); } else onTextAll(full); sent = full; }; // Floof adds each piece to the reply, so send only what's new
+  const calc = gwMaths(text); if (calc) { onText(calc + "\n\n*(worked out with the calculator — Grid Writer never guesses sums)*"); return; }
+  const M = await gwLoad(p => status(`🧪 Downloading Grid Writer (one time, ~3 MB)… ${p}%`));
+  const C = gwContext(M, text, facts), ctxSc = gwCtxScores(M, C.areas, C.aw), used = new Set();
+  let seed = [...text].reduce((a, c) => a * 31 + c.charCodeAt(0) >>> 0, 7) ^ (Date.now() & 0xffff);
+  const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+  const out = [], drafts = [];
+  for (let k = 0; k < 2; k++) {
+    if (signal && signal.aborted) break;
+    const cands = []; for (let i = 0; i < 5; i++) { cands.push(gwSentence(M, C, ctxSc, used, rnd)); await new Promise(r => setTimeout(r)); }
+    cands.sort((a, b) => b.score - a.score); const best = cands[0];
+    best.toks.forEach(t => used.add(t)); out.push(gwDetok(M, best.toks)); onText(out.join(" "));
+    if (k === 0) drafts.push(...cands);
+  }
+  const top = drafts[0];
+  onText(out.join(" ") + `\n\n> 🔍 **How Grid Writer wrote this** — context areas: ${C.areas.length} · word types for sentence 1: ${top.types.join(" ")}\n> The 5 drafts it scored: ${drafts.map(c => `"${gwDetok(M, c.toks)}" (${c.score.toFixed(2)})`).join(" · ")}`);
+}
+window.Floof.addProvider({ id: "gridwriter", label: "🧪 Grid Writer — dvxnm's design (on-device, experimental)", ph: "", nokey: true, ok: () => true, vision: false,
+  help: "Your own AI design, running on this device with no internet after a one-time ~3 MB download: word types (Markov) → context areas on the 64-D grid → slot filling → 5 drafts judged by a tiny transformer. Experimental: it writes on-topic sentences, but it isn't smart like the cloud brains.",
+  list: async () => [{ id: "gw1", name: "Grid Writer v1 (tiny transformer)" }],
+  stream: async ({ sys, msgs, onText, signal }) => {
+    const last = [...msgs].reverse().find(m => m.role === "user"), text = String(last && last.content || "");
+    const fi = sys.indexOf("Never mention the notes or the search:"), facts = fi >= 0 ? sys.slice(fi + 38, fi + 3000) : "";
+    await gwAnswer(text, facts, onText, signal); status("Ready");
+    return { in: 0, out: 0, model: "🧪 Grid Writer (on-device)", finish: "" };
+  } });
+window.FloofGW = { debug: async (t) => { const M = await gwLoad(), C = gwContext(M, t, ""), sc = gwCtxScores(M, C.areas, C.aw); const top = [...Array(M.UNK0).keys()].filter(i => M.content.has(M.tokTag[i]) && sc.inA[i]).sort((a, b) => sc[b] - sc[a]); return { areas: C.areas.length, pts: C.pts.length, radius: sc.radius, inArea: top.length, top: top.slice(0, 25).map(i => M.words[i] + "/" + M.tags[M.tokTag[i]]), state: sc[M.idx.get("state")[0]], time: sc[M.idx.get("time")[0]] }; }, load: () => gwLoad(), answer: (t, f) => new Promise(ok => { let last = ""; gwAnswer(t, f || "", x => last = x).then(() => ok(last)); }) };
 window.Floof.addProvider({ id: "athena", label: "🦉 Athena — Ares servers, no key", ph: "", nokey: true, ok: () => ACCOUNT_KIND === "ares", vision: false,
   help: "Athena runs on Ares Revision's own AI server — nothing to set up for Ares accounts.",
   list: async () => [{ id: "athena", name: "Athena (Ares)" }],
