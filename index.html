@@ -261,9 +261,9 @@ form#form{padding:12px 16px 16px;border-top:1px solid var(--line)}
 
   <section class="view" id="vGrid">
     <div class="gtool">
-      <div class="tabs" id="gMode"><button type="button" data-m="topics" class="on">🗂 Topics</button><button type="button" data-m="map">🧭 64-D map</button><button type="button" data-m="dict">📖 Dictionary</button></div>
+      <div class="tabs" id="gMode" style="display:none"><button type="button" data-m="map" class="on">🧭 64-D map</button></div>
       <input type="search" id="gfind" placeholder="Find a word…">
-      <div class="legend" id="legend"></div>
+      <div class="legend" id="legend" style="display:none"></div>
     </div>
     <div class="gwrap" id="gwrap">
       <canvas id="gcan"></canvas>
@@ -564,14 +564,18 @@ const MW = (() => {
     return out.sort((a, b) => b[1] - a[1]).slice(0, k);
   }
 
-  function project(G, max = 700) { // PCA: top-2 directions of the 64-D cloud
+  function project(G, max = 700, vecOf = null) { // PCA start, then t-SNE: words with similar meanings end up near each other
     let words = [...G.vocab.values()].filter(v => v.n > 1);
     if (words.length < 150) words = [...G.vocab.values()];
-    words = words.sort((a, b) => b.n - a.n).slice(0, max);
+    words = words.sort((a, b) => b.n - a.n);
+    let VV = null;
+    if (vecOf) { const got = words.map(w => [w, vecOf(w.w)]).filter(x => x[1]); if (got.length >= 3) { words = got.slice(0, max).map(x => x[0]); VV = got.slice(0, max).map(x => x[1]); } } // meaning vectors from the 274k dictionary
+    words = words.slice(0, max);
     if (words.length < 3) return [];
+    const vecs = VV || words.map(w => w.vec);
     const mean = new Float32Array(D);
-    for (const w of words) for (let i = 0; i < D; i++) mean[i] += w.vec[i] / words.length;
-    const X = words.map(w => w.vec.map((x, i) => x - mean[i]));
+    for (const v of vecs) for (let i = 0; i < D; i++) mean[i] += v[i] / words.length;
+    const X = vecs.map(v => Array.from(v, (x, i) => x - mean[i]));
     const comps = [];
     for (let c = 0; c < 2; c++) {
       let p = new Float32Array(D).map((_, i) => Math.sin(i * 7.1 + c * 3.3) + .01);
@@ -584,9 +588,37 @@ const MW = (() => {
       comps.push(p);
     }
     const pts = words.map((w, i) => ({ v: w, x: dot(X[i], comps[0]), y: dot(X[i], comps[1]) }));
+    tsne(vecs, pts); // similar meanings → near each other (keeps 64-D neighbours together in 2-D)
     let m = 1e-9; for (const p of pts) m = Math.max(m, Math.abs(p.x), Math.abs(p.y));
     for (const p of pts) { p.x /= m; p.y /= m; }
     return pts;
+  }
+  function tsne(V, pts, perp = 15, iters = 600) { // small t-SNE on cosine distance, started from the PCA layout
+    const n = V.length; if (n < 5) return;
+    const U = V.map(v => norm(Float32Array.from(v))), P = new Float32Array(n * n);
+    for (let i = 0; i < n; i++) { // per-point Gaussian with the target perplexity (binary search on beta)
+      const d = new Float32Array(n); for (let j = 0; j < n; j++) d[j] = j === i ? 0 : 1 - dot(U[i], U[j]);
+      let lo = 0, hi = 1e4, beta = 10;
+      for (let t = 0; t < 40; t++) {
+        let z = 0, h = 0; for (let j = 0; j < n; j++) if (j !== i) { const e = Math.exp(-d[j] * beta); z += e; h += d[j] * e; }
+        const H = Math.log(z || 1e-12) + beta * h / (z || 1e-12);
+        if (H > Math.log(perp)) { lo = beta; beta = hi >= 1e4 ? beta * 2 : (beta + hi) / 2; } else { hi = beta; beta = (beta + lo) / 2; }
+      }
+      let z = 0; for (let j = 0; j < n; j++) if (j !== i) z += Math.exp(-d[j] * beta);
+      for (let j = 0; j < n; j++) if (j !== i) P[i * n + j] = Math.exp(-d[j] * beta) / (z || 1e-12);
+    }
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) { const v = (P[i * n + j] + P[j * n + i]) / (2 * n); P[i * n + j] = P[j * n + i] = Math.max(v, 1e-12); }
+    let sx = 0; for (const p of pts) sx = Math.max(sx, Math.abs(p.x), Math.abs(p.y));
+    const Y = new Float32Array(n * 2); pts.forEach((p, i) => { Y[2 * i] = p.x / (sx || 1) * 1e-2; Y[2 * i + 1] = p.y / (sx || 1) * 1e-2; });
+    const G = new Float32Array(n * 2), vel = new Float32Array(n * 2), gain = new Float32Array(n * 2).fill(1), Q = new Float32Array(n * n);
+    for (let it = 0; it < iters; it++) {
+      const ex = it < 100 ? 12 : 1, mom = it < 250 ? .5 : .8, lr = Math.max(50, n / 4); let zq = 0;
+      for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) { const dx = Y[2 * i] - Y[2 * j], dy = Y[2 * i + 1] - Y[2 * j + 1], q = 1 / (1 + dx * dx + dy * dy); Q[i * n + j] = Q[j * n + i] = q; zq += 2 * q; }
+      G.fill(0);
+      for (let i = 0; i < n; i++) for (let j = 0; j < n; j++) if (i !== j) { const q = Q[i * n + j], m = 4 * (ex * P[i * n + j] - q / zq) * q; G[2 * i] += m * (Y[2 * i] - Y[2 * j]); G[2 * i + 1] += m * (Y[2 * i + 1] - Y[2 * j + 1]); }
+      for (let k = 0; k < 2 * n; k++) { gain[k] = Math.max(.01, (G[k] > 0) !== (vel[k] > 0) ? gain[k] + .2 : gain[k] * .8); vel[k] = mom * vel[k] - lr * gain[k] * G[k]; Y[k] += vel[k]; }
+    }
+    pts.forEach((p, i) => { p.x = Y[2 * i]; p.y = Y[2 * i + 1]; });
   }
 
   // ---------- understanding ----------
@@ -867,7 +899,7 @@ function destroyPoint(v) {
 function rebuild() {
   const all = knowledge();
   G = MW.build(all);
-  PTS = MW.project(G); layoutTopics(); gridVer++;
+  PTS = MW.project(G, 700, gridVecOf()); layoutTopics(); gridVer++;
   view.k = 1; view.x = 0; view.y = 0; sel = null;
   renderStats(); drawGrid(); renderInfo();
 }
@@ -1820,7 +1852,7 @@ const view = { x: 0, y: 0, k: 1 }; let sel = null, hidden = new Set(), hover = n
 function size() { const r = can.getBoundingClientRect(), d = devicePixelRatio || 1; can.width = r.width * d; can.height = r.height * d; ctx.setTransform(d, 0, 0, d, 0, 0); return r; }
 function toScreen(p, r) { const S = Math.min(r.width, r.height) * .44 * view.k; return [r.width / 2 + view.x + p.x * S, r.height / 2 + view.y - p.y * S]; }
 // ---------- topic view: each topic is a hub, with its words gathered around it ----------
-let gridMode = ls.get("mwai.gridmode", "topics"), TPTS = [], HUBS = [];
+let gridMode = "map", TPTS = [], HUBS = []; // one view: words with similar meanings sit near each other
 function layoutTopics() { // topics scattered loosely at random, but pulled towards topics with similar meanings
   const groups = new Map();
   for (const p of PTS) { if (!groups.has(p.v.sector)) groups.set(p.v.sector, []); groups.get(p.v.sector).push(p); }
@@ -1901,7 +1933,8 @@ function drawGrid() {
     const [sx, sy] = pos.get(sel); ctx.strokeStyle = "rgba(198,240,107,.5)";
     for (const u of nb.keys()) if (pos.has(u)) { const [x, y] = pos.get(u); ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(x, y); ctx.stroke(); }
   }
-  const labelN = Math.min(140, Math.round(45 * view.k));
+  const labelN = Math.min(220, Math.round(60 * view.k)), boxes = []; // labels never pile on top of each other
+  const free = (x, y, w) => { for (const b of boxes) if (x < b[0] + b[2] && x + w > b[0] && Math.abs(y - b[1]) < 12) return false; boxes.push([x, y, w]); return true; };
   P.forEach((p, i) => {
     if (hidden.has(p.v.sector)) return;
     const [x, y] = pos.get(p.v); if (x < -20 || y < -20 || x > r.width + 20 || y > r.height + 20) return;
@@ -1909,7 +1942,7 @@ function drawGrid() {
     ctx.globalAlpha = sel && !on ? .35 : 1;
     ctx.fillStyle = COLORS[p.v.sector]; ctx.beginPath(); ctx.arc(x, y, on ? 5 : 2.6 + Math.min(2.5, Math.log(p.v.n) * .5), 0, 7); ctx.fill();
     if (p.v === sel) { ctx.strokeStyle = "#fff"; ctx.lineWidth = 2; ctx.stroke(); ctx.lineWidth = 1; }
-    if (on || p.v === hover || (gridMode === "topics" ? p.rank < Math.round(4 * view.k * view.k) : i < labelN)) {
+    if (on || p.v === hover || (i < labelN && free(x + 6, y - 4, p.v.w.length * 6.2))) {
       ctx.fillStyle = on ? "#e9f5ec" : "rgba(233,245,236,.7)"; ctx.font = (on ? "600 13px" : "11px") + " system-ui";
       ctx.fillText(p.v.w, x + 6, y - 4);
     }
@@ -2079,7 +2112,7 @@ $("#gfind").addEventListener("keydown", e => {
   select(v); status(`Found "${v.w}" — sector ${v.sector} (${SECTORS[v.sector]})`);
 });
 new ResizeObserver(() => drawGrid()).observe($("#gwrap"));
-function setGridMode(m) { gridMode = m; ls.set("mwai.gridmode", m === "dict" ? "topics" : m); $("#ginfo").style.display = "none"; sel = null; lexSel = -1; $("#gMode").querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.m === m)); view.k = 1; view.x = view.y = 0; if (m === "dict") fitLex(); drawGrid();
+function setGridMode(m) { m = "map"; gridMode = m; ls.set("mwai.gridmode", m === "dict" ? "topics" : m); $("#ginfo").style.display = "none"; sel = null; lexSel = -1; $("#gMode").querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.m === m)); view.k = 1; view.x = view.y = 0; if (m === "dict") fitLex(); drawGrid();
   $(".ghint").textContent = m === "dict" ? "All 274,000 dictionary words in 64 dimensions — each sector or topic is a cloud, and clouds with similar meanings float near each other (they can overlap). Scroll/pinch to zoom (names appear), click a word, or search it." : m === "topics" ? "Each bubble is a topic, with its words gathered around it (close words have similar meanings). Click a bubble to zoom in · drag to pan · scroll/pinch to zoom." : "Each dot = a word in 64 dimensions, squashed to 2D. Colour = sector. Drag to pan · scroll/pinch to zoom · click a word."; }
 $("#gMode").querySelectorAll("button").forEach(b => b.onclick = () => setGridMode(b.dataset.m));
 setGridMode(gridMode);
@@ -2168,7 +2201,13 @@ $("#kTest").addEventListener("input", e => {
 });
 
 // ---------- wiring ----------
+function gridVecOf() { // real meaning vectors (GloVe, from the dictionary download) when they're on this device
+  if (typeof LEX === "undefined" || !LEX) return null;
+  return w => { const i = LEX.idx.get(String(w).toLowerCase()); if (i === undefined) return null; const v = new Float32Array(64); for (let d = 0; d < 64; d++) v[d] = LEX.vec[i * 64 + d]; return v; };
+}
+let gridLexAsked = false;
 function showView(id) {
+  if (id === "vGrid" && !gridLexAsked && !LEX) { gridLexAsked = true; loadLex(p => status(`🧭 Getting word meanings for the map (one time)… ${p}%`)).then(() => { status("Ready ✓"); PTS = MW.project(G, 700, gridVecOf()); layoutTopics(); gridVer++; drawGrid(); }).catch(() => {}); }
   document.querySelectorAll(".view").forEach(v => v.classList.toggle("on", v.id === id));
   document.querySelectorAll(".tabs button[data-v]").forEach(b => b.classList.toggle("on", b.dataset.v === id));
   if (id === "vGrid") drawGrid();
@@ -2434,7 +2473,7 @@ async function gwAnswer(text, facts, onTextAll, signal, hist) {
     if (k === 0) drafts.push(...cands.slice(0, 5));
   }
   const top = drafts[0];
-  onText(out.join(" ") + `\n\n> 🔍 **How Avish AI wrote this (tiny transformer — no WebGPU)** — context areas: ${C.areas.length} · word types for sentence 1: ${top.types.join(" ")}\n> The 5 drafts it scored: ${drafts.map(c => `"${gwDetok(M, c.toks)}" (${c.score.toFixed(2)})`).join(" · ")}`);
+  onText(out.join(" "));
 }
 // Avish AI 1.3: the grid + Markov + 5 drafts still do the groundwork; a real transformer (the brain picked in the top menu,
 // or 🪶 Mini ~0.5 GB for weaker devices) reads them and decides what makes sense. No WebGPU → Avish's own tiny transformer answers.
@@ -2574,7 +2613,7 @@ Reply with ONLY JSON: {"s1":["…5 sentences"],"s2":["…5 sentences"]}`,
   } else if (Ds[0] || Ds[1]) { final = (Ds[0] || Ds[1]).out; log.push("⚖ Deciders: only one could answer"); }
   else { final = lists.map(l => ({ pick: 0, text: l[0], fixed: false })); via = "none (no big transformer reachable — the checkers' top drafts)"; log.push("⚖ Deciders: unavailable — used the checkers' top drafts"); }
   status("Ready");
-  onText(final.map(o => o.text).join(" ") + `\n\n> 🔍 **How the Avish AI 1.3 team wrote this** — transformer: ${via}${topics.length ? ` · context words: ${topics.slice(0, 8).join(", ")}` : ""} · context areas: ${C.areas.length}\n> ${log.join("\n> ")}\n> Shortlist: ${lists.map(l => l.map(d => `"${d}"`).join(" · ")).join(" ‖ ")}`);
+  onText(final.map(o => o.text).join(" ")); console.info("Avish team:", log.join(" | "), lists);
   return true;
 }
 window.Floof.addProvider({ id: "gridwriter", label: "🧪 Avish AI 1.3 — by AdminAT", ph: "", nokey: true, ok: () => true, vision: false,
@@ -3196,7 +3235,7 @@ idb.get(DKEY).then(v => { // load saved knowledge (and move any old copy out of 
     if (customSectors.length) ls.set("mwai.sectors.backup", customSectors);
     docs = []; saveDocs(); customSectors = []; ls.set("mwai.sectors", []); applySectors();
     useStarter = true; ls.set(SKEY, true); if ($("#kStarter")) $("#kStarter").checked = true;
-    gridMode = "topics"; ls.set("mwai.gridmode", "topics"); ls.set("mwai.gridreset", GRID_RESET);
+    ls.set("mwai.gridreset", GRID_RESET);
   }
   rebuild();
 }).catch(() => {});
