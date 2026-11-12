@@ -323,17 +323,24 @@ async function ghModel(sv) {
   const have = _ghModels.list || [];
   return GH_PREFER.find(m => have.includes(m)) || have.find(m => /gpt|llama|mistral|phi/i.test(m) && !/embed|whisper|image|tts|audio/i.test(m)) || "openai/gpt-4.1-mini";
 }
+const _noExtras = {};
 async function openaiStyle(sv, sys, raw, want, ms) {
   const model = sv.name === "groq" ? await groqModel(sv) : sv.name === "github" ? await ghModel(sv) : sv.model;
-  const r = await fetch(sv.url, { method: "POST", signal: AbortSignal.timeout(ms),
-    headers: { "Content-Type": "application/json", Authorization: "Bearer " + sv.key },
-    body: JSON.stringify({ model, messages: ownMessages(sys, raw), max_tokens: Math.min(want, 4096), ...(/gpt-5|o\d/.test(model) ? {} : { temperature: 0.6 }) }) });
-  let d = {}; try { d = await r.json(); } catch (e) {}
-  if (!r.ok) { const m = (d.error && (d.error.message || d.error)) || (d.errors && d.errors[0] && d.errors[0].message) || ("HTTP " + r.status);
-    const err = new Error(String(m).slice(0, 120)); err.status = r.status; throw err; }
-  const c = d.choices && d.choices[0], text = String((c && c.message && c.message.content) || "").replace(/<think>[\s\S]*?<\/think>/g, "").trim();
-  if (!text) throw new Error("empty answer");
-  return { text, via: sv.name + ":" + model.replace(/^@cf\//, "").replace(/^openai\//, ""), cut: c.finish_reason === "length" };
+  const reasoner = /gpt-oss|gpt-5|\bo\d|qwen3|deepseek-r1|magistral/i.test(model);
+  const max = Math.min(Math.max(want, reasoner ? 2048 : 512), 4096), t0 = now();
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const extras = attempt || _noExtras[model] ? {} : /gpt-oss/.test(model) ? { reasoning_effort: "low" } : /gpt-5|\bo\d/.test(model) ? { reasoning_effort: "minimal" } : /qwen3/.test(model) && sv.name === "groq" ? { reasoning_effort: "none" } : {};
+    const body = { model, messages: ownMessages(sys, raw), ...extras, ...(/gpt-5|\bo\d/.test(model) ? { max_completion_tokens: max } : { max_tokens: max, temperature: 0.6 }) };
+    const r = await fetch(sv.url, { method: "POST", signal: AbortSignal.timeout(Math.max(1000, ms - (now() - t0))),
+      headers: { "Content-Type": "application/json", Authorization: "Bearer " + sv.key }, body: JSON.stringify(body) });
+    let d = {}; try { d = await r.json(); } catch (e) {}
+    if (!r.ok) { const m = (d.error && (d.error.message || d.error)) || (d.errors && d.errors[0] && d.errors[0].message) || ("HTTP " + r.status);
+      if (r.status === 400 && Object.keys(extras).length && attempt === 0) { _noExtras[model] = true; continue; } // model didn't like reasoning_effort
+      const err = new Error(String(m).slice(0, 120)); err.status = r.status; throw err; }
+    const c = d.choices && d.choices[0], text = String((c && c.message && c.message.content) || "").replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+    if (!text) throw new Error("empty answer" + (c && c.finish_reason ? " (" + c.finish_reason + ")" : ""));
+    return { text, via: sv.name + ":" + model.replace(/^@cf\//, "").replace(/^openai\//, ""), cut: c.finish_reason === "length" };
+  }
 }
 
 export default async function handler(req, res) {
