@@ -342,6 +342,7 @@ figure.arti figcaption a{color:var(--dim)}
         <label class="small" for="vVoice">English voice</label>
         <select id="vVoice"></select>
         <div class="row" style="gap:10px"><label class="small" style="flex:1">Speed <input type="range" id="vRate" min="0.6" max="1.6" step="0.05" style="width:100%"></label><label class="small" style="flex:1">Pitch <input type="range" id="vPitch" min="0.5" max="1.8" step="0.05" style="width:100%"></label></div>
+        <label class="small" for="vSinger">🎤 Singing voice</label><select id="vSinger"><option value="natural">🌟 Natural AI voice (~20 MB once) — least robotic</option><option value="robot">🤖 Classic robot voice (0.7 MB)</option></select>
         <div class="row"><button id="vTest" type="button">▶ Test voice</button><button id="vSing" type="button">🎵 Test singing</button></div>
       </div>
       <div class="card" id="proCard">
@@ -3019,11 +3020,18 @@ function voices() { return synth ? synth.getVoices().filter(v => /^en/i.test(v.l
 function bestVoice() { const vs = voices(); return vs.find(v => v.name === vset.voice) || vs.find(v => /natural|neural|online/i.test(v.name) && /GB/.test(v.lang)) || vs.find(v => /Google UK English Female|Google UK/i.test(v.name)) || vs.find(v => /natural|neural|online|google/i.test(v.name)) || vs.find(v => /GB/.test(v.lang)) || vs[0] || null; }
 function fillVoices() {
   const sel = $("#vVoice"); if (!sel) return; const vs = voices(), b = bestVoice();
-  sel.innerHTML = vs.length ? vs.map(v => `<option value="${esc(v.name)}"${b && v.name === b.name ? " selected" : ""}>${esc(v.name)} (${v.lang})${/natural|neural|online|google/i.test(v.name) ? " ★" : ""}</option>`).join("") : "<option>No voices on this device</option>";
+  sel.innerHTML = `<option value="__piper"${vset.voice === "__piper" ? " selected" : ""}>🌟 Natural AI voice (downloads ~20 MB once)</option>` + vs.map(v => `<option value="${esc(v.name)}"${vset.voice !== "__piper" && b && v.name === b.name ? " selected" : ""}>${esc(v.name)} (${v.lang})${/natural|neural|online|google/i.test(v.name) ? " ★" : ""}</option>`).join("");
 }
 if (synth) { fillVoices(); synth.onvoiceschanged = fillVoices; }
 function speakable(t) { return String(t).replace(/```[\s\S]*?```/g, " (code below) ").replace(/!\[[^\]]*\]\([^)]*\)/g, " here's your picture. ").replace(/<[^>]+>/g, " ").replace(/[*_#>`|]/g, "").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/https?:\/\/\S+/g, "").replace(/\s+/g, " ").trim(); }
+let sayAudio = null;
+async function sayNatural(t) { // read aloud with the natural Piper voice
+  const blob = await piperWav(t.slice(0, 1500), pct => status(`🔊 Downloading the natural voice (one time, ~20 MB)… ${pct}%`));
+  if (sayAudio) sayAudio.pause(); sayAudio = new Audio(URL.createObjectURL(blob)); sayAudio.playbackRate = vset.rate || 1; await sayAudio.play(); status("Ready");
+}
 function say(text, opts = {}) {
+  if (sayAudio) { sayAudio.pause(); sayAudio = null; }
+  if (vset.voice === "__piper" && !piperBad && !(vset.lang && !/^en/.test(vset.lang))) { const t = speakable(text); if (t) sayNatural(t).catch(e => { console.warn(e); piperBad = true; vset.voice = ""; say(text, opts); }); return; }
   if (!synth) return status("This browser can't talk — try Chrome.", "err");
   synth.cancel(); const t = speakable(text); if (!t) return;
   const lang = vset.lang || guessLang(t), other = !/^en/.test(lang), lv = other ? voiceFor(lang) : null;
@@ -3042,6 +3050,15 @@ function sing(text) { // sing-song: each word gets a note from a happy pentatoni
 // 🎤 real singing: eSpeak (meSpeak) makes each word, Floof tunes it to a melody note, and a little band plays along — all on this device
 const SING_BASES = window.FLOOF_SING ? [window.FLOOF_SING] : ["https://cdn.jsdelivr.net/gh/aresrevision-prog/floof.ai@dd4ff91d631de8be61427d50131b232c10277834/sing/", "https://floofai.vercel.app/sing/"];
 let singLoading = null, singStop = null;
+// 🌟 natural voice: Piper (a small neural voice that runs on this device; ~20 MB once, then saved)
+const PIPER_URL = window.FLOOF_PIPER || "https://cdn.jsdelivr.net/npm/@mintplex-labs/piper-tts-web@1.0.5/+esm";
+let piperMod = null, piperBad = false;
+const piperVoice = () => (vset.pitch || 1) >= 1.05 ? "en_GB-southern_english_female-low" : "en_GB-alan-low";
+async function piperWav(text, onPct) {
+  piperMod ??= import(PIPER_URL).catch(e => { piperMod = null; throw e; });
+  const m = await piperMod;
+  return await m.predict({ text, voiceId: piperVoice() }, pr => { if (onPct && pr && pr.total) onPct(Math.round(pr.loaded * 100 / pr.total)); });
+}
 function singerLoad() {
   if (window.meSpeak) return Promise.resolve(window.meSpeak);
   return singLoading ??= (async () => {
@@ -3061,13 +3078,24 @@ async function singSong(lyrics) {
   status("🎤 Warming up the singing voice… (one time, ~0.7 MB)");
   let ms; try { ms = await singerLoad(); } catch (e) { status("🎤 Couldn't load the singing voice — using the speaking voice instead.", "err"); return sing(lyrics); }
   const singVoice = await singLang();
+  const decodeCtx = new OfflineAudioContext(1, 1, 44100);
+  let natural = vset.singer !== "robot" && !(vset.lang && !/^en/.test(vset.lang)) && !piperBad && !singVoice;
+  const synthWord = async (w, p) => { // one word as audio: natural Piper voice, or eSpeak
+    if (natural) { const blob = await piperWav(w, pct => status(`🎤 Downloading the natural singing voice (one time, ~20 MB)… ${pct}%`)); return await decodeCtx.decodeAudioData(await blob.arrayBuffer()); }
+    const wav = ms.speak(w, { pitch: p, speed: 140, amplitude: 120, rawdata: "array", ...(singVoice ? { voice: singVoice } : {}) }); if (!wav) throw new Error("no audio");
+    return await decodeCtx.decodeAudioData(new Uint8Array(wav).buffer);
+  };
+  let probe = null;
+  if (natural) { try { probe = await synthWord("la la"); } catch (e) { console.warn("Natural voice unavailable, using eSpeak", e); natural = false; piperBad = true; } }
+  if (!probe) probe = await synthWord("la la", 50).catch(() => null);
+  const baseF0 = probe ? f0Of(probe) : 0;
   const lines = speakable(lyrics).split(/(?<=[.!?;])\s+|\n+/).map(l => l.replace(/[^\p{L}' -]/gu, " ").trim()).filter(Boolean).slice(0, 24);
   if (!lines.length) return;
   let cancelled = false; singStop = () => { cancelled = true; status("🎤 Stopped singing."); };
   status("🎤 Learning the song…");
   // 1) the tune: chords C G Am F, one word per beat (long words and line-ends held longer), a breath between lines
   const female = (vset.pitch || 1) >= 1.05, bpm = 84, beat = 60 / bpm, SR = 44100;
-  const chords = [[0, 4, 7], [7, 11, 14], [9, 12, 16], [5, 9, 12]], root = female ? 53 : 45;
+  const chords = [[0, 4, 7], [7, 11, 14], [9, 12, 16], [5, 9, 12]], root = baseF0 > 60 ? Math.round(69 + 12 * Math.log2(baseF0 / 440)) - 3 : (female ? 53 : 45); // sing around the voice's own pitch → least robotic
   const hz = m => 440 * Math.pow(2, (m - 69) / 12), scale = [0, 2, 4, 5, 7, 9, 11, 12, 14];
   const words = []; let beatN = 0, deg = 2;
   for (const line of lines) {
@@ -3081,24 +3109,23 @@ async function singSong(lyrics) {
   const total = beatN, lenS = total * beat + 2.5;
   const OC = new OfflineAudioContext(2, Math.ceil(lenS * SR), SR); // the whole song is made first, then played — no stutters
   // 2) the voice: each word from eSpeak → trimmed → its last vowel smoothly stretched (overlapping grains) → tuned to its note
-  const voice = OC.createGain(); const warm = OC.createBiquadFilter(); warm.type = "lowpass"; warm.frequency.value = 3800; warm.Q.value = .5;
+  const voice = OC.createGain(); const warm = OC.createBiquadFilter(); warm.type = "lowpass"; warm.frequency.value = natural ? 7000 : 3800; warm.Q.value = .5;
   const comp = OC.createDynamicsCompressor(); comp.threshold.value = -20; comp.ratio.value = 3; comp.attack.value = .01; comp.release.value = .25;
   const hall = OC.createConvolver(), irL = Math.floor(SR * 1.4), ir = OC.createBuffer(2, irL, SR); for (let c = 0; c < 2; c++) { const ch = ir.getChannelData(c); for (let k = 0; k < irL; k++) ch[k] = (Math.random() * 2 - 1) * Math.pow(1 - k / irL, 3.2); } hall.buffer = ir;
   const hallWet = OC.createGain(); hallWet.gain.value = .14; hall.connect(hallWet); hallWet.connect(OC.destination);
   voice.connect(warm); warm.connect(comp); comp.connect(OC.destination); comp.connect(hall);
-  const decodeCtx = new OfflineAudioContext(1, 1, SR);
   for (let wi = 0; wi < words.length; wi++) {
     if (cancelled) return;
     const nw = words[wi], next = words[wi + 1];
     const target = hz(nw.midi), p = Math.max(10, Math.min(99, Math.round(25 + Math.log(target / 74) / .011)));
-    let wav; try { wav = ms.speak(nw.w, { pitch: p, speed: 140, amplitude: 120, rawdata: "array", ...(singVoice ? { voice: singVoice } : {}) }); } catch {} if (!wav) continue;
-    let raw; try { raw = await decodeCtx.decodeAudioData(new Uint8Array(wav).buffer); } catch { continue; }
+    let raw; try { raw = await synthWord(nw.w, p); } catch { continue; }
+    if (wi % 6 === 0) status(`🎤 Learning the song… ${Math.round(wi * 100 / words.length)}%`);
     const sr = raw.sampleRate, d0 = raw.getChannelData(0), thr = .02; let a = 0, z = d0.length - 1, pk = 0;
     while (a < z && Math.abs(d0[a]) < thr) a++; while (z > a && Math.abs(d0[z]) < thr) z--;
     a = Math.max(0, a - 150); z = Math.min(d0.length - 1, z + 150);
     const wd = d0.slice(a, z + 1); for (const v of wd) pk = Math.max(pk, Math.abs(v));
     const tmp = OC.createBuffer(1, wd.length, sr); tmp.getChannelData(0).set(wd);
-    const f0 = f0Of(tmp) || target, rate = Math.max(.6, Math.min(1.8, target / f0));
+    const f0 = f0Of(tmp) || target, rate = Math.max(.7, Math.min(1.5, target / f0));
     const noteLen = (next && next.beat - nw.beat < nw.len + .01 ? next.beat - nw.beat : nw.len) * beat;
     // stretch: keep the word, then hold its last steady vowel with overlapping Hann-windowed grains one pitch period apart (smooth, no buzz)
     const need = Math.ceil((noteLen + .1) * rate * sr), per = Math.max(20, Math.round(sr / f0));
@@ -3161,6 +3188,7 @@ function saveV() { ls.set(VKEY, vset); $("#ttsBtn").classList.toggle("on", !!vse
 $("#ttsBtn").onclick = () => { stopSinging(); vset.tts = !vset.tts; saveV(); if (!vset.tts && synth) synth.cancel(); status(vset.tts ? "🔊 Floof will read its replies out loud." : "🔇 Reading aloud is off."); };
 $("#vVoice").onchange = e => { vset.voice = e.target.value; saveV(); };
 $("#vLang").innerHTML = LANGS.map(([c, n]) => `<option value="${c}"${c === (vset.lang || "") ? " selected" : ""}>${n}</option>`).join(""); $("#vLang").onchange = e => { vset.lang = e.target.value; saveV(); status(vset.lang ? `🌍 Floof will now reply, listen and speak in ${langName(vset.lang)}.` : "🌍 Floof will reply in whatever language you write in."); };
+$("#vSinger").value = vset.singer || "natural"; $("#vSinger").onchange = e => { vset.singer = e.target.value; saveV(); };
 $("#vRate").value = vset.rate; $("#vPitch").value = vset.pitch; $("#vAuto").checked = vset.auto !== false;
 $("#vRate").oninput = e => { vset.rate = +e.target.value; saveV(); }; $("#vPitch").oninput = e => { vset.pitch = +e.target.value; saveV(); };
 $("#vAuto").onchange = e => { vset.auto = e.target.checked; saveV(); };
