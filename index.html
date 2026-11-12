@@ -3061,7 +3061,7 @@ async function singSong(lyrics) {
   status("🎤 Warming up the singing voice… (one time, ~0.7 MB)");
   let ms; try { ms = await singerLoad(); } catch (e) { status("🎤 Couldn't load the singing voice — using the speaking voice instead.", "err"); return sing(lyrics); }
   const AC = new (window.AudioContext || window.webkitAudioContext)(); const out = AC.createGain(); out.gain.value = .9; out.connect(AC.destination);
-  const echo = AC.createDelay(); echo.delayTime.value = .18; const fb = AC.createGain(); fb.gain.value = .22; echo.connect(fb); fb.connect(echo); echo.connect(out); // a little room sound
+  const echo = AC.createDelay(); echo.delayTime.value = .06; const wet = AC.createGain(); wet.gain.value = .12; echo.connect(wet); wet.connect(out); // just a touch of room, no repeats
   const singVoice = await singLang(); const lines = speakable(lyrics).split(/(?<=[.!?;])\s+|\n+/).map(l => l.replace(/[^\p{L}' -]/gu, " ").trim()).filter(Boolean).slice(0, 24);
   if (!lines.length) return;
   const female = (vset.pitch || 1) >= 1.05, bpm = 100, beat = 60 / bpm, t0 = AC.currentTime + .4;
