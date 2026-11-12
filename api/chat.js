@@ -100,6 +100,14 @@ function tooMany(user, pro) { // gentle per-user limit (per server instance): 20
   return h.length > (pro ? 60 : 20);
 }
 
+const _ipHits = new Map();
+function ipOf(req) { const h = req.headers || {}; return String(h["x-real-ip"] || String(h["x-forwarded-for"] || "").split(",")[0] || "?").trim(); }
+function ipTooMany(ip) { // per network (catches lots of throwaway accounts from one place): 60/min, 1500/day per server instance
+  const t = now(), h = (_ipHits.get(ip) || []).filter(x => t - x < 86400000); h.push(t); _ipHits.set(ip, h);
+  if (_ipHits.size > 20000) _ipHits.clear();
+  return h.filter(x => t - x < 60000).length > 60 || h.length > 1500;
+}
+
 // ----- one Gemini call -----
 class GErr extends Error { constructor(msg, code, status, kind) { super(msg); this.code = code; this.status = status; this.kind = kind; } }
 async function gemini(m, key, body, ms) {
@@ -238,6 +246,7 @@ export default async function handler(req, res) {
   const acc = await account(b.token);
   if (acc && acc.err) return res.status(503).json({ error: "Can't check your MagicWinter sign-in right now — try again in a minute.", busy: true });
   if (!acc) return res.status(401).json({ error: "Sign in with a MagicWinter account to use Floof Cloud." });
+  if (!acc.pro && ipTooMany(ipOf(req))) return res.status(429).json({ error: "Lots of messages are coming from your network — try again in a little while." });
   if (tooMany(acc.user.toLowerCase(), acc.pro)) return res.status(429).json({ error: "You're sending messages very fast — wait a few seconds." });
 
   const sys = String(b.system || "").slice(0, 60000);

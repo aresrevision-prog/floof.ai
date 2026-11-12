@@ -33,14 +33,28 @@ begin
 end $$;
 revoke all on function public.mw__session(text) from public, anon, authenticated;
 
+-- sign-up limits: 5 new accounts per hour from one network, 100 per hour in total
+create table if not exists public.mw_signups (ip text not null, at timestamptz not null default now());
+create index if not exists mw_signups_at on public.mw_signups(at);
+alter table public.mw_signups enable row level security;
+revoke all on public.mw_signups from anon, authenticated;
+
 create or replace function public.mw_signup(p_username text, p_password text) returns json
 language plpgsql security definer set search_path = public, extensions as $$
-declare u text := lower(trim(coalesce(p_username, '')));
+declare u text := lower(trim(coalesce(p_username, ''))); h json; v_ip text;
 begin
+  begin h := current_setting('request.headers', true)::json; exception when others then h := null; end;
+  v_ip := coalesce(nullif(trim(split_part(coalesce(h->>'x-forwarded-for', ''), ',', 1)), ''), h->>'cf-connecting-ip', h->>'x-real-ip', '?');
+  delete from mw_signups where at < now() - interval '1 day';
+  if (select count(*) from mw_signups where ip = v_ip and at > now() - interval '1 hour') >= 5 then
+    return json_build_object('error', 'Too many new accounts from this network — try again in an hour.'); end if;
+  if (select count(*) from mw_signups where at > now() - interval '1 hour') >= 100 then
+    return json_build_object('error', 'Lots of people are signing up right now — try again a bit later.'); end if;
   if u !~ '^[a-z0-9][a-z0-9_]{2,19}$' then return json_build_object('error', 'Username: 3–20 letters, numbers or _.'); end if;
   if length(coalesce(p_password, '')) < 6 or length(p_password) > 200 then return json_build_object('error', 'Password needs at least 6 characters.'); end if;
   if exists (select 1 from mw_accounts where username = u) then return json_build_object('error', 'That username is taken.'); end if;
   insert into mw_accounts(username, display_name, pass_hash) values (u, trim(p_username), extensions.crypt(p_password, extensions.gen_salt('bf', 10)));
+  insert into mw_signups(ip) values (v_ip);
   return json_build_object('ok', true, 'username', trim(p_username), 'token', mw__session(u));
 end $$;
 

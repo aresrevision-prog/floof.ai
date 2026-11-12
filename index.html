@@ -718,7 +718,7 @@ function getSession() {
   return null;
 }
 // where "Back to site" goes: the MagicWinter site that sent you here (remembered), or "/" when Floof lives at /floof/ on that site
-const MW_SITE_DEFAULT = ""; // set to your MagicWinter site address, e.g. "https://your-site.vercel.app/"
+const MW_SITE_DEFAULT = "https://magicwinter.vercel.app/";
 let SITE_URL = /\/floof\/?/i.test(location.pathname) ? "/" : MW_SITE_DEFAULT;
 try { const r = document.referrer && new URL(document.referrer); if (r && r.origin !== location.origin && /magicwinter|magic-winter/i.test(r.host)) localStorage.setItem("mw.site", r.origin + "/"); if (!SITE_URL) SITE_URL = localStorage.getItem("mw.site") || ""; } catch {}
 document.querySelectorAll("#mwHome,#mwBack,#mwSide").forEach(a => { if (SITE_URL) a.href = SITE_URL; else if (a.id === "mwHome") a.removeAttribute("href"); else a.style.display = "none"; });
@@ -2034,7 +2034,18 @@ let pyWorker = null, pyReady = null, pyJobs = new Map(), pyId = 0;
 function getPy() {
   if (pyWorker) return pyReady;
   const src = `import { loadPyodide } from ${JSON.stringify(PYODIDE + "pyodide.mjs")};
-let py; const ready = loadPyodide({ indexURL: ${JSON.stringify(PYODIDE)} }).then(p => py = p);
+let py; const ready = loadPyodide({ indexURL: ${JSON.stringify(PYODIDE)} }).then(p => { py = p; lockNet(); return p; });
+function lockNet() { // no internet for Python code: only Pyodide's own package files can be fetched
+  const base = ${JSON.stringify(new URL(PYODIDE, location.href).href)}, f = globalThis.fetch.bind(globalThis);
+  const blocked = () => { throw new Error("Floof's Python has no internet access"); };
+  globalThis.fetch = (u, o) => { let s; try { s = new URL(typeof u === "string" ? u : u.url, base).href; } catch (x) { s = ""; }
+    return s.startsWith(base) && !(o && o.method && o.method.toUpperCase() !== "GET") ? f(s, o) : Promise.reject(new TypeError("Floof's Python has no internet access")); };
+  for (const k of ["XMLHttpRequest", "WebSocket", "EventSource", "WebTransport", "Worker", "SharedWorker", "importScripts", "eval"]) { try { Object.defineProperty(globalThis, k, { value: blocked, writable: false, configurable: false }); } catch (x) {} }
+  const F = Function, AF = (async () => {}).constructor, GF = (function* () {}).constructor, AGF = (async function* () {}).constructor;
+  const lock = C => new Proxy(C, { apply: blocked, construct: blocked }); // still works with instanceof, can't build new code
+  for (const C of [F, AF, GF, AGF]) { try { Object.defineProperty(C.prototype, "constructor", { value: lock(C), writable: false, configurable: false }); } catch (x) {} }
+  try { Object.defineProperty(globalThis, "Function", { value: lock(F), writable: false, configurable: false }); } catch (x) {}
+}
 onmessage = async e => { const { id, code } = e.data; const out = m => postMessage({ id, t: "out", m }), err = m => postMessage({ id, t: "err", m });
   try { await ready; py.setStdout({ batched: out }); py.setStderr({ batched: err }); py.setStdin({ stdin: () => { throw new Error("input() isn't available here — put the value in a variable instead"); } });
     try { await py.loadPackagesFromImports(code); } catch (x) {}
