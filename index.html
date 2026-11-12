@@ -1000,7 +1000,8 @@ function md(src) {
       return `<pre data-lang="${esc(lang)}"><div class="cbtns">${run}<button class="dl" title="Download">⬇</button><button class="copy">Copy</button></div><code>${esc(code.replace(/\n$/, ""))}</code></pre>`;
     }
     const h = esc(p).replace(/!\[([^\]\n]*)\]\((data:image\/(?:png|jpeg);base64,[A-Za-z0-9+\/=]+)\)/g, (m, alt, url) => `<figure class="arti ok"><img src="${url}" alt="${alt}" style="image-rendering:auto"><figcaption><button type="button" class="artidl" data-u="${url}">⬇ Download</button></figcaption></figure>`)
-      .replace(/!\[(meme|arti9):([^\]\n]*)\]\((https:\/\/image\.pollinations\.ai\/[^)\s]+)\)/g, (m, kind, cap, url) => artiFigure(kind, cap, url))
+      .replace(/!\[(meme|arti9):([^\]\n]*)\]\(((?:https:\/\/image\.pollinations\.ai\/|idb:)[^)\s]+)\)/g, (m, kind, cap, url) => artiFigure(kind, cap, url))
+      .replace(/!\[([^\]\n]*)\]\(idb:([a-z0-9]+)\)/g, (m, alt, id) => `<figure class="arti"><img data-idb="${id}" alt="${alt}" onload="this.parentNode.classList.add('ok')"><figcaption><button type="button" class="artidl" data-u="idb:${id}">⬇ Download</button></figcaption></figure>`)
       .replace(/!\[([^\]\n]*)\]\((https:\/\/image\.pollinations\.ai\/[^)\s]+)\)/g, (m, alt, url) => `<figure class="arti"><img src="${url}" alt="${alt}" loading="lazy" onload="this.parentNode.classList.add('ok')" onerror="this.parentNode.classList.add('bad')"><figcaption><button type="button" class="artidl" data-u="${url}">⬇ Download</button><a href="${url}" target="_blank" rel="noopener">Open full size ↗</a></figcaption></figure>`)
       .replace(/`([^`\n]+)`/g, "<code>$1</code>").replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>")
       .replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<i>$2</i>").replace(/^#{1,6} (.+)$/gm, "<b>$1</b>").replace(/^\s*[-*] (.+)$/gm, "• $1");
@@ -2943,6 +2944,22 @@ async function artiMini(text, n = 4) {
   }
   status("Ready"); return big.toDataURL("image/jpeg", .88); // small enough to keep in the chat
 }
+// 🖼 Floof's own picture server (Gemini image / Cloudflare FLUX on the free tiers) → pictures kept in this device's storage
+const FLOOF_IMG = FLOOF_API.replace(/chat$/, "image");
+async function artiServer(prompt, aspect) {
+  if (ACCOUNT_KIND !== "mw" || !mwToken()) return null;
+  try { const r = await fetch(FLOOF_IMG, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ token: mwToken(), prompt, aspect }) }); const j = await r.json().catch(() => ({})); if (r.status === 400 && j.error) return { error: j.error }; return j.image ? j : null; } catch { return null; }
+}
+async function artiStore(dataURL) { // shrink a little (max 1024 px, JPEG) and keep it on this device
+  const img = new Image(); img.src = dataURL; await img.decode();
+  const sc = Math.min(1, 1024 / Math.max(img.naturalWidth, img.naturalHeight)), c = document.createElement("canvas"); c.width = Math.round(img.naturalWidth * sc); c.height = Math.round(img.naturalHeight * sc);
+  c.getContext("2d").drawImage(img, 0, 0, c.width, c.height); const blob = await new Promise(r => c.toBlob(r, "image/jpeg", .9));
+  const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 7); await idb.setRaw("img." + id, blob); return id;
+}
+const _idbURL = new Map();
+async function idbImgURL(id) { if (_idbURL.has(id)) return _idbURL.get(id); const b = await idb.getRaw("img." + id).catch(() => null); const u = b ? URL.createObjectURL(b) : ""; _idbURL.set(id, u); return u; }
+new MutationObserver(() => { document.querySelectorAll("img[data-idb]:not([data-done])").forEach(async im => { im.dataset.done = 1; const u = await idbImgURL(im.dataset.idb); if (u) { im.src = u; } else { im.closest("figure")?.classList.add("bad"); } }); })
+  .observe(document.documentElement, { childList: true, subtree: true });
 // 🔎 Arti's research team: 3 researchers look the subject up online (free, no key), 3 checkers keep it safe, on-topic and the picture good
 const ART_STYLE = /\b(pixel art|pixel|cartoon|anime|manga|photo|photorealistic|realistic|watercolou?r|oil painting|painting|3d|render|sketch|drawing|logo|icon|wide|tall|landscape|portrait|wallpaper|poster|banner|meme|style|high quality|detailed|cute|funny|picture|image|pic)\b/gi;
 const ART_VISUAL = /\b(colou?r|red|orange|yellow|green|blue|purple|pink|brown|black|white|grey|gray|golden|silver|striped|stripes|spots|spotted|feathers?|fur|scales?|wings?|tail|horns?|shell|beak|eyes?|shape|shaped|round|long|tall|small|large|tiny|huge|body|head|legs?|made of|wooden|metal|glass|stone|tower|dome|roof|built|pattern|leaves|petals?|flowers?)\b/i;
@@ -2980,17 +2997,18 @@ async function artiImageOK(url) { // ✅ checker 3: did the picture actually com
 // 🖼 meme pictures (words drawn by Floof on top) and the 3×3 team grid (9 bots, one square each)
 function artiMemeHTML(url, cap) {
   const [top, bot] = cap.includes("|") ? cap.split("|").map(x => x.trim()) : ["", cap.trim()];
-  return `<div class="memew"><img src="${url}" alt="${cap}" loading="lazy" crossorigin="anonymous" onload="this.closest('figure').classList.add('ok')" onerror="this.closest('figure').classList.add('bad')">${top ? `<div class="memet top">${top}</div>` : ""}${bot ? `<div class="memet bot">${bot}</div>` : ""}</div>`;
+  return `<div class="memew"><img ${url.startsWith("idb:") ? `data-idb="${url.slice(4)}"` : `src="${url}" crossorigin="anonymous"`} alt="${cap}" loading="lazy" onload="this.closest('figure').classList.add('ok')" onerror="this.closest('figure').classList.add('bad')">${top ? `<div class="memet top">${top}</div>` : ""}${bot ? `<div class="memet bot">${bot}</div>` : ""}</div>`;
 }
 function artiFigure(kind, cap, url) {
   if (kind === "meme") return `<figure class="arti meme">${artiMemeHTML(url, cap)}<figcaption><button type="button" class="artidl" data-u="${url}" data-cap="${cap}">⬇ Download meme</button><a href="${url}" target="_blank" rel="noopener">Picture only ↗</a></figcaption></figure>`;
-  const base = url.replace(/seed=\d+$/, "seed="), s0 = +((url.match(/seed=(\d+)$/) || [])[1] || 1);
-  return `<figure class="arti grid9" data-cap="${cap}"><div class="g9">${Array.from({ length: 9 }, (_, i) => `<img src="${base}${s0 + i}" loading="lazy" alt="Version ${i + 1}" title="Bot ${i + 1} — tap to make this one big" data-u="${base}${s0 + i}" onload="this.classList.add('ok')">`).join("")}</div><figcaption class="small">9 bots · tap your favourite</figcaption></figure>`;
+  const urls = url.startsWith("idb:") ? url.slice(4).split("|").map(id => "idb:" + id) : Array.from({ length: 9 }, (_, i) => url.replace(/seed=\d+$/, "seed=") + (+((url.match(/seed=(\d+)$/) || [])[1] || 1) + i));
+  return `<figure class="arti grid9" data-cap="${cap}"><div class="g9">${urls.map((u, i) => u === "idb:x" ? `<img alt="Bot ${i + 1} couldn't paint this one" class="ok" style="opacity:.25">` : `<img ${u.startsWith("idb:") ? `data-idb="${u.slice(4)}"` : `src="${u}"`} loading="lazy" alt="Version ${i + 1}" title="Bot ${i + 1} — tap to make this one big" data-u="${u}" onload="this.classList.add('ok')">`).join("")}</div><figcaption class="small">9 bots · tap your favourite</figcaption></figure>`;
 }
 document.addEventListener("click", e => { // pick one of the 9 → it becomes the big picture (with the meme words)
   const im = e.target.closest(".grid9 .g9 img"); if (!im) return;
   const fig = im.closest("figure"), cap = fig.dataset.cap || "", u = im.dataset.u;
-  fig.outerHTML = cap ? artiFigure("meme", cap, u) : `<figure class="arti ok"><img src="${u}" alt="picked"><figcaption><button type="button" class="artidl" data-u="${u}">⬇ Download</button><a href="${u}" target="_blank" rel="noopener">Open full size ↗</a></figcaption></figure>`;
+  if (!u) return;
+  fig.outerHTML = cap ? artiFigure("meme", cap, u) : `<figure class="arti ok"><img ${u.startsWith("idb:") ? `data-idb="${u.slice(4)}"` : `src="${u}"`} alt="picked"><figcaption><button type="button" class="artidl" data-u="${u}">⬇ Download</button><a href="${u}" target="_blank" rel="noopener">Open full size ↗</a></figcaption></figure>`;
 });
 async function artiBakeMeme(url, cap) { // draws the words onto the picture for the download (Impact-style: white, thick black outline)
   const img = new Image(); img.crossOrigin = "anonymous"; img.src = url; await img.decode();
@@ -3034,23 +3052,39 @@ window.Floof.addProvider({ id: "arti", label: "🎨 Arti — free image maker (2
     status("🔎 Arti's 3 researchers are looking it up…");
     const R = await artiResearch(prompt).catch(() => null);
     const extra = R && R.details ? `. Accurate details: ${R.details}` : "";
-    let seed = Math.floor(Math.random() * 1e9), base = `https://image.pollinations.ai/prompt/${encodeURIComponent((prompt + extra).slice(0, 900) + style)}?width=${w}&height=${h}&model=flux&nologo=true&safe=true&referrer=floofai&seed=`;
+    const fullPrompt = (prompt + extra).slice(0, 900) + style, aspect = wide ? "16:9" : tall ? "9:16" : "1:1";
     const cap = quoted.join(" | ").replace(/[\[\]()]/g, "").toUpperCase();
     const cost = grid ? 3 : 1; if (used + cost > ARTI_MAX) return done(`That needs ${cost} of your daily images and you have ${ARTI_MAX - used} left — try a single picture instead.`);
-    ls.set(artiDayKey(), used + cost); refreshModels?.();
-    status(grid ? "🎨 9 Arti bots are painting one square each… (about 15-30 seconds)" : "🎨 Arti is painting… (about 5-15 seconds)");
-    if (!grid) { if (!(await artiImageOK(base + seed))) { status("✅ A checker didn't like that picture — painting it again…"); seed += 7; } } // ✅ checker 3
-    status("Ready");
-    const tag = (grid ? "arti9" : meme ? "meme" : "") + (grid || meme ? ":" + cap : prompt.replace(/[\[\]()]/g, ""));
     const rs = R && R.n ? `\n🔎 *Researched first:* ${R.url ? `[${R.title}](${R.url})` : R.title}${R.details ? " — used its description of how it looks" : ""}` : "";
-    return done(`![${tag}](${base}${seed})${rs}\n\n🎨 *Arti · ${grid ? "9 bots painted 9 versions — tap the best one to make it big" : meme ? "meme — the words are written on by Floof, so they're always spelled right" : "picture"} · ${used + cost} of ${ARTI_MAX} used today*`);
+    const tagFor = g => (g ? "arti9" : meme ? "meme" : "") + (g || meme ? ":" + cap : prompt.replace(/[\[\]()]/g, ""));
+    const note = (g, via) => `\n\n🎨 *Arti · ${g ? "9 bots painted 9 versions — tap the best one to make it big" : meme ? "meme — the words are written on by Floof, so they're always spelled right" : "picture"}${via ? " · made with " + via : ""} · ${used + cost} of ${ARTI_MAX} used today*`;
+    // 1) Floof's picture server: big, detailed pictures (Google Gemini image / Cloudflare FLUX, free tiers)
+    status(grid ? "🎨 9 Arti bots are painting one square each…" : "🎨 Arti is painting… (about 10-20 seconds)");
+    if (grid) {
+      const ids = new Array(9).fill("x"); let via = "", served = 0, stop = false;
+      const job = async i => { if (stop) return; const r = await artiServer(fullPrompt + ` (version ${i + 1}, a different take)`, aspect); if (!r || r.error) { if (i === 0) stop = true; return; } ids[i] = await artiStore(r.image); via = r.via; served++; status(`🎨 ${served} of 9 bots finished…`); };
+      await job(0); for (let k = 1; k < 9 && !stop; k += 4) await Promise.all([k, k + 1, k + 2, k + 3].filter(x => x < 9).map(job)); // 4 bots at a time
+      if (served) { ls.set(artiDayKey(), used + cost); refreshModels?.(); status("Ready"); return done(`![${tagFor(true)}](idb:${ids.join("|")})${rs}${note(true, via)}`); }
+    } else {
+      const r = await artiServer(fullPrompt, aspect);
+      if (r && r.error) return done("🎨 " + r.error);
+      if (r && r.image) { const id = await artiStore(r.image); ls.set(artiDayKey(), used + 1); refreshModels?.(); status("Ready"); return done(`![${tagFor(false)}](idb:${id})${rs}${note(false, r.via)}`); }
+    }
+    // 2) backup: the keyless Pollinations service (smaller pictures, a small logo, one at a time per network)
+    const pw = Math.min(768, wide ? 768 : tall ? 432 : 768), ph = Math.min(768, wide ? 432 : 768);
+    let seed = Math.floor(Math.random() * 1e9); const base = `https://image.pollinations.ai/prompt/${encodeURIComponent(fullPrompt)}?width=${pw}&height=${ph}&model=flux&safe=true&referrer=floofai&seed=`;
+    ls.set(artiDayKey(), used + 1); refreshModels?.();
+    if (!(await artiImageOK(base + seed))) { status("✅ A checker didn't like that picture — painting it again…"); seed += 7; } // ✅ checker 3
+    status("Ready");
+    return done(`![${tagFor(false)}](${base}${seed})${rs}${note(false, "the free backup painter")}${grid ? "\n\n*(The 3×3 grid needs Floof's picture server — sign in to MagicWinter, or try again later.)*" : ""}`);
   }
 });
 document.addEventListener("click", async e => { // download the picture as a file
   const b = e.target.closest(".artidl"); if (!b) return;
   b.disabled = true; b.textContent = "Saving…";
-  try { const bl = b.dataset.cap ? await artiBakeMeme(b.dataset.u, b.dataset.cap) : await (await fetch(b.dataset.u)).blob(); const a = document.createElement("a"); a.href = URL.createObjectURL(bl); a.download = "arti-" + Date.now() + ".jpg"; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); b.textContent = "✓ Saved"; }
-  catch { window.open(b.dataset.u, "_blank"); b.textContent = "⬇ Download"; }
+  try { const src = b.dataset.u.startsWith("idb:") ? await idbImgURL(b.dataset.u.slice(4)) : b.dataset.u;
+    const bl = b.dataset.cap ? await artiBakeMeme(src, b.dataset.cap) : await (await fetch(src)).blob(); const a = document.createElement("a"); a.href = URL.createObjectURL(bl); a.download = "arti-" + Date.now() + ".jpg"; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); b.textContent = "✓ Saved"; }
+  catch { if (!b.dataset.u.startsWith("idb:")) window.open(b.dataset.u, "_blank"); b.textContent = "⬇ Download"; }
   b.disabled = false;
 });
 // ---------- 🏗 Construct AI 1.4 — by AdminHF: a coding team built from our AIs ----------
