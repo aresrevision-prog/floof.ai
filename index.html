@@ -1554,7 +1554,7 @@ idb.get("mwai.mem").then(v => { if (Array.isArray(v)) mems = v; renderMems(); })
 const PV = {};
 let cloud = ls.get("mwai.cloud", null), abortCtl = null, modelList = [];
 if (!cloud) cloud = { pv: "", keys: {}, model: {}, fix: true };
-if (cloud.pv && !PV[cloud.pv] && !["floof", "athena", "gridwriter", "construct", "arti"].includes(cloud.pv)) cloud.pv = ""; delete cloud.keys.claude; delete cloud.model.claude; ls.del("mwai.claude"); ls.set("mwai.cloud", cloud); // paid option removed: wipe any old key
+if (cloud.pv && !PV[cloud.pv] && !["floof", "athena", "gridwriter", "construct", "arti", "ultima"].includes(cloud.pv)) cloud.pv = ""; delete cloud.keys.claude; delete cloud.model.claude; ls.del("mwai.claude"); ls.set("mwai.cloud", cloud); // paid option removed: wipe any old key
 let cloudBad = false, cloudBadTimer = 0; // set when the key/server was rejected, so Floof falls back instead of erroring
 const cloudReady = () => !cloudBad && !!PV[cloud.pv] && PV[cloud.pv].ok(cloud.keys[cloud.pv] || "");
 // keyless backup brain (Pollinations): used when no other brain works, so Floof still understands instead of only matching grid sentences
@@ -2946,6 +2946,34 @@ window.Floof.addProvider({ id: "construct", label: "🏗 Construct AI 1.4 — by
     }
     status("Ready");
     return { in: 0, out: 0, model: "🏗 Construct AI 1.4 · " + via, finish: "" };
+  }
+});
+// ---------- 🌟 Ultima AI 1.0 — Avish + Construct + Arti in one: it reads each message and hands it to the right one ----------
+function ultimaRoute(text, msgs) {
+  const t = String(text), low = t.toLowerCase();
+  const prevBot = [...(msgs || [])].reverse().find(m => m.role === "assistant"), prev = String(prevBot && prevBot.content || "");
+  if (/^i tested that (page|code)/i.test(t) || /```/.test(t)) return "construct"; // auto-test fixes and pasted code
+  const pic = /\b(draw|paint|sketch|illustrate)\b|\b(make|create|generate|show|give)( me)?( an?| the| some)? (image|picture|pic|drawing|painting|illustration|wallpaper|poster|artwork|portrait|logo|icon|avatar|pfp|profile picture)s?\b|\b(image|picture|wallpaper|poster|artwork|pfp) of\b/i.test(low);
+  const code = /\b(code|coding|program|script|function|python|javascript|\bjs\b|html|css|java|c\+\+|c#|sql|api|algorithm|bug|debug|compile|syntax|error|traceback|website|web ?page|web ?app|app|game|calculator|bot)\b/i.test(low) && /\b(make|build|create|write|code|fix|debug|program|add|change|improve|update|why|help|explain|convert)\b/i.test(low);
+  if (pic && !/\b(code|program|html|css|javascript|python|game)\b/i.test(low)) return "arti";
+  if (code) return "construct";
+  if (/^(again|another|one more|more|a different one|try again|redo)\b/i.test(low) && /figure class="arti"|image\.pollinations\.ai/.test(prev)) return "arti"; // "another one" after a picture
+  if (/^(again|now|also|and|make it|change|add|fix)\b/i.test(low) && /```/.test(prev)) return "construct"; // follow-ups on code
+  return "gridwriter";
+}
+window.Floof.addProvider({ id: "ultima", label: "🌟 Ultima AI 1.0 — Avish + Construct + Arti in one", ph: "", nokey: true, ok: () => true, vision: false,
+  help: "Ultima AI 1.0 reads each message and hands it to the right member: 🧪 Avish AI for questions and chat, 🏗 Construct AI for code (with auto-testing and fixing), and 🎨 Arti for pictures (25 a day). Everything else works the same as using each one on its own.",
+  list: async () => [{ id: "ultima1", name: "Ultima AI 1.0 (auto)" }],
+  stream: async args => {
+    const last = [...args.msgs].reverse().find(m => m.role === "user"), text = String(last && last.content || "");
+    if (/\b(which|what) (ai|model|brain)\b|\bwho (are|made|built|created) (you|u)\b|\byour name\b|\bwhat are you\b/i.test(text)) {
+      args.onText("I'm **Ultima AI 1.0** 🌟 — three MagicWinter AIs in one. I send questions and chat to **Avish AI 1.8** (by AdminAT), code to **Construct AI 1.4** (by AdminHF), and pictures to **Arti** 🎨. Just ask — I pick the right one each time.");
+      return { in: 0, out: 0, model: "🌟 Ultima AI 1.0", finish: "" };
+    }
+    const to = ultimaRoute(text, args.msgs), P = EXTRA_PV[to];
+    status(`🌟 Ultima → ${to === "arti" ? "🎨 Arti" : to === "construct" ? "🏗 Construct AI" : "🧪 Avish AI"}…`);
+    const r = await P.stream(args) || {};
+    return { ...r, model: "🌟 Ultima AI 1.0 · " + (to === "arti" ? "🎨 Arti" : to === "construct" ? "🏗 Construct" : "🧪 Avish") };
   }
 });
 window.FloofGW = { fixTypos: t => avishFixTypos(t, null), logits: async ids => { const M = await gwLoad(); return { V: M.V, BOS: M.BOS, lp: Array.from(gwLogits(M, ids)) }; }, debug: async (t) => { const M = await gwLoad(), C = gwContext(M, t, ""), sc = gwCtxScores(M, C.areas, C.aw); const top = [...Array(M.UNK0).keys()].filter(i => M.content.has(M.tokTag[i]) && sc.inA[i]).sort((a, b) => sc[b] - sc[a]); return { areas: C.areas.length, pts: C.pts.length, radius: sc.radius, inArea: top.length, top: top.slice(0, 25).map(i => M.words[i] + "/" + M.tags[M.tokTag[i]]), state: sc[M.idx.get("state")[0]], time: sc[M.idx.get("time")[0]] }; }, load: () => gwLoad(), answer: (t, f) => new Promise(ok => { let last = ""; gwAnswer(t, f || "", x => last += x).then(() => ok(last)); }) };
