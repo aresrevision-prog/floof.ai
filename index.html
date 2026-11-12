@@ -2848,8 +2848,7 @@ function amCond(text) { // words → one 64-D meaning vector from the dictionary
   for (const w of ws) { const i = LEX.idx.get(w); if (i === undefined) continue; let m = 0; for (let d = 0; d < 64; d++) m += LEX.vec[i * 64 + d] ** 2; m = Math.sqrt(m) || 1; for (let d = 0; d < 64; d++) v[d] += LEX.vec[i * 64 + d] / m; n++; }
   let m = 0; for (let d = 0; d < 64; d++) m += v[d] ** 2; m = Math.sqrt(m) || 1; for (let d = 0; d < 64; d++) v[d] /= m; return n ? v : null;
 }
-async function artiMini(text, n = 4) {
-  const A = await amLoad(p => status(`🎨 Downloading Arti's own model (one time)… ${p}%`)); await loadLex(p => status(`🎨 Getting word meanings… ${p}%`));
+async function amPaint(A, text, n, label) { // one subject → n pictures (32×32 RGB, 0..255)
   let c1 = amCond(text); if (!c1) return null;
   { const Cs = A.W.Cs; let best = -1, bs = -2; for (let i = 0; i < Cs.r; i++) { let d = 0, nn = 0; for (let k = 0; k < 64; k++) { const v = Cs.w[i * 64 + k]; d += v * c1[k]; nn += v * v; } d /= Math.sqrt(nn) || 1; if (d > bs) { bs = d; best = i; } }
     if (bs > .5) { let nn = 0; for (let k = 0; k < 64; k++) nn += Cs.w[best * 64 + k] ** 2; nn = Math.sqrt(nn) || 1; const v = new Float32Array(64); let m = 0; for (let k = 0; k < 64; k++) { v[k] = c1[k] + 1.5 * Cs.w[best * 64 + k] / nn; m += v[k] ** 2; } m = Math.sqrt(m); for (let k = 0; k < 64; k++) v[k] /= m; c1 = v; } } // lean towards the closest thing it has learned
@@ -2860,17 +2859,42 @@ async function artiMini(text, n = 4) {
     const t = Math.round((A.T - 1) * (1 - s / (steps - 1))), a = A.ab[t], vc = amNet(A, z, c, n, t / A.T), vu = amNet(A, z, c0, n, t / A.T);
     const an = s + 1 < steps ? A.ab[Math.round((A.T - 1) * (1 - (s + 1) / (steps - 1)))] : 1;
     for (let i = 0; i < z.length; i++) { const v = vu[i] + guide * (vc[i] - vu[i]), x0 = Math.max(-4, Math.min(4, Math.sqrt(a) * z[i] - Math.sqrt(1 - a) * v)), e = (z[i] - Math.sqrt(a) * x0) / Math.max(1e-4, Math.sqrt(1 - a)); /* noise that matches the (clipped) picture → sharp, not washed out */ z[i] = s + 1 < steps ? Math.sqrt(an) * x0 + Math.sqrt(1 - an) * e : x0; }
-    if (s % 6 === 0) { status(`🎨 Arti Mini is painting… ${Math.round(s * 100 / steps)}%`); await new Promise(r => setTimeout(r)); }
+    if (s % 6 === 0) { status(`🎨 Arti Mini is painting${label || ""}… ${Math.round(s * 100 / steps)}%`); await new Promise(r => setTimeout(r)); }
   }
-  // decode: picture = mean + (z·sd)·P → 32×32, then a smooth 2×2 sheet at 256 px
-  const P = A.W.P, mu = A.W.mu, sd = A.W.sd, cv = document.createElement("canvas"); cv.width = cv.height = 64; const cx = cv.getContext("2d"), im = cx.createImageData(64, 64);
+  const P = A.W.P, mu = A.W.mu, sd = A.W.sd, out = [];
+  for (let k = 0; k < n; k++) { const pix = Float32Array.from(mu); for (let j = 0; j < K; j++) { const zz = z[k * K + j] * sd[j], ro = j * 3072; for (let q = 0; q < 3072; q++) pix[q] += zz * P.w[ro + q]; } for (let q = 0; q < 3072; q++) pix[q] = Math.max(0, Math.min(255, (pix[q] + 1) * 127.5)); out.push(pix); }
+  return out;
+}
+// 🧩 combining: Arti Mini only learned single things, so mixes are built in steps — paint each thing, recolour, then put them together
+const AM_COLOURS = { red: [220, 40, 40], orange: [245, 140, 30], yellow: [250, 210, 40], green: [60, 170, 70], blue: [50, 110, 230], purple: [140, 70, 200], pink: [240, 120, 180], brown: [130, 80, 40], black: [40, 40, 45], white: [235, 235, 235], grey: [140, 140, 145], gray: [140, 140, 145], gold: [220, 180, 50], silver: [190, 195, 205] };
+const AM_WEAR = /\b(hat|cap|crown|helmet|bow|glasses|sunglasses|mask|headphones|halo|horns|tiara|wig)s?\b/;
+function amRecolour(pix, rgb) { // move the main colours to the new colour, keep light and shade
+  const out = Float32Array.from(pix);
+  for (let q = 0; q < 1024; q++) { const r = pix[q * 3], g = pix[q * 3 + 1], b = pix[q * 3 + 2], mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+    if (mn > 225 || mx - mn < 25) continue; // background and greys stay
+    const l = (r + g + b) / 3 / 140; for (let ch = 0; ch < 3; ch++) out[q * 3 + ch] = Math.max(0, Math.min(255, rgb[ch] * l)); }
+  return out;
+}
+function amCanvas(pix) { const c = document.createElement("canvas"); c.width = c.height = 32; const x = c.getContext("2d"), im = x.createImageData(32, 32); for (let q = 0; q < 1024; q++) { for (let ch = 0; ch < 3; ch++) im.data[q * 4 + ch] = pix[q * 3 + ch]; const w = Math.min(pix[q * 3], pix[q * 3 + 1], pix[q * 3 + 2]); im.data[q * 4 + 3] = w > 232 ? 0 : w > 215 ? 120 : 255; } x.putImageData(im, 0, 0); return c; } // white → see-through
+async function artiMini(text, n = 4) {
+  const A = await amLoad(p => status(`🎨 Downloading Arti's own model (one time)… ${p}%`)); await loadLex(p => status(`🎨 Getting word meanings… ${p}%`));
+  const parts = String(text).toLowerCase().split(/\s+(?:with|wearing|and|holding|on|in|plus|\+|&)\s+|\s*\+\s*/).map(x => x.trim()).filter(Boolean).slice(0, 2);
+  const layers = [];
+  for (let pi = 0; pi < parts.length; pi++) {
+    let words = parts[pi].split(/\s+/), colour = null; words = words.filter(w => { if (AM_COLOURS[w] && !colour && words.length > 1) { colour = AM_COLOURS[w]; return false; } return true; });
+    const subj0 = words.join(" "), subj = { hat: "top hat", hats: "top hat", cap: "billed cap", glasses: "eyeglasses", sunglasses: "sunglasses", crown: "crown" }[subj0] || subj0; let pics = await amPaint(A, subj, n, parts.length > 1 ? ` (${pi + 1}/${parts.length}: ${subj})` : ""); if (!pics) { if (pi === 0) return null; continue; }
+    if (colour) pics = pics.map(p => amRecolour(p, colour));
+    layers.push({ pics, subj });
+  }
+  if (!layers.length) return null;
+  const big = document.createElement("canvas"); big.width = big.height = 256; const bx = big.getContext("2d"); bx.imageSmoothingEnabled = true; bx.imageSmoothingQuality = "high"; bx.fillStyle = "#fff"; bx.fillRect(0, 0, 256, 256);
   for (let k = 0; k < n; k++) {
-    const pix = Float32Array.from(mu); for (let j = 0; j < K; j++) { const zz = z[k * K + j] * sd[j], ro = j * 3072; for (let q = 0; q < 3072; q++) pix[q] += zz * P.w[ro + q]; }
-    const ox = (k % 2) * 32, oy = Math.floor(k / 2) * 32;
-    for (let y = 0; y < 32; y++) for (let x = 0; x < 32; x++) for (let ch = 0; ch < 3; ch++) im.data[((oy + y) * 64 + ox + x) * 4 + ch] = Math.max(0, Math.min(255, (pix[(y * 32 + x) * 3 + ch] + 1) * 127.5));
+    const ox = (k % 2) * 128, oy = Math.floor(k / 2) * 128;
+    bx.drawImage(amCanvas(layers[0].pics[k]), ox, oy, 128, 128);
+    if (layers[1]) { const top = layers[1], c = amCanvas(top.pics[k]);
+      if (AM_WEAR.test(top.subj)) { const glasses = /glass|mask/.test(top.subj); bx.drawImage(c, ox + 32, oy + (glasses ? 34 : -6), 64, 64); } // worn on the head / face
+      else bx.drawImage(c, ox + 62, oy + 62, 64, 64); } // held / beside it
   }
-  for (let i = 3; i < im.data.length; i += 4) im.data[i] = 255; cx.putImageData(im, 0, 0);
-  const big = document.createElement("canvas"); big.width = big.height = 256; const bx = big.getContext("2d"); bx.imageSmoothingEnabled = true; bx.imageSmoothingQuality = "high"; bx.fillStyle = "#fff"; bx.fillRect(0, 0, 256, 256); bx.drawImage(cv, 0, 0, 256, 256);
   status("Ready"); return big.toDataURL("image/jpeg", .88); // small enough to keep in the chat
 }
 // ---------- 🎨 Arti — free image maker (Pollinations FLUX, no key, 25 images per person per day on this device) ----------
