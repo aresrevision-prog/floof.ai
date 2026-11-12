@@ -2480,7 +2480,7 @@ async function gwAnswer(text, facts, onTextAll, signal, hist) {
 // or 🪶 Mini ~0.5 GB for weaker devices) reads them and decides what makes sense. No WebGPU → Avish's own tiny transformer answers.
 async function avishBrain1() {
   if (window.__avishEngine) return window.__avishEngine; // test hook
-  if (engine && loadedModel) return engine;
+  if (engine && /^Qwen/.test(String(loadedModel))) return engine; // a Qwen brain is already loaded: use it
   let ok = false; try { ok = !!(navigator.gpu && await navigator.gpu.requestAdapter()); } catch {}
   if (!ok) return null;
   const was = $("#model").value; $("#model").value = "Qwen2.5-0.5B-Instruct";
@@ -2489,7 +2489,7 @@ async function avishBrain1() {
   return engine;
 }
 let _avBrain = null; // parallel team members share one load
-function avishBrain() { if (engine && loadedModel) return Promise.resolve(engine); if (!_avBrain) _avBrain = avishBrain1().finally(() => { _avBrain = null; }); return _avBrain; }
+function avishBrain() { if (window.__avishEngine) return Promise.resolve(window.__avishEngine); if (engine && /^Qwen/.test(String(loadedModel))) return Promise.resolve(engine); if (!_avBrain) _avBrain = avishBrain1().finally(() => { _avBrain = null; }); return _avBrain; }
 // The transformer does NOT write the answer: for each sentence it picks the best of Avish's 5 drafts and only fixes the grammar.
 // Code then checks it kept Avish's words — if it slipped in its own content, Avish's draft is used as it is.
 const AV_SMALL = new Set("a an the of in on at by to for from with and or but so as is are was were be been being has have had do does did it its this that these those there their they them he she his her we our you your i my me not no very also than then which who what when where how can could will would should may might into onto over under about between after before during because through against without within around across among until while since if although though both some any many much more most such each all".split(" "));
@@ -2499,15 +2499,27 @@ function avishKept(fixed, draft) { // share of the transformer's content words t
   return ws.length ? ws.filter(w => src.has(stem(w))).length / ws.length : 0;
 }
 // one way to reach a real transformer: Floof Cloud (signed in + online), else the top-menu brain / 🪶 Mini on this device
+let _avLock = Promise.resolve(); // the on-device Qwen answers one team member at a time
 async function avishAsk(sys, user, signal, maxTokens) {
-  if (ACCOUNT_KIND === "mw" && mwToken() && navigator.onLine !== false) {
-    try { const j = await postJSON(FLOOF_API, { token: mwToken(), system: sys, messages: [{ role: "user", content: user }], maxTokens }, signal, "floof"); if (j.text && j.text.trim()) return { text: j.text.trim(), via: "Floof Cloud" + (j.via && !/^ares/i.test(j.via) ? " · " + j.via : "") }; }
-    catch (e) { if (e.name === "AbortError") throw e; console.warn("Avish: cloud transformer unavailable", e); }
+  // 1) Qwen on this device (the top-menu Qwen brain, or 🪶 Mini ~0.5 GB) — private, free, works offline
+  const eng = await avishBrain().catch(() => null);
+  if (eng && !(signal && signal.aborted)) {
+    const run = _avLock.then(async () => {
+      if (signal && signal.aborted) return null;
+      const r = await eng.chat.completions.create({ messages: [{ role: "system", content: sys }, { role: "user", content: user }], temperature: .2, max_tokens: maxTokens, extra_body: String(loadedModel).startsWith("Qwen3") ? { enable_thinking: false } : undefined });
+      const t = (r.choices?.[0]?.message?.content || "").trim();
+      return t ? { text: t, via: loadedModel ? String(loadedModel).replace(/-q4f(16|32)_1-MLC$/, "") + " (on this device)" : "Qwen (on this device)" } : null;
+    });
+    _avLock = run.catch(() => {});
+    try { const r = await run; if (r) return r; } catch (e) { console.warn("Avish: Qwen on this device failed", e); }
   }
-  const eng = await avishBrain(); if (!eng || (signal && signal.aborted)) return null;
-  const r = await eng.chat.completions.create({ messages: [{ role: "system", content: sys }, { role: "user", content: user }], temperature: .2, max_tokens: maxTokens, extra_body: String(loadedModel).startsWith("Qwen3") ? { enable_thinking: false } : undefined });
-  const t = (r.choices?.[0]?.message?.content || "").trim();
-  return t ? { text: t, via: loadedModel ? String(loadedModel).replace(/-q4f(16|32)_1-MLC$/, "") + " (on this device)" : "on-device brain" } : null;
+  if (signal && signal.aborted) return null;
+  // 2) only if this device can't run Qwen (no WebGPU / not enough memory): Floof Cloud
+  if (ACCOUNT_KIND === "mw" && mwToken() && navigator.onLine !== false) {
+    try { const j = await postJSON(FLOOF_API, { token: mwToken(), system: sys, messages: [{ role: "user", content: user }], maxTokens }, signal, "floof"); if (j.text && j.text.trim()) return { text: j.text.trim(), via: "Floof Cloud (this device can't run Qwen)" }; }
+    catch (e) { if (e.name === "AbortError") throw e; console.warn("Avish: cloud fallback unavailable", e); }
+  }
+  return null;
 }
 // ---------- Avish AI team: 1 reader → 2 interpreters → 2 drafters → 2 checkers → 2 deciders → 1 judge ----------
 // Reader, drafters and checkers are Avish's own code (free, on this device); interpreters, deciders and the judge are a real
@@ -2640,7 +2652,7 @@ Reply with ONLY JSON: {"s1":["…5 sentences"],"s2":["…5 sentences"]}`,
   return true;
 }
 window.Floof.addProvider({ id: "gridwriter", label: "🧪 Avish AI 1.3 — by AdminAT", ph: "", nokey: true, ok: () => true, vision: false,
-  help: "Avish AI 1.3 by AdminAT — a team built on your design: 👀 1 reader → 🧠 2 interpreters (a transformer works out what you mean and picks the context areas) → ✍ 3 drafters (A + B: Markov word types + words from the 64-D grid areas; C: the transformer writes fluent drafts using only the area words) → ✅ 2 checkers (grammar + topic) → ⚖ 2 deciders (pick a draft, fix grammar only) → 👩‍⚖️ 1 judge (only if the deciders disagree). Transformer: Floof Cloud when signed in, else the top-menu brain or 🪶 Mini. Sums go to a calculator.",
+  help: "Avish AI 1.3 by AdminAT — a team built on your design: 👀 1 reader → 🧠 2 interpreters (a transformer works out what you mean and picks the context areas) → ✍ 3 drafters (A + B: Markov word types + words from the 64-D grid areas; C: the transformer writes fluent drafts using only the area words) → ✅ 2 checkers (grammar + topic) → ⚖ 2 deciders (pick a draft, fix grammar only) → 👩‍⚖️ 1 judge (only if the deciders disagree). Transformer: Qwen on this device (🪶 Mini ~0.5 GB, or a Qwen brain from the top menu); Floof Cloud only if this device can't run it. Sums go to a calculator.",
   list: async () => [{ id: "gw1", name: "Avish AI 1.3" }],
   stream: async ({ sys, msgs, onText, signal }) => {
     const last = [...msgs].reverse().find(m => m.role === "user"), text = String(last && last.content || "");
