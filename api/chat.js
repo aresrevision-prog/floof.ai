@@ -403,7 +403,7 @@ export default async function handler(req, res) {
     if (sys.trim()) body.systemInstruction = { parts: [{ text: sys }] };
     for (const m of order) {
       if (stop) break;
-      const reserve = (aresOn ? T_ARES : 0) + (extra.length ? 15000 : 0), budget = Math.min(left() - reserve, isPro(m) ? T_PRO : T_CALL);
+      const reserve = (aresOn ? T_ARES : 0) + (extra.length ? 15000 : 0), budget = Math.min(left() - reserve, isPro(m) ? T_PRO : extra.length && !hasImg ? 15000 : T_CALL);
       if (budget < 4000) { errs.push("out of time"); break; }
       for (let attempt = 0; attempt < 2; attempt++) { // 2nd attempt only if the model rejected our thinkingConfig
         try {
@@ -416,6 +416,7 @@ export default async function handler(req, res) {
           if (e.kind === "think" && !_noThink[m] && attempt === 0) { _noThink[m] = true; continue; }
           noteFail(m, e, key); errs.push(m + ": " + (e.kind || "") + " " + clean(e.message, key).slice(0, 80));
           if (e.kind === "key" || e.kind === "region") { stop = true; keyBad = e.kind === "key"; }
+          if ((e.kind === "timeout" || e.kind === "network") && extra.length && !hasImg) stop = true; // Google is slow → go straight to the fast backups
           break;
         }
       }
