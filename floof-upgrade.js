@@ -12,7 +12,7 @@
   }
 
   const KEY_ID = "floof";
-  const defaults = { ollamaUrl: "http://localhost:11434", imageUrl: "http://127.0.0.1:7860" };
+  const defaults = { ollamaUrl: "", imageUrl: "" };
   const parseConfig = raw => {
     try {
       const v = JSON.parse(raw || "{}");
@@ -130,7 +130,7 @@
   setup.innerHTML = [
     '<div style="font-weight:700;font-size:13px">🐾 Free Floof setup</div>',
     '<div class="small">Chromebook mode: this device is the screen and controls. The AI can run on another computer or a compatible hosted server — no Linux installation on the Chromebook is needed.</div>',
-    '<label class="small">External chat AI URL (Ollama-compatible)<input id="flOllamaUrl" type="url" value="http://localhost:11434" spellcheck="false" placeholder="https://your-secure-ai-server.example"></label>',
+    '<label class="small">External chat AI URL (Ollama-compatible)<input id="flOllamaUrl" type="url" value="" spellcheck="false" placeholder="https://your-secure-ai-server.example"></label>',
     '<div class="row" style="flex-wrap:wrap"><button id="flSaveLocal" type="button" class="go">Save connection &amp; find models</button><button id="flTestRemote" type="button">Test connection</button></div>',
     '<div class="small" style="line-height:1.5"><b>Connect from your Chromebook:</b> run Ollama on a computer you control, then enter its reachable address here. For access outside your home Wi-Fi, use a private VPN/tunnel or a secured HTTPS gateway. Do not expose an unauthenticated Ollama port directly to the public internet. The AI server must allow this Floof website through CORS. A plain HTTP address on another device may be blocked by the browser when Floof is loaded over HTTPS; use HTTPS for remote connections.<br><br><b>Free option:</b> Ollama itself is free, but it needs to run on another computer (or a supported local environment). If you do not have another computer, use Floof’s built-in browser brain where your Chromebook supports it.</div>',
     '<div class="small" id="flLocalStatus" role="status">No Linux is required on this Chromebook. Save a reachable AI server address, then test it here.</div>'
@@ -198,9 +198,9 @@
     '<div class="row" style="flex-wrap:wrap;gap:10px">',
     '<label class="small">Shape<select id="flImageSize" style="display:block;min-width:145px"><option value="512x512">Square · Chromebook friendly</option><option value="768x512">Landscape · lighter</option><option value="512x768">Portrait · lighter</option><option value="768x768">Square · detailed</option></select></label>',
     '<label class="small">Quality<select id="flImageSteps" style="display:block;min-width:130px"><option value="16">Fast · 16 steps</option><option value="22" selected>Balanced · 22 steps</option><option value="28">Detailed · 28 steps</option></select></label>',
-    '<label class="small">External image server URL<input id="flImageUrl" type="url" value="http://127.0.0.1:7860" spellcheck="false" placeholder="https://your-secure-image-server.example"></label>',
-    '<button type="button" class="go" id="flImageGenerate" style="margin-left:auto">Generate free image</button></div>',
-    '<div class="small" id="flImageStatus" role="status">Connect to an image server running on another computer or your own hosted machine. No Linux is required on this Chromebook.</div>',
+    '<label class="small">External image server URL<input id="flImageUrl" type="url" value="" spellcheck="false" placeholder="https://your-secure-image-server.example"></label>',
+    '<button type="button" id="flImageTest">Test image connection</button><button type="button" class="go" id="flImageGenerate" style="margin-left:auto">Generate free image</button></div>',
+    '<div class="small" id="flImageStatus" role="status">Enter the address of an image server running on another computer or your own hosted machine. No Linux is required on this Chromebook.</div>',
     '<div id="flImageResult" style="display:none;gap:10px;flex-direction:column"><img id="flImagePreview" alt="Image generated locally by Floof" style="width:100%;max-height:65vh;object-fit:contain;border-radius:12px;background:#030a06">',
     '<div class="row"><a id="flImageDownload" class="go" download="floof-generated.png" style="padding:8px 12px;border-radius:10px;text-decoration:none">⬇ Save image</a><button type="button" id="flImageAgain">Make another</button></div></div>',
     '<div class="small" style="line-height:1.5"><b>Chromebook connection:</b> run <a href="https://github.com/lllyasviel/stable-diffusion-webui-forge" target="_blank" rel="noopener">Stable Diffusion WebUI Forge</a> on another computer you control, enable its API and allow this Floof website through CORS. Enter its reachable image-server URL above. For internet access use a private tunnel or secured HTTPS gateway; do not expose an unauthenticated image API publicly. Remote HTTP may be blocked when Floof is served over HTTPS. No Linux or paid image credits are required on the Chromebook.</div>',
@@ -221,6 +221,21 @@
     $("#flImagePrompt").focus();
   };
   $("#flImageAgain").onclick = () => { $("#flImageResult").style.display = "none"; $("#flImagePrompt").focus(); };
+  $("#flImageTest").onclick = async () => {
+    const button = $("#flImageTest"), status = $("#flImageStatus");
+    const base = cleanUrl($("#flImageUrl").value);
+    if (!base || !/^https?:\\/\\//i.test(base)) { status.textContent = "Enter the full address of your external Forge/AUTOMATIC1111 image server first."; return; }
+    const cfg = getConfig(); cfg.imageUrl = base; window.Floof.setKey(KEY_ID, JSON.stringify(cfg));
+    button.disabled = true; status.textContent = "Checking the external image server…";
+    try {
+      const data = await getJson(base + "/sdapi/v1/sd-models", "External image server");
+      status.textContent = Array.isArray(data) && data.length
+        ? "Connected! Found " + data.length + " image model(s). You can generate now."
+        : "Server responded, but no Stable Diffusion models were listed. Load a model in Forge/AUTOMATIC1111.";
+    } catch (e) {
+      status.textContent = (e.message || "Connection failed.") + " Check the URL, API access, CORS and HTTPS. This connector expects the Forge/AUTOMATIC1111 API.";
+    } finally { button.disabled = false; }
+  };
   $("#flImageGenerate").onclick = async () => {
     const prompt = $("#flImagePrompt").value.trim();
     const negative = $("#flImageNegative").value.trim();
@@ -229,7 +244,7 @@
     const dimensions = $("#flImageSize").value.split("x").map(Number);
     const width = dimensions[0], height = dimensions[1];
     if (!prompt) { status.textContent = "Describe the image first."; $("#flImagePrompt").focus(); return; }
-    if (!base || !/^https?:\/\//i.test(base)) { status.textContent = "Enter the local image server address."; return; }
+    if (!base || !/^https?:\/\//i.test(base)) { status.textContent = "Enter the external image server address first."; return; }
     const cfg = getConfig(); cfg.imageUrl = base; window.Floof.setKey(KEY_ID, JSON.stringify(cfg));
     button.disabled = true;
     $("#flImageResult").style.display = "none";
