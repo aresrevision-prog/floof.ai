@@ -1479,7 +1479,8 @@ function downloadCode(code, lang) {
 // sandboxed games can't use real storage, so give them a safe in-memory one instead of crashing
 const STORE_SHIM = `<script>(()=>{const mk=()=>{const m=new Map();return{getItem:k=>m.has(k)?m.get(k):null,setItem:(k,v)=>m.set(String(k),String(v)),removeItem:k=>m.delete(k),clear:()=>m.clear(),key:i=>[...m.keys()][i]??null,get length(){return m.size}}};for(const n of["localStorage","sessionStorage"]){try{window[n].length}catch(e){try{Object.defineProperty(window,n,{value:mk(),configurable:true})}catch(_){}}}})();<\/script>`;
 function openArtifact(code, lang) {
-  artNow = { code, lang }; const html = lang === "svg" ? `<!doctype html><body style="margin:0;display:grid;place-items:center;min-height:100vh">${code}</body>` : code;
+  artNow = { code, lang }; const html = lang === "svg" ? `<!doctype html><body style="margin:0;display:grid;place-items:center;min-height:100vh">${code}<script src="arti-ai.js?v=1"></script>
+</body>` : code;
   $("#artFrame").srcdoc = /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, m => m + STORE_SHIM) : STORE_SHIM + html;
   $("#artCode").textContent = code; $("#artTitle").textContent = titleOf(code, lang);
   $("#art").classList.add("on"); artTab("p");
