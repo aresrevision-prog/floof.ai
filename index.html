@@ -1822,22 +1822,56 @@ function size() { const r = can.getBoundingClientRect(), d = devicePixelRatio ||
 function toScreen(p, r) { const S = Math.min(r.width, r.height) * .44 * view.k; return [r.width / 2 + view.x + p.x * S, r.height / 2 + view.y - p.y * S]; }
 // ---------- topic view: each topic is a hub, with its words gathered around it ----------
 let gridMode = ls.get("mwai.gridmode", "topics"), TPTS = [], HUBS = [];
-function layoutTopics() {
+function layoutTopics() { // topics scattered loosely at random, but pulled towards topics with similar meanings
   const groups = new Map();
   for (const p of PTS) { if (!groups.has(p.v.sector)) groups.set(p.v.sector, []); groups.get(p.v.sector).push(p); }
   const secs = [...groups.keys()].sort((a, b) => a - b), K = secs.length, maxN = Math.max(1, ...[...groups.values()].map(g => g.length));
-  const ringR = K <= 1 ? 0 : K <= 3 ? .5 : .66;
   HUBS = []; TPTS = [];
+  if (!K) return;
+  // each topic's meaning = the average of its words' 64-D vectors
+  const D = PTS[0].v.vec.length;
+  const vec = secs.map(sec => { const c = new Float32Array(D); for (const p of groups.get(sec)) { const w = Math.log(1 + p.v.n), v = p.v.vec; for (let k = 0; k < D; k++) c[k] += v[k] * w; }
+    let n = 0; for (let k = 0; k < D; k++) n += c[k] * c[k]; n = Math.sqrt(n) || 1; for (let k = 0; k < D; k++) c[k] /= n; return c; });
+  const sim = (i, j) => { let d = 0; for (let k = 0; k < D; k++) d += vec[i][k] * vec[j][k]; return d; };
+  const shrink = Math.min(1, 2.4 / Math.sqrt(K));
+  const rad = secs.map(sec => (.1 + .28 * Math.sqrt(groups.get(sec).length / maxN)) * shrink);
+  // seeded randomness: scattered, but the same layout every time (no jumping around)
+  const rnd = seed => () => { seed = (seed + 0x6D2B79F5) | 0; let t = Math.imul(seed ^ seed >>> 15, 1 | seed); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+  const pos = secs.map(sec => { const r = rnd(sec * 7919 + 13), a = r() * Math.PI * 2, d = Math.sqrt(r()) * .8; return { x: Math.cos(a) * d, y: Math.sin(a) * d }; });
+  if (K > 1) {
+    const S = []; let lo = 1, hi = -1;
+    for (let i = 0; i < K; i++) { S[i] = []; for (let j = 0; j < K; j++) if (i !== j) { S[i][j] = sim(i, j); lo = Math.min(lo, S[i][j]); hi = Math.max(hi, S[i][j]); } }
+    const span = hi - lo || 1;
+    for (let it = 0; it < 400; it++) {
+      const step = .08 * (1 - it / 400) + .005;
+      for (let i = 0; i < K; i++) {
+        let fx = -pos[i].x * .02, fy = -pos[i].y * .02; // gentle pull to the middle
+        for (let j = 0; j < K; j++) {
+          if (i === j) continue;
+          const dx = pos[j].x - pos[i].x, dy = pos[j].y - pos[i].y, d = Math.hypot(dx, dy) || 1e-3;
+          const like = (S[i][j] - lo) / span; // 0 = least alike, 1 = most alike
+          const gap = rad[i] + rad[j] + .03;
+          const want = gap + (1 - like) * .9; // similar topics sit close, different ones drift apart
+          let f = (d - want) * (.15 + like * .6) / K;
+          if (d < gap) f = (d - gap) * 1.2; // never overlap
+          fx += dx / d * f; fy += dy / d * f;
+        }
+        pos[i].x += Math.max(-step, Math.min(step, fx)); pos[i].y += Math.max(-step, Math.min(step, fy));
+      }
+    }
+    // fit everything (bubbles included) inside the view
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    pos.forEach((p, i) => { x0 = Math.min(x0, p.x - rad[i]); x1 = Math.max(x1, p.x + rad[i]); y0 = Math.min(y0, p.y - rad[i]); y1 = Math.max(y1, p.y + rad[i]); });
+    const sc = 1.9 / Math.max(x1 - x0, y1 - y0, 1e-6), cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    pos.forEach((p, i) => { p.x = (p.x - cx) * sc; p.y = (p.y - cy) * sc; rad[i] *= sc; });
+  } else { pos[0] = { x: 0, y: 0 }; rad[0] = .85; }
   secs.forEach((sec, i) => {
-    const g = groups.get(sec), a = -Math.PI / 2 + i * 2 * Math.PI / Math.max(1, K);
-    const hx = ringR * Math.cos(a), hy = -ringR * Math.sin(a);
-    const room = K <= 1 ? .85 : Math.min(.42, Math.sin(Math.PI / K) * ringR * .92);
-    const rad = Math.min(room, .1 + .3 * Math.sqrt(g.length / maxN));
-    HUBS.push({ sector: sec, x: hx, y: hy, r: rad, n: g.length });
+    const g = groups.get(sec), hx = pos[i].x, hy = pos[i].y, r = rad[i];
+    HUBS.push({ sector: sec, x: hx, y: hy, r, n: g.length });
     // keep each word's 64-D neighbourhood: its position inside the topic comes from the map, squeezed into the topic's circle
     let mx = 0, my = 0; for (const p of g) { mx += p.x / g.length; my += p.y / g.length; }
     let d = 1e-9; for (const p of g) d = Math.max(d, Math.hypot(p.x - mx, p.y - my));
-    g.sort((a, b) => b.v.n - a.v.n).forEach((p, j) => TPTS.push({ v: p.v, rank: j, x: hx + (p.x - mx) / d * rad * .9, y: hy + (p.y - my) / d * rad * .9 }));
+    g.sort((a, b) => b.v.n - a.v.n).forEach((p, j) => TPTS.push({ v: p.v, rank: j, x: hx + (p.x - mx) / d * r * .9, y: hy + (p.y - my) / d * r * .9 }));
   });
 }
 const curPts = () => gridMode === "topics" ? TPTS : PTS;
