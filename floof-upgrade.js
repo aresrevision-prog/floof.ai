@@ -1,7 +1,7 @@
-/* Floof Free Local — one identity, local chat, and zero-cost local image generation.
- * Chat: Ollama on this computer (or the built-in WebGPU brain in the main app).
- * Images: Stable Diffusion WebUI Forge / AUTOMATIC1111 running locally with its API enabled.
- * No paid provider keys, subscriptions, or remote image APIs are used by this module.
+/* Floof Free / Chromebook — one identity with optional remote AI and image servers.
+ * The Chromebook is the browser interface; Ollama and Stable Diffusion can run on another computer.
+ * Remote endpoints must be reachable by this browser and configured with HTTPS/CORS as appropriate.
+ * No paid provider keys, subscriptions, or remote image APIs are required by this module.
  */
 (() => {
   "use strict";
@@ -55,7 +55,7 @@
     ph: "Local Ollama address",
     ok: raw => /^https?:\/\//i.test(parseConfig(raw).ollamaUrl),
     vision: true,
-    help: "Free mode: connect to Ollama running on this Chromebook (Linux environment) or another computer you control. No API key, subscription, or paid cloud service is needed.",
+    help: "Free mode: connect this Chromebook to Ollama on another computer or a reachable hosted endpoint. Linux is not required on the Chromebook. Use a secure HTTPS address for internet connections and configure CORS on the AI server.",
     list: async raw => {
       const cfg = parseConfig(raw), base = cleanUrl(cfg.ollamaUrl);
       const data = await getJson(base + "/api/tags", "Ollama");
@@ -129,11 +129,11 @@
   setup.style.cssText = "display:flex;flex-direction:column;gap:8px;margin-top:8px;padding:10px;border:1px solid var(--line);border-radius:10px;background:var(--panel2)";
   setup.innerHTML = [
     '<div style="font-weight:700;font-size:13px">🐾 Free Floof setup</div>',
-    '<div class="small">Free-first and Chromebook-friendly: run the AI on this Chromebook if supported, or connect to another computer on your Wi-Fi. No paid API keys, subscriptions, or image credits.</div>',
-    '<label class="small">Chat AI address (this Chromebook or another computer)<input id="flOllamaUrl" type="url" value="http://localhost:11434" spellcheck="false"></label>',
-    '<button id="flSaveLocal" type="button" class="go">Save local setup &amp; find models</button>',
-    '<div class="small" style="line-height:1.5"><b>On a Chromebook:</b> if your model supports it, enable the Linux development environment in ChromeOS Settings, install <a href="https://ollama.com/download" target="_blank" rel="noopener">Ollama for Linux</a>, then try <code>ollama pull qwen3:1.7b</code> (lighter) or <code>ollama pull qwen3:4b</code> (stronger, needs more memory). Linux/GPU support varies by Chromebook, so performance is not guaranteed.<br><br><b>Easy alternative:</b> install Ollama on another computer on your home Wi-Fi and enter that computer’s address here, e.g. <code>http://192.168.1.20:11434</code>. Configure Ollama to allow requests from Floof. The Chromebook is then just the screen and controls.</div>',
-    '<div class="small" id="flLocalStatus" role="status">The built-in WebGPU brain in the sidebar is another free local option. If your Chromebook is low on memory, use a smaller model or connect to another computer.</div>'
+    '<div class="small">Chromebook mode: this device is the screen and controls. The AI can run on another computer or a compatible hosted server — no Linux installation on the Chromebook is needed.</div>',
+    '<label class="small">External chat AI URL (Ollama-compatible)<input id="flOllamaUrl" type="url" value="http://localhost:11434" spellcheck="false" placeholder="https://your-secure-ai-server.example"></label>',
+    '<div class="row" style="flex-wrap:wrap"><button id="flSaveLocal" type="button" class="go">Save connection &amp; find models</button><button id="flTestRemote" type="button">Test connection</button></div>',
+    '<div class="small" style="line-height:1.5"><b>Connect from your Chromebook:</b> run Ollama on a computer you control, then enter its reachable address here. For access outside your home Wi-Fi, use a private VPN/tunnel or a secured HTTPS gateway. Do not expose an unauthenticated Ollama port directly to the public internet. The AI server must allow this Floof website through CORS. A plain HTTP address on another device may be blocked by the browser when Floof is loaded over HTTPS; use HTTPS for remote connections.<br><br><b>Free option:</b> Ollama itself is free, but it needs to run on another computer (or a supported local environment). If you do not have another computer, use Floof’s built-in browser brain where your Chromebook supports it.</div>',
+    '<div class="small" id="flLocalStatus" role="status">No Linux is required on this Chromebook. Save a reachable AI server address, then test it here.</div>'
   ].join("");
   $("#pvHelp")?.after(setup);
   $("#cKey") && ($("#cKey").style.display = "none");
@@ -142,13 +142,33 @@
     const cfg = getConfig();
     $("#flOllamaUrl").value = cfg.ollamaUrl;
   }
-  $("#flSaveLocal").onclick = async () => {
+  async function saveChatConnection() {
     const cfg = getConfig();
     cfg.ollamaUrl = cleanUrl($("#flOllamaUrl").value) || defaults.ollamaUrl;
     window.Floof.setKey(KEY_ID, JSON.stringify(cfg));
-    $("#flLocalStatus").textContent = "Checking Ollama and finding installed models…";
-    await window.Floof.refresh();
-    $("#flLocalStatus").textContent = "Saved. If no models appear, run: ollama pull qwen3:8b";
+    return cfg;
+  }
+  $("#flSaveLocal").onclick = async () => {
+    const status = $("#flLocalStatus"), button = $("#flSaveLocal");
+    button.disabled = true; status.textContent = "Saving connection and loading the AI model list…";
+    try {
+      await saveChatConnection();
+      await window.Floof.refresh();
+      status.textContent = "Connection saved and model list refreshed. Choose a model in Floof’s model selector.";
+    } catch (e) { status.textContent = "Saved, but connection failed: " + (e.message || e) + " Check the server URL, CORS and HTTPS."; }
+    finally { button.disabled = false; }
+  };
+  $("#flTestRemote").onclick = async () => {
+    const status = $("#flLocalStatus"), button = $("#flTestRemote");
+    button.disabled = true; status.textContent = "Testing the external AI connection…";
+    try {
+      const cfg = await saveChatConnection(), base = cleanUrl(cfg.ollamaUrl);
+      if (!/^https?:\/\//i.test(base)) throw new Error("Enter a complete URL beginning with https:// (or http:// for localhost only).");
+      const data = await getJson(base + "/api/tags", "External Ollama server");
+      const count = Array.isArray(data.models) ? data.models.length : 0;
+      status.textContent = count ? "Connected! Found " + count + " model(s). Save connection & find models to load them into Floof." : "Connected, but no models are installed on that server yet.";
+    } catch (e) { status.textContent = "Could not connect: " + (e.message || e) + " Check the address, server CORS settings, HTTPS and network access."; }
+    finally { button.disabled = false; }
   };
   syncSetup();
 
@@ -178,12 +198,12 @@
     '<div class="row" style="flex-wrap:wrap;gap:10px">',
     '<label class="small">Shape<select id="flImageSize" style="display:block;min-width:145px"><option value="512x512">Square · Chromebook friendly</option><option value="768x512">Landscape · lighter</option><option value="512x768">Portrait · lighter</option><option value="768x768">Square · detailed</option></select></label>',
     '<label class="small">Quality<select id="flImageSteps" style="display:block;min-width:130px"><option value="16">Fast · 16 steps</option><option value="22" selected>Balanced · 22 steps</option><option value="28">Detailed · 28 steps</option></select></label>',
-    '<label class="small">Image server (this Chromebook or another computer)<input id="flImageUrl" type="url" value="http://127.0.0.1:7860" spellcheck="false"></label>',
+    '<label class="small">External image server URL<input id="flImageUrl" type="url" value="http://127.0.0.1:7860" spellcheck="false" placeholder="https://your-secure-image-server.example"></label>',
     '<button type="button" class="go" id="flImageGenerate" style="margin-left:auto">Generate free image</button></div>',
-    '<div class="small" id="flImageStatus" role="status">Start the local image server on this Chromebook (if it has enough power) or on another computer. No account or paid key needed.</div>',
+    '<div class="small" id="flImageStatus" role="status">Connect to an image server running on another computer or your own hosted machine. No Linux is required on this Chromebook.</div>',
     '<div id="flImageResult" style="display:none;gap:10px;flex-direction:column"><img id="flImagePreview" alt="Image generated locally by Floof" style="width:100%;max-height:65vh;object-fit:contain;border-radius:12px;background:#030a06">',
     '<div class="row"><a id="flImageDownload" class="go" download="floof-generated.png" style="padding:8px 12px;border-radius:10px;text-decoration:none">⬇ Save image</a><button type="button" id="flImageAgain">Make another</button></div></div>',
-    '<div class="small" style="line-height:1.5"><b>Chromebook tip:</b> most Chromebooks are not powerful enough to run Stable Diffusion comfortably. For free image generation, run <a href="https://github.com/lllyasviel/stable-diffusion-webui-forge" target="_blank" rel="noopener">Stable Diffusion WebUI Forge</a> on a more powerful computer you own, enable its API/CORS (<code>--api --cors-allow-origins=*</code>), then enter that computer’s image-server address above (for example <code>http://192.168.1.20:7860</code>). You can try it locally on a Chromebook with a supported Linux setup, but it may be very slow or unsupported. Your browser may require local-network permission and compatible HTTPS/CORS settings. No paid image service is involved.</div>',
+    '<div class="small" style="line-height:1.5"><b>Chromebook connection:</b> run <a href="https://github.com/lllyasviel/stable-diffusion-webui-forge" target="_blank" rel="noopener">Stable Diffusion WebUI Forge</a> on another computer you control, enable its API and allow this Floof website through CORS. Enter its reachable image-server URL above. For internet access use a private tunnel or secured HTTPS gateway; do not expose an unauthenticated image API publicly. Remote HTTP may be blocked when Floof is served over HTTPS. No Linux or paid image credits are required on the Chromebook.</div>',
     '</div>'
   ].join("");
   document.body.appendChild(modal);
@@ -210,9 +230,10 @@
     const width = dimensions[0], height = dimensions[1];
     if (!prompt) { status.textContent = "Describe the image first."; $("#flImagePrompt").focus(); return; }
     if (!base || !/^https?:\/\//i.test(base)) { status.textContent = "Enter the local image server address."; return; }
+    const cfg = getConfig(); cfg.imageUrl = base; window.Floof.setKey(KEY_ID, JSON.stringify(cfg));
     button.disabled = true;
     $("#flImageResult").style.display = "none";
-    status.textContent = "Floof is generating locally. This can take a few minutes…";
+    status.textContent = "Floof is generating on your connected image server. This can take a few minutes…";
     try {
       const response = await fetch(base + "/sdapi/v1/txt2img", {
         method: "POST",
