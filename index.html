@@ -2864,7 +2864,13 @@ function amCond(text) { // words → one 64-D meaning vector from the dictionary
   let m = 0; for (let d = 0; d < 64; d++) m += v[d] ** 2; m = Math.sqrt(m) || 1; for (let d = 0; d < 64; d++) v[d] /= m; return n ? v : null;
 }
 async function amPaint(A, text, n, label) { // one subject → n pictures (32×32 RGB, 0..255)
-  let c1 = amCond(text); if (!c1) return null;
+  let c1 = amCond(text);
+  { const Cs = A.W.Cs; let bs = -2; if (c1) for (let i = 0; i < Cs.r; i++) { let d = 0, nn = 0; for (let k = 0; k < 64; k++) { const v = Cs.w[i * 64 + k]; d += v * c1[k]; nn += v * v; } d /= Math.sqrt(nn) || 1; if (d > bs) bs = d; }
+    if (bs < .6) { status("🔎 Arti Mini is researching what that is…"); const R = await artiResearch(text).catch(() => null);
+      if (R && R.kinds && R.kinds.length) { // what kind of thing is it? draw the closest thing Arti Mini knows ("axolotl" → a salamander → lizard)
+        let bi = -1, b2 = -2; for (const kw of R.kinds) { const cv = amCond(kw); if (!cv) continue; for (let i = 0; i < Cs.r; i++) { let d = 0, nn = 0; for (let k = 0; k < 64; k++) { const v = Cs.w[i * 64 + k]; d += v * cv[k]; nn += v * v; } d /= Math.sqrt(nn) || 1; if (d > b2) { b2 = d; bi = i; } } }
+        { if (b2 > .75) { const v = new Float32Array(64); let nn = 0; for (let k = 0; k < 64; k++) { v[k] = Cs.w[bi * 64 + k]; nn += v[k] ** 2; } nn = Math.sqrt(nn) || 1; for (let k = 0; k < 64; k++) v[k] /= nn; c1 = v; } } } } }
+  if (!c1) return null;
   { const Cs = A.W.Cs; let best = -1, bs = -2; for (let i = 0; i < Cs.r; i++) { let d = 0, nn = 0; for (let k = 0; k < 64; k++) { const v = Cs.w[i * 64 + k]; d += v * c1[k]; nn += v * v; } d /= Math.sqrt(nn) || 1; if (d > bs) { bs = d; best = i; } }
     if (bs > .5) { let nn = 0; for (let k = 0; k < 64; k++) nn += Cs.w[best * 64 + k] ** 2; nn = Math.sqrt(nn) || 1; const v = new Float32Array(64); let m = 0; for (let k = 0; k < 64; k++) { v[k] = c1[k] + 1.5 * Cs.w[best * 64 + k] / nn; m += v[k] ** 2; } m = Math.sqrt(m); for (let k = 0; k < 64; k++) v[k] /= m; c1 = v; } } // lean towards the closest thing it has learned
   const K = A.K, steps = 50, guide = 3, c = new Float32Array(n * 64); for (let i = 0; i < n; i++) c.set(c1, i * 64); const c0 = new Float32Array(n * 64);
@@ -2877,7 +2883,7 @@ async function amPaint(A, text, n, label) { // one subject → n pictures (32×3
     if (s % 6 === 0) { status(`🎨 Arti Mini is painting${label || ""}… ${Math.round(s * 100 / steps)}%`); await new Promise(r => setTimeout(r)); }
   }
   const P = A.W.P, mu = A.W.mu, sd = A.W.sd, out = [];
-  for (let k = 0; k < n; k++) { const pix = Float32Array.from(mu); for (let j = 0; j < K; j++) { const zz = z[k * K + j] * sd[j], ro = j * 3072; for (let q = 0; q < 3072; q++) pix[q] += zz * P.w[ro + q]; } for (let q = 0; q < 3072; q++) pix[q] = Math.max(0, Math.min(255, (pix[q] + 1) * 127.5)); out.push(pix); }
+  for (let k = 0; k < n; k++) { const pix = Float32Array.from(mu); for (let j = 0; j < K; j++) { const zz = z[k * K + j] * sd[j], ro = j * mu.length; for (let q = 0; q < mu.length; q++) pix[q] += zz * P.w[ro + q]; } for (let q = 0; q < mu.length; q++) pix[q] = Math.max(0, Math.min(255, (pix[q] + 1) * 127.5)); out.push(pix); }
   return out;
 }
 // 🧩 combining: Arti Mini only learned single things, so mixes are built in steps — paint each thing, recolour, then put them together
@@ -2885,12 +2891,26 @@ const AM_COLOURS = { red: [220, 40, 40], orange: [245, 140, 30], yellow: [250, 2
 const AM_WEAR = /\b(hat|cap|crown|helmet|bow|glasses|sunglasses|mask|headphones|halo|horns|tiara|wig)s?\b/;
 function amRecolour(pix, rgb) { // move the main colours to the new colour, keep light and shade
   const out = Float32Array.from(pix);
-  for (let q = 0; q < 1024; q++) { const r = pix[q * 3], g = pix[q * 3 + 1], b = pix[q * 3 + 2], mx = Math.max(r, g, b), mn = Math.min(r, g, b);
+  for (let q = 0; q < pix.length / 3; q++) { const r = pix[q * 3], g = pix[q * 3 + 1], b = pix[q * 3 + 2], mx = Math.max(r, g, b), mn = Math.min(r, g, b);
     if (mn > 225 || mx - mn < 25) continue; // background and greys stay
     const l = (r + g + b) / 3 / 140; for (let ch = 0; ch < 3; ch++) out[q * 3 + ch] = Math.max(0, Math.min(255, rgb[ch] * l)); }
   return out;
 }
-function amCanvas(pix) { const c = document.createElement("canvas"); c.width = c.height = 32; const x = c.getContext("2d"), im = x.createImageData(32, 32); for (let q = 0; q < 1024; q++) { for (let ch = 0; ch < 3; ch++) im.data[q * 4 + ch] = pix[q * 3 + ch]; const w = Math.min(pix[q * 3], pix[q * 3 + 1], pix[q * 3 + 2]); im.data[q * 4 + 3] = w > 232 ? 0 : w > 215 ? 120 : 255; } x.putImageData(im, 0, 0); return c; } // white → see-through
+function amClean(pix) { // ✨ tidy the picture: clean white background, then snap to a small set of flat colours (emoji style) with soft edges
+  const N = pix.length / 3, out = Float32Array.from(pix), fg = [];
+  for (let q = 0; q < N; q++) { const r = pix[q * 3], g = pix[q * 3 + 1], b = pix[q * 3 + 2]; if (Math.min(r, g, b) > 218) { out[q * 3] = out[q * 3 + 1] = out[q * 3 + 2] = 255; } else fg.push(q); }
+  if (fg.length < 8) return out;
+  const Kc = Math.min(12, fg.length), cen = []; for (let k = 0; k < Kc; k++) { const q = fg[Math.floor((k + .5) * fg.length / Kc)]; cen.push([pix[q * 3], pix[q * 3 + 1], pix[q * 3 + 2]]); }
+  const lab = new Int16Array(N).fill(-1);
+  for (let it = 0; it < 8; it++) { const sum = cen.map(() => [0, 0, 0, 0]);
+    for (const q of fg) { let bi = 0, bd = 1e9; for (let k = 0; k < Kc; k++) { const d = (pix[q * 3] - cen[k][0]) ** 2 + (pix[q * 3 + 1] - cen[k][1]) ** 2 + (pix[q * 3 + 2] - cen[k][2]) ** 2; if (d < bd) { bd = d; bi = k; } } lab[q] = bi; const sm = sum[bi]; sm[0] += pix[q * 3]; sm[1] += pix[q * 3 + 1]; sm[2] += pix[q * 3 + 2]; sm[3]++; }
+    sum.forEach((sm, k) => { if (sm[3]) cen[k] = [sm[0] / sm[3], sm[1] / sm[3], sm[2] / sm[3]]; }); }
+  for (const q of fg) { const c = cen[lab[q]]; for (let ch = 0; ch < 3; ch++) out[q * 3 + ch] = pix[q * 3 + ch] * .45 + c[ch] * .55; } // flatter colours, keeping some shading
+  // colour pop: a touch more saturation and contrast
+  for (const q of fg) { const r = out[q * 3], g = out[q * 3 + 1], b = out[q * 3 + 2], l = (r + g + b) / 3; for (let ch = 0; ch < 3; ch++) out[q * 3 + ch] = Math.max(0, Math.min(255, l + (out[q * 3 + ch] - l) * 1.15)); }
+  return out;
+}
+function amCanvas(pix) { const R = Math.round(Math.sqrt(pix.length / 3)), c = document.createElement("canvas"); c.width = c.height = R; const x = c.getContext("2d"), im = x.createImageData(R, R); for (let q = 0; q < R * R; q++) { for (let ch = 0; ch < 3; ch++) im.data[q * 4 + ch] = pix[q * 3 + ch]; const w = Math.min(pix[q * 3], pix[q * 3 + 1], pix[q * 3 + 2]); im.data[q * 4 + 3] = w > 240 ? 0 : w > 220 ? 140 : 255; } x.putImageData(im, 0, 0); return c; } // white → see-through
 async function artiMini(text, n = 4) {
   const A = await amLoad(p => status(`🎨 Downloading Arti's own model (one time)… ${p}%`)); await loadLex(p => status(`🎨 Getting word meanings… ${p}%`));
   const low = String(text).toLowerCase(), jm = low.match(/\s+(with|wearing|and|holding|on top of|on|inside|in|plus|&)\s+|\s*\+\s*/), joiner = jm ? (jm[1] || "+") : "";
@@ -2898,7 +2918,10 @@ async function artiMini(text, n = 4) {
   const layers = [];
   for (let pi = 0; pi < parts.length; pi++) {
     let words = parts[pi].split(/\s+/), colour = null; words = words.filter(w => { if (AM_COLOURS[w] && !colour && words.length > 1) { colour = AM_COLOURS[w]; return false; } return true; });
-    const subj0 = words.join(" "), subj = { hat: "top hat", hats: "top hat", cap: "billed cap", glasses: "eyeglasses", sunglasses: "sunglasses", crown: "crown", bag: "shopping bags", box: "package", basket: "basket" }[subj0] || subj0; let pics = await amPaint(A, subj, n, parts.length > 1 ? ` (${pi + 1}/${parts.length}: ${subj})` : ""); if (!pics) { if (pi === 0) return null; continue; }
+    const subj0 = words.join(" "), subj = { hat: "top hat", hats: "top hat", cap: "billed cap", glasses: "eyeglasses", sunglasses: "sunglasses", crown: "crown", bag: "shopping bags", box: "package", basket: "basket" }[subj0] || subj0; let pics = await amPaint(A, subj, n + 2, parts.length > 1 ? ` (${pi + 1}/${parts.length}: ${subj})` : "");
+    if (pics) { const score = p => { let sat = 0, fg = 0; for (let q = 0; q < p.length; q += 3) { const mx = Math.max(p[q], p[q + 1], p[q + 2]), mn = Math.min(p[q], p[q + 1], p[q + 2]); if (mn < 218) { fg++; sat += mx - mn; } } return (fg ? sat / fg : 0) * Math.min(1, fg * 3 / (p.length / 3)); };
+      pics = pics.map(p => [score(p), p]).sort((a, b) => b[0] - a[0]).slice(0, n).map(x => x[1]); } // keep the 4 clearest of 6 if (!pics) { if (pi === 0) return null; continue; }
+    pics = pics.map(amClean);
     if (colour) pics = pics.map(p => amRecolour(p, colour));
     layers.push({ pics, subj });
   }
@@ -2918,6 +2941,40 @@ async function artiMini(text, n = 4) {
       else bx.drawImage(c, ox + 62, oy + 62, 64, 64); } // held / beside it
   }
   status("Ready"); return big.toDataURL("image/jpeg", .88); // small enough to keep in the chat
+}
+// 🔎 Arti's research team: 3 researchers look the subject up online (free, no key), 3 checkers keep it safe, on-topic and the picture good
+const ART_STYLE = /\b(pixel art|pixel|cartoon|anime|manga|photo|photorealistic|realistic|watercolou?r|oil painting|painting|3d|render|sketch|drawing|logo|icon|wide|tall|landscape|portrait|wallpaper|poster|banner|meme|style|high quality|detailed|cute|funny|picture|image|pic)\b/gi;
+const ART_VISUAL = /\b(colou?r|red|orange|yellow|green|blue|purple|pink|brown|black|white|grey|gray|golden|silver|striped|stripes|spots|spotted|feathers?|fur|scales?|wings?|tail|horns?|shell|beak|eyes?|shape|shaped|round|long|tall|small|large|tiny|huge|body|head|legs?|made of|wooden|metal|glass|stone|tower|dome|roof|built|pattern|leaves|petals?|flowers?)\b/i;
+async function artiResearch(prompt) {
+  const subj = prompt.replace(ART_STYLE, " ").replace(/\b(a|an|the|of|with|in|on|and|some|very|really|me|my)\b/gi, " ").replace(/[^\w\s'-]/g, " ").replace(/\s+/g, " ").trim().split(" ").slice(0, 5).join(" ");
+  if (!subj || subj.length < 3) return null;
+  const main = subj.split(" ").filter(w => w.length > 2).sort((a, b) => b.length - a.length)[0] || subj;
+  const t0 = performance.now();
+  const hitsP = webSearch(subj).catch(() => []);
+  // 🔎🔎🔎 three researchers at once: the Wikipedia summary · the article's "what it looks like" part · a dictionary definition
+  const [r1, r2, r3] = await Promise.all([
+    hitsP.then(r => r && r[0]).catch(() => null),
+    (async () => { const hits = await hitsP; if (!hits || !hits[0]) return null; const a = await wikiArticle(hits[0].title.replace(/^🌐 /, "")).catch(() => null); if (!a) return null; const m = a.text.match(/(?:^|\n)(Description|Appearance|Characteristics|Design|Anatomy|Physical description|Architecture)\.\n([\s\S]{40,900}?)(?:\n[A-Z][^\n]{2,40}\.\n|$)/); return m ? { title: a.title, text: m[2], url: a.url } : null; })(),
+    fetch("https://api.dictionaryapi.dev/api/v2/entries/en/" + encodeURIComponent(main.toLowerCase())).then(r => r.ok ? r.json() : null).then(j => j && j[0] ? { title: "📖 " + main, text: (j[0].meanings || []).flatMap(m => m.definitions || []).slice(0, 2).map(d => d.definition).join(" ") } : null).catch(() => null),
+  ]);
+  const found = [r1, r2, r3].filter(Boolean);
+  // ✅ checker 1: safe · ✅ checker 2: on topic (it must really be about the thing asked for)
+  const words = subj.toLowerCase().split(" ").filter(w => w.length > 2);
+  const ok = found.filter(f => !ARTI_BAD.test(f.text) && words.some(w => (f.title + " " + f.text).toLowerCase().includes(w.replace(/s$/, ""))));
+  const sents = ok.flatMap(f => f.text.replace(/\([^)]*\)/g, "").split(/(?<=\.)\s+/)).filter(x => x.length > 25 && x.length < 260 && ART_VISUAL.test(x));
+  const details = [...new Set(sents)].slice(0, 3).join(" ").slice(0, 380);
+  const after = t => ((t || "").match(/\b(?:is|are|was|a|an)\s+(?:a|an|the|one|any)?\s*((?:[a-z-]+\s+){0,3}[a-z-]+)/i) || [])[1] || "";
+  const kinds = [...new Set((after(r1 && r1.text) + " " + after(r3 && r3.text)).toLowerCase().split(/\s+/).filter(w => w.length > 2))]; // "is a paedomorphic salamander closely…" + "A Mexican salamander…"
+  return { subj, title: ok[0] ? ok[0].title.replace(/^(🌐|📖) /u, "") : "", details, kind: kinds[0] || "", kinds, n: ok.length, ms: performance.now() - t0, url: (ok.find(f => f.url) || {}).url || "" };
+}
+async function artiImageOK(url) { // ✅ checker 3: did the picture actually come out (not blank / failed)?
+  try {
+    const img = new Image(); img.crossOrigin = "anonymous"; img.src = url;
+    await Promise.race([img.decode(), new Promise((_, no) => setTimeout(() => no(new Error("slow")), 45000))]);
+    const c = document.createElement("canvas"); c.width = c.height = 24; const x = c.getContext("2d"); x.drawImage(img, 0, 0, 24, 24);
+    const d = x.getImageData(0, 0, 24, 24).data; let m = 0, v = 0; for (let i = 0; i < d.length; i += 4) m += d[i] + d[i + 1] + d[i + 2]; m /= d.length / 4;
+    for (let i = 0; i < d.length; i += 4) v += (d[i] + d[i + 1] + d[i + 2] - m) ** 2; return v / (d.length / 4) > 300; // a real picture has some variety
+  } catch (e) { return /slow/.test(e.message) ? false : true; } // can't read it (blocked) → trust it
 }
 // 🖼 meme pictures (words drawn by Floof on top) and the 3×3 team grid (9 bots, one square each)
 function artiMemeHTML(url, cap) {
@@ -2973,13 +3030,19 @@ window.Floof.addProvider({ id: "arti", label: "🎨 Arti — free image maker (2
     const wide = /\b(wide|landscape|banner|wallpaper for (pc|laptop|desktop)|youtube thumbnail|16:9)\b/i.test(text), tall = /\b(tall|portrait|phone wallpaper|poster|9:16)\b/i.test(text);
     const [w, h] = wide ? [1536, 864] : tall ? [896, 1536] : [1280, 1280];
     const style = meme ? ", bold cartoon meme style, vivid colours, sharp clean lines, centred subject, plain background, no words, no captions" : ", high quality, highly detailed, sharp focus";
-    const seed = Math.floor(Math.random() * 1e9), base = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt + style)}?width=${w}&height=${h}&model=flux&nologo=true&safe=true&referrer=floofai&seed=`;
+    status("🔎 Arti's 3 researchers are looking it up…");
+    const R = await artiResearch(prompt).catch(() => null);
+    const extra = R && R.details ? `. Accurate details: ${R.details}` : "";
+    let seed = Math.floor(Math.random() * 1e9), base = `https://image.pollinations.ai/prompt/${encodeURIComponent((prompt + extra).slice(0, 900) + style)}?width=${w}&height=${h}&model=flux&nologo=true&safe=true&referrer=floofai&seed=`;
     const cap = quoted.join(" | ").replace(/[\[\]()]/g, "").toUpperCase();
     const cost = grid ? 3 : 1; if (used + cost > ARTI_MAX) return done(`That needs ${cost} of your daily images and you have ${ARTI_MAX - used} left — try a single picture instead.`);
     ls.set(artiDayKey(), used + cost); refreshModels?.();
-    status(grid ? "🎨 9 Arti bots are painting one square each… (about 15-30 seconds)" : "🎨 Arti is painting… (about 5-15 seconds)"); setTimeout(() => status("Ready"), grid ? 30000 : 15000);
+    status(grid ? "🎨 9 Arti bots are painting one square each… (about 15-30 seconds)" : "🎨 Arti is painting… (about 5-15 seconds)");
+    if (!grid) { if (!(await artiImageOK(base + seed))) { status("✅ A checker didn't like that picture — painting it again…"); seed += 7; } } // ✅ checker 3
+    status("Ready");
     const tag = (grid ? "arti9" : meme ? "meme" : "") + (grid || meme ? ":" + cap : prompt.replace(/[\[\]()]/g, ""));
-    return done(`![${tag}](${base}${seed})\n\n🎨 *Arti · ${grid ? "9 bots painted 9 versions — tap the best one to make it big" : meme ? "meme — the words are written on by Floof, so they're always spelled right" : "picture"} · ${used + cost} of ${ARTI_MAX} used today*`);
+    const rs = R && R.n ? `\n🔎 *Researched first:* ${R.url ? `[${R.title}](${R.url})` : R.title}${R.details ? " — used its description of how it looks" : ""}` : "";
+    return done(`![${tag}](${base}${seed})${rs}\n\n🎨 *Arti · ${grid ? "9 bots painted 9 versions — tap the best one to make it big" : meme ? "meme — the words are written on by Floof, so they're always spelled right" : "picture"} · ${used + cost} of ${ARTI_MAX} used today*`);
   }
 });
 document.addEventListener("click", async e => { // download the picture as a file
