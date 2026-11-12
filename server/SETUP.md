@@ -1,6 +1,6 @@
 # Floof's own AI machines + free backups (no card needed)
 
-Floof Cloud tries, in order: **your own machine(s) → Gemini → Groq → Cloudflare**. Pictures go to Gemini.
+Floof Cloud tries, in order: **your own machine(s) → Gemini → Groq → GitHub Models → Cloudflare**. Pictures go to Gemini.
 Every key/password goes straight into **Vercel → floof.ai → Settings → Environment Variables**, then **Deployments → ⋯ → Redeploy**.
 Never paste them in chats.
 
@@ -8,6 +8,11 @@ Never paste them in chats.
 1. Sign up at **https://console.groq.com** (Google sign-in works).
 2. **API Keys → Create API Key** → copy it.
 3. Vercel: `GROQ_KEY` = that key.
+
+## A2. GitHub Models — free, uses your GitHub account
+1. Go to **https://github.com/settings/personal-access-tokens/new** (fine-grained token).
+2. Name `floof`, expiry up to 1 year, Repository access: **Public repositories**. Under **Account permissions → Models → Read-only**. Generate → copy.
+3. Vercel: `GH_MODELS_TOKEN` = that token. (Set a reminder to renew it before it expires.)
 
 ## B. Cloudflare Workers AI — free, no card (second backup)
 1. Sign up at **https://dash.cloudflare.com/sign-up**.

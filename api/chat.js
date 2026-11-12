@@ -11,7 +11,7 @@
 const SB = "https://lakjmdyzuqrwcncxybcw.supabase.co", SB_KEY = "sb_publishable__m0zTZ3-ThJVk0pktI65Ag_yDFPPD5s";
 const API = "https://generativelanguage.googleapis.com/v1beta";
 const ARES = "https://ares-revision.vercel.app/api/ai";
-const VERSION = "floof-cloud 6";
+const VERSION = "floof-cloud 7";
 // Used only when the live model list can't be fetched. Free-tier models first (checked against Google's
 // pricing page, Nov 2026). gemini-2.5-* still work for keys that used them before, but new keys get
 // 404 "no longer available", so they are last and get cached as bad on the first 404.
@@ -287,6 +287,7 @@ let _groqModels = { t: 0, list: null };
 function extraServers() {
   const e = process.env, list = [];
   if (e.GROQ_KEY) list.push({ name: "groq", url: "https://api.groq.com/openai/v1/chat/completions", key: e.GROQ_KEY.trim(), model: e.GROQ_MODEL || "" });
+  if (e.GH_MODELS_TOKEN) list.push({ name: "github", url: "https://models.github.ai/inference/chat/completions", key: e.GH_MODELS_TOKEN.trim(), model: e.GH_MODEL || "" });
   if (e.CF_ACCOUNT_ID && e.CF_AI_TOKEN) list.push({ name: "cloudflare", url: "https://api.cloudflare.com/client/v4/accounts/" + e.CF_ACCOUNT_ID.trim() + "/ai/v1/chat/completions", key: e.CF_AI_TOKEN.trim(), model: e.CF_MODEL || "@cf/meta/llama-3.3-70b-instruct-fp8-fast" });
   return list;
 }
@@ -299,17 +300,28 @@ async function groqModel(sv) {
   const have = _groqModels.list || [];
   return GROQ_PREFER.find(m => have.includes(m)) || have.find(m => !/whisper|guard|tts|playai|compound|orpheus/i.test(m)) || GROQ_PREFER[1];
 }
+const GH_PREFER = ["openai/gpt-5-mini", "openai/gpt-4.1-mini", "openai/gpt-4.1", "openai/gpt-4o-mini", "meta/llama-4-scout-17b-16e-instruct", "meta/llama-3.3-70b-instruct"];
+let _ghModels = { t: 0, list: null };
+async function ghModel(sv) {
+  if (sv.model) return sv.model;
+  if (!_ghModels.list || now() - _ghModels.t > 3600000) {
+    try { const r = await fetch("https://models.github.ai/catalog/models", { headers: { Authorization: "Bearer " + sv.key, Accept: "application/vnd.github+json" }, signal: AbortSignal.timeout(5000) });
+      const d = await r.json(); if (r.ok && Array.isArray(d)) _ghModels = { t: now(), list: d.filter(m => !m.supported_output_modalities || m.supported_output_modalities.includes("text")).map(m => m.id) }; } catch (e) {}
+  }
+  const have = _ghModels.list || [];
+  return GH_PREFER.find(m => have.includes(m)) || have.find(m => /gpt|llama|mistral|phi/i.test(m) && !/embed|whisper|image|tts|audio/i.test(m)) || "openai/gpt-4.1-mini";
+}
 async function openaiStyle(sv, sys, raw, want, ms) {
-  const model = sv.name === "groq" ? await groqModel(sv) : sv.model;
+  const model = sv.name === "groq" ? await groqModel(sv) : sv.name === "github" ? await ghModel(sv) : sv.model;
   const r = await fetch(sv.url, { method: "POST", signal: AbortSignal.timeout(ms),
     headers: { "Content-Type": "application/json", Authorization: "Bearer " + sv.key },
-    body: JSON.stringify({ model, messages: ownMessages(sys, raw), max_tokens: Math.min(want, 4096), temperature: 0.6 }) });
+    body: JSON.stringify({ model, messages: ownMessages(sys, raw), max_tokens: Math.min(want, 4096), ...(/gpt-5|o\d/.test(model) ? {} : { temperature: 0.6 }) }) });
   let d = {}; try { d = await r.json(); } catch (e) {}
   if (!r.ok) { const m = (d.error && (d.error.message || d.error)) || (d.errors && d.errors[0] && d.errors[0].message) || ("HTTP " + r.status);
     const err = new Error(String(m).slice(0, 120)); err.status = r.status; throw err; }
   const c = d.choices && d.choices[0], text = String((c && c.message && c.message.content) || "").replace(/<think>[\s\S]*?<\/think>/g, "").trim();
   if (!text) throw new Error("empty answer");
-  return { text, via: sv.name + ":" + model.replace(/^@cf\//, ""), cut: c.finish_reason === "length" };
+  return { text, via: sv.name + ":" + model.replace(/^@cf\//, "").replace(/^openai\//, ""), cut: c.finish_reason === "length" };
 }
 
 export default async function handler(req, res) {
@@ -364,7 +376,7 @@ export default async function handler(req, res) {
     if (sys.trim()) body.systemInstruction = { parts: [{ text: sys }] };
     for (const m of order) {
       if (stop) break;
-      const reserve = (aresOn ? T_ARES : 0) + (extra.length ? 12000 : 0), budget = Math.min(left() - reserve, isPro(m) ? T_PRO : T_CALL);
+      const reserve = (aresOn ? T_ARES : 0) + (extra.length ? 15000 : 0), budget = Math.min(left() - reserve, isPro(m) ? T_PRO : T_CALL);
       if (budget < 4000) { errs.push("out of time"); break; }
       for (let attempt = 0; attempt < 2; attempt++) { // 2nd attempt only if the model rejected our thinkingConfig
         try {
