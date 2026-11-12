@@ -2403,8 +2403,9 @@ function gwMaths(text) { // sums go to a real calculator, never to word-guessing
 }
 async function gwAnswer(text, facts, onTextAll, signal) {
   let sent = ""; const onText = full => { if (full.startsWith(sent)) { const d = full.slice(sent.length); if (d) onTextAll(d); } else onTextAll(full); sent = full; }; // Floof adds each piece to the reply, so send only what's new
-  const calc = gwMaths(text); if (calc) { onText(calc + "\n\n*(worked out with the calculator — Grid Writer never guesses sums)*"); return; }
-  const M = await gwLoad(p => status(`🧪 Downloading Grid Writer (one time, ~3 MB)… ${p}%`));
+  const calc = gwMaths(text); if (calc) { onText(calc + "\n\n*(worked out with the calculator — Avish AI never guesses sums)*"); return; }
+  if (/\b(which|what) (ai|model|brain)\b|\bwho (are|made|built|created) (you|u)\b|\byour name\b|\bwhat are you\b/i.test(text)) { onText("I'm **Avish AI 1.0**, made by dvxnm at MagicWinter. I run fully on your device: word types (Markov) → context areas on a 64-D word grid → slot filling → 5 drafts judged by my own tiny transformer."); return; }
+  const M = await gwLoad(p => status(`🧪 Downloading Avish AI 1.0 (one time, ~3 MB)… ${p}%`));
   const C = gwContext(M, text, facts), ctxSc = gwCtxScores(M, C.areas, C.aw), used = new Set();
   let seed = [...text].reduce((a, c) => a * 31 + c.charCodeAt(0) >>> 0, 7) ^ (Date.now() & 0xffff);
   const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
@@ -2417,16 +2418,16 @@ async function gwAnswer(text, facts, onTextAll, signal) {
     if (k === 0) drafts.push(...cands);
   }
   const top = drafts[0];
-  onText(out.join(" ") + `\n\n> 🔍 **How Grid Writer wrote this** — context areas: ${C.areas.length} · word types for sentence 1: ${top.types.join(" ")}\n> The 5 drafts it scored: ${drafts.map(c => `"${gwDetok(M, c.toks)}" (${c.score.toFixed(2)})`).join(" · ")}`);
+  onText(out.join(" ") + `\n\n> 🔍 **How Avish AI wrote this** — context areas: ${C.areas.length} · word types for sentence 1: ${top.types.join(" ")}\n> The 5 drafts it scored: ${drafts.map(c => `"${gwDetok(M, c.toks)}" (${c.score.toFixed(2)})`).join(" · ")}`);
 }
-window.Floof.addProvider({ id: "gridwriter", label: "🧪 Grid Writer — dvxnm's design (on-device, experimental)", ph: "", nokey: true, ok: () => true, vision: false,
+window.Floof.addProvider({ id: "gridwriter", label: "🧪 Avish AI 1.0 — by dvxnm (on-device, experimental)", ph: "", nokey: true, ok: () => true, vision: false,
   help: "Your own AI design, running on this device with no internet after a one-time ~3 MB download: word types (Markov) → context areas on the 64-D grid → slot filling → 5 drafts judged by a tiny transformer. Experimental: it writes on-topic sentences, but it isn't smart like the cloud brains.",
-  list: async () => [{ id: "gw1", name: "Grid Writer v1 (tiny transformer)" }],
+  list: async () => [{ id: "gw1", name: "Avish AI 1.0" }],
   stream: async ({ sys, msgs, onText, signal }) => {
     const last = [...msgs].reverse().find(m => m.role === "user"), text = String(last && last.content || "");
     const fi = sys.indexOf("Never mention the notes or the search:"), facts = fi >= 0 ? sys.slice(fi + 38, fi + 3000) : "";
     await gwAnswer(text, facts, onText, signal); status("Ready");
-    return { in: 0, out: 0, model: "🧪 Grid Writer (on-device)", finish: "" };
+    return { in: 0, out: 0, model: "🧪 Avish AI 1.0", finish: "" };
   } });
 window.FloofGW = { debug: async (t) => { const M = await gwLoad(), C = gwContext(M, t, ""), sc = gwCtxScores(M, C.areas, C.aw); const top = [...Array(M.UNK0).keys()].filter(i => M.content.has(M.tokTag[i]) && sc.inA[i]).sort((a, b) => sc[b] - sc[a]); return { areas: C.areas.length, pts: C.pts.length, radius: sc.radius, inArea: top.length, top: top.slice(0, 25).map(i => M.words[i] + "/" + M.tags[M.tokTag[i]]), state: sc[M.idx.get("state")[0]], time: sc[M.idx.get("time")[0]] }; }, load: () => gwLoad(), answer: (t, f) => new Promise(ok => { let last = ""; gwAnswer(t, f || "", x => last += x).then(() => ok(last)); }) };
 window.Floof.addProvider({ id: "athena", label: "🦉 Athena — Ares servers, no key", ph: "", nokey: true, ok: () => ACCOUNT_KIND === "ares", vision: false,
