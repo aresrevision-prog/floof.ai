@@ -345,6 +345,7 @@ figure.arti.grid9{max-width:560px}
         <div class="row"><input type="text" id="mAdd" placeholder="Add something yourself, e.g. I'm doing triple science"><button class="go" id="mAddBtn">Add</button></div>
         <div id="mList" style="display:flex;flex-direction:column;gap:6px"></div>
         <div class="row"><button id="mClear" style="font-size:12px">Forget everything</button></div>
+        <label class="row small" style="cursor:pointer;margin-top:6px"><input type="checkbox" id="arOn"> 🔎 Research the internet automatically when a question needs facts (Wikipedia, free — 3 researchers + 3 checkers)</label>
       </div>
       <div class="card">
         <div class="row" style="justify-content:space-between"><h3>🔊 Voice</h3><label class="row small" style="cursor:pointer"><input type="checkbox" id="vAuto"> Send when I stop talking</label></div>
@@ -781,7 +782,8 @@ const FLOOF34 = `You are Floof AI 3.4 by MagicWinter Studio — a careful, exper
 2. Think it through before answering: for maths, science and logic, work step by step and double-check every calculation and unit; for facts, prefer well-established knowledge and say plainly when you're unsure or when things may have changed.
 3. Answer directly first, then the most useful detail. Match length to the question: short questions get short answers; "explain"/"how" get clear steps or short paragraphs; use lists/tables only when they help.
 4. For school/GCSE work: explain the method, use correct terminology, and show working like an examiner wants.
-5. Never invent sources, quotes, numbers or links.`;
+5. Never invent sources, quotes, numbers or links.
+6. When notes or web research are provided, base your facts on them first (they are fresher than your memory); if they disagree with what you know, say so briefly.`;
 const SYSTEM = "You are Floof AI, the friendly, sharp assistant made by MagicWinter Studio. Be clear, concise and helpful. Use markdown code blocks for code. If you are unsure, say so instead of guessing.";
 const KEY = "mwai.chats.v1", MKEY = "mwai.model", CKEY = "mwai.cache", DKEY = "mwai.docs.v1", SKEY = "mwai.starter";
 const LOGO = document.querySelector(".brand .logo").innerHTML;
@@ -1203,16 +1205,18 @@ async function sendCore(override, extra = {}) {
 
   // 3) look it up: if the grid doesn't know and web is on, read Wikipedia into this chat's grid
   let CG2 = CG;
-  if (webOn && !calc && !solved.length && info.type !== "summary" && (!hits.length || hits[0].score < .75 || /\b(latest|current|today|now|news|recent)\b/i.test(text))) {
-    status("🌐 Searching the web…");
+  let researched = [];
+  const factual = /\?\s*$|^(who|what|when|where|why|how|which|explain|tell me about|describe|define|compare|is|are|does|did|can)\b/i.test(text.trim()) && text.length > 8;
+  if ((webOn || (autoResearch && factual)) && !calc && !solved.length && info.type !== "summary" && (!hits.length || hits[0].score < .75 || /\b(latest|current|today|now|news|recent)\b/i.test(text))) {
+    status("🔎 3 researchers are looking it up…");
     try {
-      const pages = await webSearch(query);
+      const pages = await deepResearch(query, text); researched = pages;
       if (autoLearn) { const n = learnPages(pages); if (n) { saveDocs(); rebuild(); status(`🌐 Learned ${n} new page${n > 1 ? "s" : ""} into the grid`); } }
       else { const have = new Set(chat.docs.map(d => d.url)); for (const p of pages) if (!have.has(p.url)) chat.docs.push({ ...p, sector: MW.guessSector(G, p.text) }); save(); }
       CG2 = chatGrid();
       const r2 = MW.search(CG2, query, 4);
       if (r2.hits.length) { hits = r2.hits; sector = r2.sector; u.sector = sector; }
-      status(pages.length ? `🌐 Read ${pages.length} page${pages.length > 1 ? "s" : ""}` : "🌐 Nothing found on the web.");
+      status(pages.length ? `🔎 Researched ${pages.length} source${pages.length > 1 ? "s" : ""} (checked for topic & safety)` : "🔎 Nothing useful found on the web.");
     } catch { status("🌐 Web search failed — offline or blocked. Using the grid.", "err"); }
   }
   if (hits.length) hits = hits.filter(h => h.sector === hits[0].sector || h.score > hits[0].score * .9); // stay on one topic
@@ -1273,7 +1277,8 @@ async function sendCore(override, extra = {}) {
 5. After the code: how to use it (1–3 lines) and 2–3 ideas to extend it.
 When fixing: find the root cause, explain it in one line, and return the FULL corrected program.` : "";
     const plug = extra.plugin ? `\n\n🧩 PLUGIN "${extra.plugin.name}" is on for this message — follow it: ${extra.plugin.prompt}` : "";
-    const sys = SYSTEM + edu + memoryPrompt() + langPrompt() + guide + tools + coder + plug + (coderOn ? "" : facts);
+    const research = researched.length ? "\n\nWeb research (gathered and checked by Floof's research team just now — use it for facts and mention the page names):\n" + researched.map(p => `[${p.title.replace(/^🌐 /, "")}] ${p.text.slice(0, 900)}`).join("\n").slice(0, 3500) : "";
+    const sys = SYSTEM + edu + memoryPrompt() + langPrompt() + guide + tools + coder + plug + research + (coderOn ? "" : facts);
     const tk = thinker(out), tw = typer(out, () => tk.stop()); typing = tw; timer = tk; window.__typer = tw;
     const onT = d => { reply += d; tw.push(d); };
     if (cloudReady()) {
@@ -2766,7 +2771,7 @@ window.Floof.addProvider({ id: "gridwriter", label: "🧪 Avish AI 1.8 — by Ad
   list: async () => [{ id: "gw1", name: "Avish AI 1.8" }],
   stream: async ({ sys, msgs, onText, signal }) => {
     const last = [...msgs].reverse().find(m => m.role === "user"), text = String(last && last.content || "");
-    const fi = sys.indexOf("Never mention the notes or the search:"), facts = fi >= 0 ? sys.slice(fi + 38, fi + 3000) : "";
+    const fi = sys.indexOf("Never mention the notes or the search:"), ri = sys.indexOf("Web research ("), facts = (ri >= 0 ? sys.slice(ri, ri + 2500) + " " : "") + (fi >= 0 ? sys.slice(fi + 38, fi + 3000) : ""); // research + notes → Avish's interpreters
     await gwAnswer(text, facts, onText, signal, msgs); status("Ready");
     return { in: 0, out: 0, model: "🧪 Avish AI 1.8", finish: "" };
   } });
@@ -3850,6 +3855,30 @@ window.__mw = { fitHistory, tryMath, solveEq, pickQuestions, solveLines, solveIm
 let webOn = ls.get("mwai.web", false);
 function setWeb(v) { webOn = v; ls.set("mwai.web", v); $("#webBtn").classList.toggle("on", v); }
 $("#webBtn").onclick = () => { setWeb(!webOn); status(webOn ? "🌐 Web on — Floof AI will look things up on Wikipedia when its grid doesn't know." : "Web off — answers from your grid and brain only."); };
+// 🔎 Research team for answers: 3 researchers (free, no key) + 3 checkers, used when a question needs facts
+let autoResearch = ls.get("mwai.autoresearch", true);
+async function deepResearch(query, question) {
+  const qWords = [...new Set((String(question || query).toLowerCase().match(/[a-z0-9]{3,}/g) || []).filter(w => !/^(the|and|for|with|what|when|where|which|who|why|how|does|did|are|was|were|tell|about|explain|describe|define|compare|can|you|your|this|that|from|into|its|have|has|had|been|will|would|should|could|please|me)$/.test(w)))];
+  const core = qWords.slice(0, 5).join(" ") || query;
+  const searchP = webSearch(query).catch(() => []);
+  const [r1, r2, r3] = await Promise.all([
+    searchP, // 🔎 1: Wikipedia — the best pages' summaries
+    (async () => { // 🔎 2: reads the best page in full and keeps the paragraphs that match the question
+      const hits = await searchP; if (!hits || !hits[0]) return []; const a = await wikiArticle(hits[0].title.replace(/^🌐 /, "")).catch(() => null); if (!a) return [];
+      const paras = a.text.split(/\n+/).filter(p => p.length > 120), score = p => qWords.reduce((n, w) => n + (p.toLowerCase().includes(w) ? 1 : 0), 0);
+      const best = paras.map(p => [score(p), p]).sort((x, y) => y[0] - x[0]).slice(0, 3).filter(x => x[0] > 0).map(x => x[1]);
+      return best.length ? [{ title: a.title + " (details)", text: best.join("\n"), url: a.url }] : [];
+    })(),
+    core !== query ? webSearch(core).catch(() => []) : Promise.resolve([]), // 🔎 3: a second search with just the key words
+  ]);
+  const all = [...(r1 || []), ...(r2 || []), ...(r3 || [])];
+  // ✅ 1: on topic (shares the question's key words) · ✅ 2: safe · ✅ 3: useful (not a "may refer to" list, not a repeat)
+  const seen = new Set(), unsafe = /\b(porn|xxx|nude|naked|sexual|erotic|suicide method|how to kill)\b/i;
+  const out = all.filter(p => { const t = (p.title + " " + p.text).toLowerCase(), k = qWords.filter(w => t.includes(w)).length;
+    if (k < Math.min(2, qWords.length) || unsafe.test(t) || /may refer to|disambiguation/i.test(t.slice(0, 300)) || p.text.length < 80) return false;
+    const key = p.url + "|" + p.text.slice(0, 60); if (seen.has(key)) return false; seen.add(key); return true; });
+  return out.slice(0, 5);
+}
 async function webSearch(q) {
   const terms = MW.tokens(q).map(t => t.w).slice(0, 8).join(" ") || q;
   const u = "https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*&generator=search&gsrlimit=3&prop=extracts|info&inprop=url&exintro=1&explaintext=1&exsentences=10&gsrsearch=" + encodeURIComponent(terms);
@@ -4070,7 +4099,7 @@ if (ACCOUNT_KIND === "device") $("#accDel").onclick = async () => {
   const accs = accounts(); delete accs[id]; setAccounts(accs); $("#signOut").click();
 };
 
-setWeb(webOn);
+setWeb(webOn); $("#arOn").checked = autoResearch; $("#arOn").onchange = e => { autoResearch = e.target.checked; ls.set("mwai.autoresearch", autoResearch); status(autoResearch ? "🔎 Floof will research facts online when it needs to." : "🔎 Automatic research off (🌐 still searches every time when it's on)."); };
 setTimeout(() => loadDict(), 1500);
 // ---------- 🍪 cookies & storage: ask once ----------
 (() => {
