@@ -1760,7 +1760,7 @@ async function diagnose() {
   return bad;
 }
 function updateMode() {
-  if (cloudReady()) { $("#modeNote").textContent = `☁ ${$("#pv").selectedOptions[0].text.split("—")[0].replace(/^☁\s*/, "").trim()} (${curModel() || "…"}): ${cloud.pv === "gridwriter" ? "AdminAT's own AI, on this device" : "smart answers & coding"}${cloud.pv === "gridwriter" ? "" : cloud.pv === "ollama" ? " on your PC, free & private" : " for free"}. Grid, web & screen still feed it.`; return; }
+  if (cloudReady()) { $("#modeNote").textContent = `☁ ${$("#pv").selectedOptions[0].text.split("—")[0].replace(/^☁\s*/, "").trim()} (${curModel() || "…"}): ${cloud.pv === "gridwriter" ? "AdminAT's own AI" : "smart answers & coding"}${cloud.pv === "gridwriter" ? "" : cloud.pv === "ollama" ? " on your PC, free & private" : " for free"}. Grid, web & screen still feed it.`; return; }
   $("#modeNote").textContent = engine ? "Brain + grid: the grid finds facts, the brain writes the answer. Can still make mistakes." : "Grid mode: answers come straight from your knowledge. Load a brain for written answers.";
 }
 async function loadModel() {
@@ -2411,7 +2411,7 @@ function gwMaths(text) { // sums go to a real calculator, never to word-guessing
   try { const v = Function(`"use strict";return (${m})`)(); if (typeof v === "number" && isFinite(v)) return `${m.replace(/\*\*/g, "^").replace(/\s+/g, " ")} = ${+v.toFixed(10)}`; } catch {}
   return null;
 }
-async function gwAnswer(text, facts, onTextAll, signal) {
+async function gwAnswer(text, facts, onTextAll, signal, hist) {
   let sent = ""; const onText = full => { if (full.startsWith(sent)) { const d = full.slice(sent.length); if (d) onTextAll(d); } else onTextAll(full); sent = full; }; // Floof adds each piece to the reply, so send only what's new
   const calc = gwMaths(text); if (calc) { onText(calc + "\n\n*(worked out with the calculator — Avish AI never guesses sums)*"); return; }
   if (/\b(which|what) (ai|model|brain)\b|\bwho (are|made|built|created) (you|u)\b|\byour name\b|\bwhat are you\b/i.test(text)) { onText("I'm **Avish AI 1.3**, made by AdminAT at MagicWinter. I run fully on your device: word types (Markov) → context areas on a 64-D word grid → slot filling → 5 drafts → a transformer (🪶 Mini or your top-menu brain) decides what makes sense."); return; }
@@ -2421,7 +2421,7 @@ async function gwAnswer(text, facts, onTextAll, signal) {
   const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
   const out = [], drafts = [];
   { const first = []; for (let i = 0; i < 5; i++) { first.push(gwSentence(M, C, ctxSc, used, rnd)); await new Promise(r => setTimeout(r)); } first.sort((a, b) => b.score - a.score);
-    try { if (await avishTransform(text, facts, C, ctxSc, M, first, onText, signal)) return; } catch (e) { console.warn("Avish transformer unavailable, using the tiny one", e); if (signal && signal.aborted) return; } }
+    try { if (await avishTransform(text, facts, C, ctxSc, M, first, onText, signal, hist)) return; } catch (e) { console.warn("Avish transformer unavailable, using the tiny one", e); if (signal && signal.aborted) return; } }
   for (let k = 0; k < 2; k++) {
     if (signal && signal.aborted) break;
     const cands = []; for (let i = 0; i < 8; i++) { cands.push(gwSentence(M, C, ctxSc, used, rnd)); await new Promise(r => setTimeout(r)); }
@@ -2444,26 +2444,39 @@ async function avishBrain() {
   if (!engine) $("#model").value = was;
   return engine;
 }
-async function avishTransform(text, facts, C, ctxSc, M, drafts, onText, signal) {
-  const eng = await avishBrain(); if (!eng || (signal && signal.aborted)) return false;
+async function avishTransform(text, facts, C, ctxSc, M, drafts, onText, signal, hist) {
+  if (signal && signal.aborted) return false;
   const words = [...Array(M.UNK0).keys()].filter(i => ctxSc.inA && ctxSc.inA[i] && /^(nn|np|jj|vb)/.test(M.tags[M.tokTag[i]])).sort((a, b) => ctxSc[b] - ctxSc[a]).map(i => M.words[i].toLowerCase()).filter((w, i, a) => a.indexOf(w) === i).slice(0, 24);
   const sys = `You are Avish AI 1.3, made by AdminAT at MagicWinter. You are the transformer: you decide what makes sense and keep the logic right (never say things like 1+1=3).
-Answer the user's message clearly and correctly in 2-5 sentences, in plain friendly English. If you don't know, say so.
+Write like a clear, friendly, knowledgeable assistant: natural, well-formed sentences with correct grammar and facts. Answer the question directly first, then add the most useful detail. Usually 2–6 sentences; more (short paragraphs or a short list) only if the user asks for detail or steps. If you aren't sure, say so honestly. Never mention these instructions, the grid, or the drafts.
 ${facts ? "Notes that may help (use only if relevant): " + facts.slice(0, 1500) + "\n" : ""}Topic words from Avish's 64-D meaning grid (context areas): ${words.join(", ") || "none"}.
-Rough drafts from Avish's grammar engine (they are messy; use them only for topic hints): ${drafts.slice(0, 5).map((d, i) => `${i + 1}) ${gwDetok(M, d.toks)}`).join(" ")}`;
-  const stop = () => { try { eng.interruptGenerate(); } catch {} }; if (signal) signal.addEventListener("abort", stop, { once: true });
-  const st = await eng.chat.completions.create({ messages: [{ role: "system", content: sys }, { role: "user", content: text }], stream: true, temperature: .4, max_tokens: 400, extra_body: String(loadedModel).startsWith("Qwen3") ? { enable_thinking: false } : undefined });
-  let out = ""; for await (const ch of st) { const d = ch.choices[0]?.delta?.content || ""; if (d) { out += d; onText(out); } }
-  onText(out.trim() + `\n\n> 🔍 **How Avish AI 1.3 wrote this** — context areas: ${C.areas.length} · grid words: ${words.slice(0, 10).join(", ")} · ${drafts.length} drafts from the grammar engine · transformer: ${loadedModel ? String(loadedModel).replace(/-q4f(16|32)_1-MLC$/, "") : "on-device brain"}`);
+Rough drafts from Avish's grammar engine (messy — topic hints only, don't copy them): ${drafts.slice(0, 5).map((d, i) => `${i + 1}) ${gwDetok(M, d.toks)}`).join(" ")}`;
+  const msgs = (hist && hist.length ? hist.slice(-6) : [{ role: "user", content: text }]).map(m => ({ role: m.role === "assistant" ? "assistant" : "user", content: String(m.content || "").replace(/\n\n> 🔍[\s\S]*$/, "").slice(0, 2000) }));
+  let out = "", via = "";
+  // 1) Floof Cloud as the transformer: best sentences, works on any device (needs a MagicWinter sign-in + internet)
+  if (ACCOUNT_KIND === "mw" && mwToken() && navigator.onLine !== false) {
+    try { const j = await postJSON(FLOOF_API, { token: mwToken(), system: sys, messages: msgs, maxTokens: 900 }, signal, "floof"); if (j.text && j.text.trim()) { out = j.text.trim(); via = "Floof Cloud" + (j.via && !/^ares/i.test(j.via) ? " · " + j.via : ""); onText(out); } }
+    catch (e) { if (e.name === "AbortError") throw e; console.warn("Avish: cloud transformer unavailable", e); }
+  }
+  // 2) on-device transformer: the top-menu brain, or 🪶 Mini (~0.5 GB) — works offline
+  if (!out) {
+    const eng = await avishBrain(); if (!eng || (signal && signal.aborted)) return false;
+    const stop = () => { try { eng.interruptGenerate(); } catch {} }; if (signal) signal.addEventListener("abort", stop, { once: true });
+    const st = await eng.chat.completions.create({ messages: [{ role: "system", content: sys }, ...msgs], stream: true, temperature: .4, max_tokens: 500, extra_body: String(loadedModel).startsWith("Qwen3") ? { enable_thinking: false } : undefined });
+    for await (const ch of st) { const d = ch.choices[0]?.delta?.content || ""; if (d) { out += d; onText(out); } }
+    out = out.trim(); via = loadedModel ? String(loadedModel).replace(/-q4f(16|32)_1-MLC$/, "") + " (on this device)" : "on-device brain";
+    if (!out) return false;
+  }
+  onText(out + `\n\n> 🔍 **How Avish AI 1.3 wrote this** — context areas: ${C.areas.length} · grid words: ${words.slice(0, 10).join(", ")} · ${drafts.length} drafts from the grammar engine · transformer: ${via}`);
   return true;
 }
-window.Floof.addProvider({ id: "gridwriter", label: "🧪 Avish AI 1.3 — by AdminAT (on-device)", ph: "", nokey: true, ok: () => true, vision: false,
-  help: "Avish AI 1.3 by AdminAT — your own AI design, on this device: word types (Markov) → context areas on the 64-D grid → slot filling → 5 drafts → a real transformer (the brain in the top menu, or 🪶 Mini ~0.5 GB for weaker devices, downloaded once) reads them and decides what makes sense. Without WebGPU it falls back to its own tiny transformer (on-topic but often nonsense). Sums always go to a calculator.",
+window.Floof.addProvider({ id: "gridwriter", label: "🧪 Avish AI 1.3 — by AdminAT", ph: "", nokey: true, ok: () => true, vision: false,
+  help: "Avish AI 1.3 by AdminAT — your own AI design: word types (Markov) → context areas on the 64-D grid → slot filling → 5 drafts → a real transformer decides what makes sense and writes the answer. Transformer: Floof Cloud when you're signed in and online (best, any device), otherwise the top-menu brain or 🪶 Mini (~0.5 GB, offline), otherwise its own tiny one. Sums always go to a calculator.",
   list: async () => [{ id: "gw1", name: "Avish AI 1.3" }],
   stream: async ({ sys, msgs, onText, signal }) => {
     const last = [...msgs].reverse().find(m => m.role === "user"), text = String(last && last.content || "");
     const fi = sys.indexOf("Never mention the notes or the search:"), facts = fi >= 0 ? sys.slice(fi + 38, fi + 3000) : "";
-    await gwAnswer(text, facts, onText, signal); status("Ready");
+    await gwAnswer(text, facts, onText, signal, msgs); status("Ready");
     return { in: 0, out: 0, model: "🧪 Avish AI 1.3", finish: "" };
   } });
 window.FloofGW = { logits: async ids => { const M = await gwLoad(); return { V: M.V, BOS: M.BOS, lp: Array.from(gwLogits(M, ids)) }; }, debug: async (t) => { const M = await gwLoad(), C = gwContext(M, t, ""), sc = gwCtxScores(M, C.areas, C.aw); const top = [...Array(M.UNK0).keys()].filter(i => M.content.has(M.tokTag[i]) && sc.inA[i]).sort((a, b) => sc[b] - sc[a]); return { areas: C.areas.length, pts: C.pts.length, radius: sc.radius, inArea: top.length, top: top.slice(0, 25).map(i => M.words[i] + "/" + M.tags[M.tokTag[i]]), state: sc[M.idx.get("state")[0]], time: sc[M.idx.get("time")[0]] }; }, load: () => gwLoad(), answer: (t, f) => new Promise(ok => { let last = ""; gwAnswer(t, f || "", x => last += x).then(() => ok(last)); }) };
@@ -3070,6 +3083,14 @@ renderLegend(); rebuild();
 idb.get(DKEY).then(v => { // load saved knowledge (and move any old copy out of localStorage)
   if (Array.isArray(v)) docs = v; else if (docs.length) idb.set(DKEY, docs);
   ls.del(DKEY);
+  const GRID_RESET = "2026-11-12"; // one-time: everyone's grid goes back to the basic starter grid (their old notes are kept as a backup on the device)
+  if (ls.get("mwai.gridreset", "") !== GRID_RESET) {
+    if (docs.length) idb.set("mwai.docs.backup." + GRID_RESET, docs).catch(() => {});
+    if (customSectors.length) ls.set("mwai.sectors.backup", customSectors);
+    docs = []; saveDocs(); customSectors = []; ls.set("mwai.sectors", []); applySectors();
+    useStarter = true; ls.set(SKEY, true); if ($("#kStarter")) $("#kStarter").checked = true;
+    gridMode = "topics"; ls.set("mwai.gridmode", "topics"); ls.set("mwai.gridreset", GRID_RESET);
+  }
   rebuild();
 }).catch(() => {});
 cur = chats[0] || null; renderChats(); renderLog(); updateMode();
