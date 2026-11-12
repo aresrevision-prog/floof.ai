@@ -186,7 +186,7 @@ async function runTest(key, models) { // tiny real call; moves to the next model
       if (e.kind === "think" && !_noThink[m] && a === 0) { _noThink[m] = true; continue; } // same as chats: retry without the thinking setting
       noteFail(m, e, key);
       last = { ok: false, model: m, kind: e.kind, error: clean(e.message, key), ms: now() - t0 };
-      if (e.kind !== "busy") return last;
+      if (e.kind !== "busy" && e.kind !== "timeout") return last;
       break;
     }
   }
