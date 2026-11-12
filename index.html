@@ -337,7 +337,9 @@ figure.arti figcaption a{color:var(--dim)}
       </div>
       <div class="card">
         <div class="row" style="justify-content:space-between"><h3>🔊 Voice</h3><label class="row small" style="cursor:pointer"><input type="checkbox" id="vAuto"> Send when I stop talking</label></div>
-        <div class="small">Floof can listen (🎙) and talk or sing (🔊) using your device's built-in voices — free and private. "Natural" / "Google" / "Online" voices sound the most real.</div>
+        <div class="small">Floof can listen (🎙), talk (🔊) and really sing 🎤 — ask it to "sing a song about…". Free and private, all on this device. "Natural" / "Google" / "Online" voices sound the most real.</div>
+        <label class="small" for="vLang">🌍 Language — Floof replies, listens, talks and sings in it</label><select id="vLang"></select>
+        <label class="small" for="vVoice">English voice</label>
         <select id="vVoice"></select>
         <div class="row" style="gap:10px"><label class="small" style="flex:1">Speed <input type="range" id="vRate" min="0.6" max="1.6" step="0.05" style="width:100%"></label><label class="small" style="flex:1">Pitch <input type="range" id="vPitch" min="0.5" max="1.8" step="0.05" style="width:100%"></label></div>
         <div class="row"><button id="vTest" type="button">▶ Test voice</button><button id="vSing" type="button">🎵 Test singing</button></div>
@@ -1108,7 +1110,7 @@ const unlockUI = () => { busy = false; $("#send").disabled = false; $("#stop").h
 async function send(override, extra = {}) { // locks at once (before any await) so two replies can never run together
   const text = (override ?? $("#input").value).trim();
   if (!text || busy) return;
-  busy = true; $("#send").disabled = true; const run = ++sendRun;
+  busy = true; $("#send").disabled = true; const run = ++sendRun; if (typeof stopSinging === "function" && !extra.depth) stopSinging();
   try { return await sendCore(override, extra); }
   finally { if (sendRun === run && busy) unlockUI(); } // early returns / unexpected errors never leave the app locked
 }
@@ -1256,7 +1258,7 @@ async function sendCore(override, extra = {}) {
 5. After the code: how to use it (1–3 lines) and 2–3 ideas to extend it.
 When fixing: find the root cause, explain it in one line, and return the FULL corrected program.` : "";
     const plug = extra.plugin ? `\n\n🧩 PLUGIN "${extra.plugin.name}" is on for this message — follow it: ${extra.plugin.prompt}` : "";
-    const sys = SYSTEM + edu + memoryPrompt() + guide + tools + coder + plug + (coderOn ? "" : facts);
+    const sys = SYSTEM + edu + memoryPrompt() + langPrompt() + guide + tools + coder + plug + (coderOn ? "" : facts);
     const tk = thinker(out), tw = typer(out, () => tk.stop()); typing = tw; timer = tk; window.__typer = tw;
     const onT = d => { reply += d; tw.push(d); };
     if (cloudReady()) {
@@ -2935,7 +2937,7 @@ window.Floof.addProvider({ id: "construct", label: "🏗 Construct AI 1.4 — by
     if (signal && signal.aborted) return { in: 0, out: 0, model: "🏗 Construct AI 1.4", finish: "" };
     // ⌨ Coder
     status("🏗 Construct: writing the code…");
-    const sys = CON_SYS + (R.lang ? `\nLanguage: ${R.lang}.` : "") + (plan ? "\nFollow this plan:\n" + plan : "");
+    const sys = CON_SYS + (R.lang ? `\nLanguage: ${R.lang}.` : "") + (plan ? "\nFollow this plan:\n" + plan : "") + langPrompt().replace("reply in", "write your explanations in").replace("Reply in", "Write your explanations in");
     const c = await conAsk([{ role: "system", content: sys }, ...hist], { onDelta: onText, maxTokens: 3500, signal });
     if (!c) { onText("Construct AI needs a brain: this device couldn't run Qwen-Coder and Floof Cloud isn't reachable. Try Chrome on a device with WebGPU, or sign in to MagicWinter."); return { in: 0, out: 0, model: "🏗 Construct AI 1.4", finish: "" }; }
     via = c.via; let answer = c.text;
@@ -3024,7 +3026,8 @@ function speakable(t) { return String(t).replace(/```[\s\S]*?```/g, " (code belo
 function say(text, opts = {}) {
   if (!synth) return status("This browser can't talk — try Chrome.", "err");
   synth.cancel(); const t = speakable(text); if (!t) return;
-  for (const part of t.match(/[^.!?]+[.!?]*\s*/g) || [t]) { const u = new SpeechSynthesisUtterance(part); const v = bestVoice(); if (v) u.voice = v; u.rate = opts.rate || vset.rate; u.pitch = opts.pitch || vset.pitch; synth.speak(u); }
+  const lang = vset.lang || guessLang(t), other = !/^en/.test(lang), lv = other ? voiceFor(lang) : null;
+  for (const part of t.match(/[^.!?。！？]+[.!?。！？]*\s*/g) || [t]) { const u = new SpeechSynthesisUtterance(part); const v = lv || bestVoice(); if (v) u.voice = v; if (other) u.lang = lang; u.rate = opts.rate || vset.rate; u.pitch = opts.pitch || vset.pitch; synth.speak(u); }
 }
 function sing(text) { // sing-song: each word gets a note from a happy pentatonic tune (browser voices can't truly sing, but this follows a melody)
   if (!synth) return status("This browser can't sing — try Chrome.", "err");
@@ -3036,26 +3039,106 @@ function sing(text) { // sing-song: each word gets a note from a happy pentatoni
     const r = new SpeechSynthesisUtterance(" "); r.rate = .5; synth.speak(r); // a breath between lines
   }
 }
+// 🎤 real singing: eSpeak (meSpeak) makes each word, Floof tunes it to a melody note, and a little band plays along — all on this device
+const SING_BASES = window.FLOOF_SING ? [window.FLOOF_SING] : ["https://cdn.jsdelivr.net/gh/aresrevision-prog/floof.ai@dd4ff91d631de8be61427d50131b232c10277834/sing/", "https://floofai.vercel.app/sing/"];
+let singLoading = null, singStop = null;
+function singerLoad() {
+  if (window.meSpeak) return Promise.resolve(window.meSpeak);
+  return singLoading ??= (async () => {
+    for (const b of SING_BASES) { try { await new Promise((ok, no) => { const sc = document.createElement("script"); sc.src = b + "mespeak.bundle.js"; sc.onload = ok; sc.onerror = no; document.head.appendChild(sc); }); if (window.meSpeak) return window.meSpeak; } catch {} }
+    throw new Error("singing voice couldn't download");
+  })().catch(e => { singLoading = null; throw e; });
+}
+function f0Of(buf) { // the voice's pitch in a word (autocorrelation over the loudest part)
+  const d = buf.getChannelData(0), sr = buf.sampleRate, N = Math.min(2048, d.length); let best = 0, at = 0;
+  for (let i = 0; i + N < d.length; i += 512) { let e = 0; for (let j = 0; j < N; j += 4) e += d[i + j] * d[i + j]; if (e > best) { best = e; at = i; } }
+  let bl = 0, bc = 0; for (let lag = Math.floor(sr / 400); lag < Math.floor(sr / 70); lag++) { let c = 0; for (let j = 0; j < N - lag; j += 2) c += d[at + j] * d[at + j + lag]; if (c > bc) { bc = c; bl = lag; } }
+  return bl ? sr / bl : 0;
+}
+function stopSinging() { if (singStop) { try { singStop(); } catch {} singStop = null; } }
+async function singSong(lyrics) {
+  stopSinging(); if (synth) synth.cancel();
+  status("🎤 Warming up the singing voice… (one time, ~0.7 MB)");
+  let ms; try { ms = await singerLoad(); } catch (e) { status("🎤 Couldn't load the singing voice — using the speaking voice instead.", "err"); return sing(lyrics); }
+  const AC = new (window.AudioContext || window.webkitAudioContext)(); const out = AC.createGain(); out.gain.value = .9; out.connect(AC.destination);
+  const echo = AC.createDelay(); echo.delayTime.value = .18; const fb = AC.createGain(); fb.gain.value = .22; echo.connect(fb); fb.connect(echo); echo.connect(out); // a little room sound
+  const singVoice = await singLang(); const lines = speakable(lyrics).split(/(?<=[.!?;])\s+|\n+/).map(l => l.replace(/[^\p{L}' -]/gu, " ").trim()).filter(Boolean).slice(0, 24);
+  if (!lines.length) return;
+  const female = (vset.pitch || 1) >= 1.05, bpm = 100, beat = 60 / bpm, t0 = AC.currentTime + .4;
+  const chords = [[0, 4, 7], [7, 11, 14], [9, 12, 16], [5, 9, 12]], root = female ? 53 : 45; // C G Am F, in the singer's range (MIDI)
+  const hz = m => 440 * Math.pow(2, (m - 69) / 12), scale = [0, 2, 4, 5, 7, 9, 11, 12, 14];
+  const words = []; let beatN = 0, deg = 2;
+  for (const line of lines) {
+    const ws = line.split(/\s+/).slice(0, 14);
+    ws.forEach((w, i) => { const chord = chords[Math.floor(beatN / 4) % 4], lastW = i === ws.length - 1;
+      const tones = chord.map(c => scale.indexOf(c % 12) >= 0 ? scale.indexOf(c % 12) : 0);
+      deg = (beatN % 4 === 0 || lastW) ? tones[(i + Math.floor(beatN / 4)) % 3] : Math.max(0, Math.min(scale.length - 1, deg + [1, -1, 1, 2, -2][(beatN + i) % 5]));
+      const len = lastW ? 2 : (w.length > 7 ? 1.5 : 1); words.push({ w, beat: beatN, len, midi: root + scale[deg] }); beatN += len; });
+    beatN = Math.ceil((beatN + 1) / 2) * 2; // breathe between lines
+  }
+  const total = beatN, nodes = [];
+  // the band: chords, bass, soft drums
+  for (let b = 0; b < total; b += 4) {
+    const ch = chords[(b / 4) % 4], tt = t0 + b * beat;
+    ch.forEach(c => { const o = AC.createOscillator(), g = AC.createGain(); o.type = "triangle"; o.frequency.value = hz(48 + c); g.gain.setValueAtTime(0, tt); g.gain.linearRampToValueAtTime(.045, tt + .05); g.gain.exponentialRampToValueAtTime(.008, tt + 4 * beat); o.connect(g); g.connect(out); o.start(tt); o.stop(tt + 4 * beat + .05); nodes.push(o); });
+    for (let k = 0; k < 4; k++) { const tk = tt + k * beat;
+      const bo = AC.createOscillator(), bg = AC.createGain(); bo.type = "sine"; bo.frequency.value = hz(36 + ch[0] % 12); bg.gain.setValueAtTime(.12, tk); bg.gain.exponentialRampToValueAtTime(.001, tk + beat * .9); bo.connect(bg); bg.connect(out); bo.start(tk); bo.stop(tk + beat); nodes.push(bo);
+      if (k % 2 === 0) { const ko = AC.createOscillator(), kg = AC.createGain(); ko.frequency.setValueAtTime(140, tk); ko.frequency.exponentialRampToValueAtTime(45, tk + .12); kg.gain.setValueAtTime(.35, tk); kg.gain.exponentialRampToValueAtTime(.001, tk + .15); ko.connect(kg); kg.connect(out); ko.start(tk); ko.stop(tk + .16); nodes.push(ko); } }
+  }
+  // the singer: make each word with eSpeak, measure its pitch, tune it to the note
+  status("🎤 Singing… (press 🔊 or send a message to stop)");
+  for (const nw of words) {
+    const target = hz(nw.midi), p = Math.max(10, Math.min(99, Math.round(25 + Math.log(target / 74) / .011))); // eSpeak pitch ≈ 74 Hz·e^(0.011·(p−25))
+    let wav; try { wav = ms.speak(nw.w, { pitch: p, speed: 165, amplitude: 120, rawdata: "array", ...(singVoice ? { voice: singVoice } : {}) }); } catch {} if (!wav) continue;
+    let buf; try { buf = await AC.decodeAudioData(new Uint8Array(wav).buffer); } catch { continue; }
+    const f0 = f0Of(buf), rate = f0 ? Math.max(.6, Math.min(1.8, target / f0)) : 1;
+    const src = AC.createBufferSource(), g = AC.createGain(), vib = AC.createOscillator(), vg = AC.createGain();
+    src.buffer = buf; src.playbackRate.value = rate; vib.frequency.value = 5.5; vg.gain.value = rate * .012; vib.connect(vg); vg.connect(src.playbackRate); // gentle vibrato
+    const st = t0 + nw.beat * beat, dur = Math.max(buf.duration / rate, nw.len * beat * .9);
+    g.gain.setValueAtTime(0, st); g.gain.linearRampToValueAtTime(1, st + .02); g.gain.setValueAtTime(1, st + Math.min(buf.duration / rate, nw.len * beat) - .05); g.gain.linearRampToValueAtTime(0, st + Math.min(buf.duration / rate, nw.len * beat) + .05);
+    src.connect(g); g.connect(out); g.connect(echo); src.start(Math.max(st, AC.currentTime)); vib.start(st); vib.stop(st + dur); nodes.push(src, vib);
+  }
+  const end = t0 + total * beat + 1;
+  const tm = setTimeout(() => { status("Ready"); AC.close(); singStop = null; }, (end - AC.currentTime) * 1000);
+  singStop = () => { clearTimeout(tm); nodes.forEach(n => { try { n.stop(); } catch {} }); AC.close(); status("🎤 Stopped singing."); };
+}
+// 🌍 languages: what Floof replies in, listens for and speaks
+const LANGS = [["", "Auto (match how I write)"], ["en-GB", "English"], ["es-ES", "Español"], ["fr-FR", "Français"], ["de-DE", "Deutsch"], ["it-IT", "Italiano"], ["pt-PT", "Português"], ["nl-NL", "Nederlands"], ["pl-PL", "Polski"], ["tr-TR", "Türkçe"], ["sv-SE", "Svenska"], ["ro-RO", "Română"], ["el-GR", "Ελληνικά"], ["ru-RU", "Русский"], ["uk-UA", "Українська"], ["he-IL", "עברית"], ["ar-SA", "العربية"], ["hi-IN", "हिन्दी"], ["zh-CN", "中文"], ["ja-JP", "日本語"], ["ko-KR", "한국어"]];
+const langName = c => (LANGS.find(l => l[0] === c) || [])[1] || "";
+function guessLang(t) { // for "Auto": spot the writing system
+  t = String(t); if (/[֐-׿]/.test(t)) return "he-IL"; if (/[؀-ۿ]/.test(t)) return "ar-SA"; if (/[ऀ-ॿ]/.test(t)) return "hi-IN"; if (/[぀-ヿ]/.test(t)) return "ja-JP"; if (/[가-힯]/.test(t)) return "ko-KR"; if (/[一-鿿]/.test(t)) return "zh-CN"; if (/[Ѐ-ӿ]/.test(t)) return /[іїєґ]/i.test(t) ? "uk-UA" : "ru-RU"; if (/[Ͱ-Ͽ]/.test(t)) return "el-GR";
+  const low = " " + t.toLowerCase() + " ", hits = { "es-ES": / (el|la|los|las|que|es|por|para|con|una|pero|muy|cómo|qué) /g, "fr-FR": / (le|la|les|des|est|et|une|pour|avec|pas|très|vous|je|c'est) /g, "de-DE": / (der|die|das|und|ist|nicht|ein|eine|mit|ich|sie|auch|wie) /g, "it-IT": / (il|lo|gli|che|è|per|con|una|non|sono|come|molto) /g, "pt-PT": / (o|os|as|que|é|para|com|uma|não|muito|você|como) /g, "nl-NL": / (de|het|een|en|is|niet|van|ik|je|met|dat) /g };
+  let best = "en-GB", bn = 2; for (const [c, re] of Object.entries(hits)) { const n = (low.match(re) || []).length; if (n > bn) { bn = n; best = c; } } return best;
+}
+function langPrompt() { return vset.lang ? `\n\nAlways reply in ${langName(vset.lang)} (${vset.lang}), whatever language the question is in, unless the user asks for a translation into another language.` : "\n\nReply in the same language the user writes in."; }
+function voiceFor(lang) { const vs = synth ? synth.getVoices() : [], pre = lang.slice(0, 2).toLowerCase(); const m = vs.filter(v => v.lang.toLowerCase().startsWith(pre)); return m.find(v => /natural|neural|online|google/i.test(v.name)) || m[0] || null; }
+async function singLang() { // eSpeak voice for singing in the chosen / detected language
+  const c = (vset.lang || "").slice(0, 2); const ok = ["es", "fr", "de", "it", "pt", "pl", "nl", "tr", "sv", "ro", "el", "zh"];
+  if (!ok.includes(c)) return null;
+  if (!window.meSpeak.isVoiceLoaded(c)) { for (const b of SING_BASES) { try { const r = await fetch(b + "voice-" + c + ".json"); if (r.ok) { window.meSpeak.loadVoice(await r.json()); break; } } catch {} } }
+  return window.meSpeak.isVoiceLoaded(c) ? c : null;
+}
 function voiceReply(reply, asked) {
   const singIt = /\b(sing|song|rap|lyrics|lullaby|nursery rhyme)\b/i.test(asked || "");
-  if (singIt) return sing(reply.replace(/^[^\n]*?:\s*\n/, "")); // asked to sing → it sings, even if 🔊 is off
+  if (singIt) return singSong(reply.replace(/^[^\n]*?:\s*\n/, "")); // asked to sing → it really sings, even if 🔊 is off
   if (vset.tts) say(reply);
 }
 function saveV() { ls.set(VKEY, vset); $("#ttsBtn").classList.toggle("on", !!vset.tts); }
-$("#ttsBtn").onclick = () => { vset.tts = !vset.tts; saveV(); if (!vset.tts && synth) synth.cancel(); status(vset.tts ? "🔊 Floof will read its replies out loud." : "🔇 Reading aloud is off."); };
+$("#ttsBtn").onclick = () => { stopSinging(); vset.tts = !vset.tts; saveV(); if (!vset.tts && synth) synth.cancel(); status(vset.tts ? "🔊 Floof will read its replies out loud." : "🔇 Reading aloud is off."); };
 $("#vVoice").onchange = e => { vset.voice = e.target.value; saveV(); };
+$("#vLang").innerHTML = LANGS.map(([c, n]) => `<option value="${c}"${c === (vset.lang || "") ? " selected" : ""}>${n}</option>`).join(""); $("#vLang").onchange = e => { vset.lang = e.target.value; saveV(); status(vset.lang ? `🌍 Floof will now reply, listen and speak in ${langName(vset.lang)}.` : "🌍 Floof will reply in whatever language you write in."); };
 $("#vRate").value = vset.rate; $("#vPitch").value = vset.pitch; $("#vAuto").checked = vset.auto !== false;
 $("#vRate").oninput = e => { vset.rate = +e.target.value; saveV(); }; $("#vPitch").oninput = e => { vset.pitch = +e.target.value; saveV(); };
 $("#vAuto").onchange = e => { vset.auto = e.target.checked; saveV(); };
 $("#vTest").onclick = () => say("Hi! I'm Floof AI. This is how I sound.");
-$("#vSing").onclick = () => sing("Twinkle twinkle little star, how I wonder what you are. Up above the world so high, like a diamond in the sky.");
+$("#vSing").onclick = () => singSong("Twinkle twinkle little star, how I wonder what you are. Up above the world so high, like a diamond in the sky.");
 saveV();
 // 🎙 listening (Chrome's speech recognition)
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition; let rec = null, recOn = false;
 $("#micBtn").onclick = () => {
   if (!SR) return status("Voice input needs Chrome or Edge.", "err");
   if (recOn) { rec && rec.stop(); return; }
-  rec = new SR(); rec.lang = "en-GB"; rec.interimResults = true; rec.continuous = false;
+  rec = new SR(); rec.lang = vset.lang || "en-GB"; rec.interimResults = true; rec.continuous = false;
   const base = $("#input").value ? $("#input").value.trim() + " " : "";
   rec.onresult = e => { let t = ""; for (const r of e.results) t += r[0].transcript; $("#input").value = base + t; $("#input").dispatchEvent(new Event("input")); };
   rec.onstart = () => { recOn = true; $("#micBtn").classList.add("on"); if (synth) synth.cancel(); status("🎙 Listening… speak now (tap 🎙 again to stop)"); };
