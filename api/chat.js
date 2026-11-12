@@ -185,6 +185,16 @@ async function runTest(key, models) { // one tiny real call on ONE model
     return { ok: false, model: m, kind: e.kind, error: clean(e.message, key), ms: now() - t0 };
   }
 }
+async function testBackups() { // one tiny real message to each free backup (shares the 5-minute test throttle)
+  const out = {};
+  await Promise.all(extraServers().map(async sv => {
+    const t = now();
+    try { const o = await openaiStyle(sv, "Reply with just the word OK.", [{ role: "user", content: "Say OK" }], 20, 15000);
+      out[sv.name] = { ok: true, via: o.via, secs: (now() - t) / 1000, reply: o.text.slice(0, 20) }; }
+    catch (e) { out[sv.name] = { ok: false, error: clean(e.message, sv.key).slice(0, 120) }; }
+  }));
+  return out;
+}
 async function diagnostics(key, test) {
   const aresOn = aresEnabled();
   const out = { ok: !!key || aresOn, hasKey: !!key, mode: key ? "gemini" + (aresOn ? "+ares-backup" : "") : aresOn ? "ares-only (GEMINI_KEY missing)" : "off", version: VERSION, ares: aresOn };
@@ -202,9 +212,10 @@ async function diagnostics(key, test) {
   if (test && key) {
     // one shared in-flight/cached test; the timestamp is set BEFORE running so bursts can't start more
     let cached = true;
-    if (!lastTest.p || now() - lastTest.t > 300000) { lastTest = { t: now(), p: runTest(key, out.models) }; cached = false; }
+    if (!lastTest.p || now() - lastTest.t > 300000) { lastTest = { t: now(), p: runTest(key, out.models), b: testBackups() }; cached = false; }
     const r = await lastTest.p;
     out.test = cached ? { ...r, cached: true } : r;
+    if (lastTest.b) out.backupTest = await lastTest.b;
   }
   if (out.test && !out.test.ok) out.hint = hintFor(out.test.kind);
   else if (lastError && lastError.kind) out.hint = hintFor(lastError.kind);
