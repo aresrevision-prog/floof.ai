@@ -2319,7 +2319,13 @@ function showPv() {
   $("#cKey").placeholder = pv ? PV[pv].ph : ""; if (pv && !cloud.keys[pv] && PV[pv].def) cloud.keys[pv] = PV[pv].def; $("#cKey").value = pv ? cloud.keys[pv] || "" : ""; $("#cKey").type = pv === "ollama" ? "text" : "password"; $("#pvHelp").innerHTML = pv ? PV[pv].help : "Pick Gemini or OpenRouter for a free, much smarter brain.";
   $("#cFix").checked = cloud.fix !== false; refreshModels();
 }
-$("#pv").onchange = () => { cloud.pv = $("#pv").value; cloud.pvChosen = true; saveCloud(); showPv(); };
+$("#pv").onchange = () => { cloud.pv = $("#pv").value; cloud.pvChosen = true; saveCloud(); showPv(); warmUp(); };
+function warmUp() { // get the chosen AI's files ready in the background (they're saved on the device, so this is quick after the first time)
+  const pv = cloud.pv, idle = f => (window.requestIdleCallback || setTimeout)(() => f().catch?.(() => {}), { timeout: 3000 });
+  if (pv === "gridwriter" || pv === "ultima") { idle(() => gwLoad()); idle(() => loadLex(null, true)); }
+  if (pv === "arti" && $("#cModel").value === "artimini") { idle(() => amLoad()); idle(() => loadLex(null, true)); }
+}
+setTimeout(warmUp, 2500);
 // ---------- server brains: no key needed ----------
 const FLOOF_API = /floofai\.vercel\.app$/.test(location.host) ? "/api/chat" : "https://floofai.vercel.app/api/chat";
 const ARES_AI = "https://ares-revision.vercel.app/api/ai";
@@ -3226,7 +3232,7 @@ function ultimaRoute(text, msgs) {
   const code = /\b(code|coding|program|script|function|python|javascript|\bjs\b|html|css|java|c\+\+|c#|sql|api|algorithm|bug|debug|compile|syntax|error|traceback|website|web ?page|web ?app|app|game|calculator|bot)\b/i.test(low) && /\b(make|build|create|write|code|fix|debug|program|add|change|improve|update|why|help|explain|convert)\b/i.test(low);
   if (pic && !/\b(code|program|html|css|javascript|python|game)\b/i.test(low)) return "arti";
   if (code) return "construct";
-  if (/^(again|another|one more|more|a different one|try again|redo)\b/i.test(low) && /figure class="arti"|image\.pollinations\.ai/.test(prev)) return "arti"; // "another one" after a picture
+  if (/^(again|another|one more|more|a different one|try again|redo)\b/i.test(low) && /figure class="arti"|image\.pollinations\.ai|\]\(idb:/.test(prev)) return "arti"; // "another one" after a picture
   if (/^(again|now|also|and|make it|change|add|fix)\b/i.test(low) && /```/.test(prev)) return "construct"; // follow-ups on code
   return "gridwriter";
 }
@@ -3480,7 +3486,7 @@ if (ACCOUNT_KIND !== "ares") $("#pv").querySelector('option[value="athena"]')?.r
 if (ACCOUNT_KIND === "ares") ["openrouter", "gemini"].forEach(v => $("#pv").querySelector(`option[value="${v}"]`)?.remove()); // school accounts: no 18+ Google keys, no "allow prompt publishing" providers
 showPv();
 $("#cKey").onchange = () => { cloud.keys[cloud.pv] = $("#cKey").value.trim(); saveCloud(); refreshModels(); };
-$("#cModel").onchange = () => { cloud.model[cloud.pv] = $("#cModel").value; saveCloud(); };
+$("#cModel").onchange = () => { cloud.model[cloud.pv] = $("#cModel").value; saveCloud(); warmUp(); };
 $("#cFix").onchange = () => { cloud.fix = $("#cFix").checked; saveCloud(); };
 // ---------- 🩺 Test brain: one tiny real request to the selected brain, with the exact reason and a plain-English fix ----------
 async function testBrain() {
