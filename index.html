@@ -1273,7 +1273,7 @@ async function defineWord(word) {
 
 // ---------- the whole dictionary on the 64-D grid: every word has a place (similar meanings sit together), a sector and a topic ----------
 // Built from GloVe word meanings (Wikipedia) → 64-D, 1 byte per number. Downloads once (~11 MB), then lives on this device.
-const LEX_URLS = window.FLOOF_LEX ? [window.FLOOF_LEX] : ["https://cdn.jsdelivr.net/gh/aresrevision-prog/floof.ai@lex-v1/lex/lex64.bin.gz", "https://floofai.vercel.app/lex/lex64.bin.gz"];
+const LEX_BASES = window.FLOOF_LEX ? [window.FLOOF_LEX] : ["https://cdn.jsdelivr.net/gh/aresrevision-prog/floof.ai@lex-v1/lex/", "https://floofai.vercel.app/lex/"], LEX_PARTS = 4; // 4 × ~2.8 MB
 const LEX_TOPICS = ["Animals", "Food & drink", "Sport & games", "Music & art", "Body & health", "Feelings & mind", "People & jobs", "Home & things", "Nature & plants", "Transport", "Money & business", "Law & politics", "Religion & myth", "Weather & sky", "Words & talk", "Actions & movement"];
 const LEX_HOW = ["", "meaning", "root word", "compound word", "spelling guess", "placeholder (rare word)"];
 const LEX_HUBS = [[1.0, 0.0], [0.9595, 0.2817], [0.8413, 0.5406], [0.6549, 0.7557], [0.4154, 0.9096], [0.1423, 0.9898], [-0.1423, 0.9898], [-0.4154, 0.9096], [-0.6549, 0.7557], [-0.8413, 0.5406], [-0.9595, 0.2817], [-1.0, 0.0], [-0.9595, -0.2817], [-0.8413, -0.5406], [-0.6549, -0.7557], [-0.4154, -0.9096], [-0.1423, -0.9898], [0.1423, -0.9898], [0.4154, -0.9096], [0.6549, -0.7557], [0.8413, -0.5406], [0.9595, -0.2817], [0.0, 0.0]];
@@ -1286,14 +1286,15 @@ const LEX_COL = Array.from({ length: 23 }, (_, g) => g < 6 ? COLORS[g + 1] : g =
 function lexLabel(i) { const t = LEX.meta[i] & 31; return LEX.sec[i] < 7 ? `Sector ${LEX.sec[i]} · ${SECTORS[LEX.sec[i]]}` : `Sector 7 · General${t ? " › " + LEX_TOPICS[t - 1] : ""}`; }
 async function lexFetch(onPct) {
   let lastErr;
-  for (const u of LEX_URLS) {
+  for (const base of LEX_BASES) {
     try {
-      const r = await fetch(u); if (!r.ok) throw new Error(u.split("/")[2] + " " + r.status);
-      const total = +r.headers.get("content-length") || 11e6, rd = r.body.getReader(), parts = []; let got = 0;
-      for (;;) { const { value, done } = await rd.read(); if (done) break; parts.push(value); got += value.length; onPct && onPct(Math.min(99, got / total * 100 | 0)); }
-      let buf = await new Blob(parts).arrayBuffer();
-      const magic = new TextDecoder().decode(new Uint8Array(buf, 0, 4));
-      if (magic !== "FLX1") buf = await new Response(new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer();
+      const parts = []; let got = 0; const total = 11.05e6;
+      for (let k = 0; k < LEX_PARTS; k++) {
+        const r = await fetch(base + "lex64.gz.part" + k); if (!r.ok) throw new Error(base.split("/")[2] + " " + r.status);
+        const rd = r.body.getReader();
+        for (;;) { const { value, done } = await rd.read(); if (done) break; parts.push(value); got += value.length; onPct && onPct(Math.min(99, got / total * 100 | 0)); }
+      }
+      const buf = await new Response(new Blob(parts).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer();
       if (new TextDecoder().decode(new Uint8Array(buf, 0, 4)) !== "FLX1") throw new Error("bad file");
       return buf;
     } catch (e) { lastErr = e; }
