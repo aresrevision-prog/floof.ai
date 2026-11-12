@@ -1,9 +1,23 @@
-# Floof's own AI machines (free)
+# Floof's own AI machines + free backups (no card needed)
 
-Floof Cloud tries: **Oracle machine → Hugging Face backup → Gemini**. Pictures always go to Gemini (the machines are text-only).
-Each machine has a secret password; only Floof Cloud (Vercel) knows it. Never paste secrets in chats.
+Floof Cloud tries, in order: **your own machine(s) → Gemini → Groq → Cloudflare**. Pictures go to Gemini.
+Every key/password goes straight into **Vercel → floof.ai → Settings → Environment Variables**, then **Deployments → ⋯ → Redeploy**.
+Never paste them in chats.
 
-## 1. Oracle Cloud (main, free forever)
+## A. Groq — free, no card (fast backup)
+1. Sign up at **https://console.groq.com** (Google sign-in works).
+2. **API Keys → Create API Key** → copy it.
+3. Vercel: `GROQ_KEY` = that key.
+
+## B. Cloudflare Workers AI — free, no card (second backup)
+1. Sign up at **https://dash.cloudflare.com/sign-up**.
+2. Left menu **AI → Workers AI → Use REST API**: copy your **Account ID**, then **Create a Workers AI API Token** → copy it.
+3. Vercel: `CF_ACCOUNT_ID` = the account ID, `CF_AI_TOKEN` = the token.
+
+## C. Hugging Face — your own free machine, no card
+(see section 2 below)
+
+## 1. Oracle Cloud (OPTIONAL — needs a card for ID check)
 1. Sign up at **oracle.com/cloud/free** (asks for a card to check you're real — Always Free isn't charged). Pick a home region near you (e.g. UK South).
 2. **Compute → Instances → Create instance**
    - Image: **Ubuntu 24.04**  · Shape: **Ampere → VM.Standard.A1.Flex, 4 OCPU, 24 GB**
@@ -26,7 +40,7 @@ Each machine has a secret password; only Floof Cloud (Vercel) knows it. Never pa
 4. In Vercel add: `OWN_AI_URL2` = `https://YOURNAME-floof-brain.hf.space`, `OWN_AI_KEY2` = the same FLOOF_SECRET → Redeploy.
 
 ## Check it
-Open `https://floofai.vercel.app/api/chat?check=1` → `"own"` lists your machines; `cooling` shows why one failed.
+Open `https://floofai.vercel.app/api/chat?check=1` → `"own"` lists your machines, `"backups"` lists Groq/Cloudflare; `cooling` shows why one failed.
 
 Notes: free machines have no graphics chip, so replies take a bit longer (Oracle ~5–10 words/s). If a machine is slow or down,
 Floof skips it for 2 minutes and uses the next one. Hugging Face sleeps after ~2 days unused (first reply after that is slow).

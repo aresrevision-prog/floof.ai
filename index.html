@@ -1902,7 +1902,7 @@ window.Floof.addProvider({ id: "floof", label: "☁ Floof Cloud — free, no key
   stream: async ({ sys, msgs, onText, signal }) => {
     const j = await postJSON(FLOOF_API, { token: mwToken(), system: sys, messages: msgs, maxTokens: 8192 }, signal, "floof");
     if (j.text) onText(j.text); const u = j.usage || {};
-    return { in: u.promptTokenCount || 0, out: u.candidatesTokenCount || 0, model: "Floof Cloud · " + (j.backup ? "backup brain (Ares)" : (j.via || "")) + (j.pro ? " ⭐" : ""), finish: j.finish || "" };
+    return { in: u.promptTokenCount || 0, out: u.candidatesTokenCount || 0, model: "Floof Cloud · " + (j.backup ? "backup brain" + (j.via && !/^ares/i.test(j.via) ? " · " + j.via : " (Ares)") : (j.via || "")) + (j.pro ? " ⭐" : ""), finish: j.finish || "" };
   } });
 window.Floof.addProvider({ id: "athena", label: "🦉 Athena — Ares servers, no key", ph: "", nokey: true, ok: () => ACCOUNT_KIND === "ares", vision: false,
   help: "Athena runs on Ares Revision's own AI server — nothing to set up for Ares accounts.",
@@ -1945,7 +1945,7 @@ async function testBrain() {
       if (j.ok === false) return fail(brainErr("floof", 500, "GEMINI_KEY missing"));
       if (!mwToken()) return fail(brainErr("floof", 401, "Not signed in to MagicWinter"));
       const secs = ((performance.now() - t0) / 1000).toFixed(1);
-      if (j.hasKey === false) return show(false, "Floof Cloud has no GEMINI_KEY yet" + (j.ares ? " — it's answering with its backup brain (Ares) only" : ""), "the studio owner must add GEMINI_KEY in Vercel and redeploy", j.hint);
+      if (j.hasKey === false && !j.own && !j.backups) return show(false, "Floof Cloud has no GEMINI_KEY yet" + (j.ares ? " — it's answering with its backup brain (Ares) only" : ""), "the studio owner must add GEMINI_KEY in Vercel and redeploy", j.hint);
       if (j.test && j.test.ok) return show(true, `Floof Cloud answered in ${secs} s using ${j.test.model}${j.test.cached ? " (recent server check)" : ""}: "${String(j.test.reply || "OK").trim().slice(0, 40)}"`);
       if (j.test) return show(false, "Floof Cloud's test failed: " + (j.test.error || j.test.kind || "no answer") + (j.ares ? " — chats will still use the backup brain" : ""), j.hint || "try again in a minute", j.lastError && j.lastError.msg);
       // older server without ?test=1: fall through to one tiny real chat request

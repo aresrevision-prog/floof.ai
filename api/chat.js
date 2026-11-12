@@ -11,7 +11,7 @@
 const SB = "https://lakjmdyzuqrwcncxybcw.supabase.co", SB_KEY = "sb_publishable__m0zTZ3-ThJVk0pktI65Ag_yDFPPD5s";
 const API = "https://generativelanguage.googleapis.com/v1beta";
 const ARES = "https://ares-revision.vercel.app/api/ai";
-const VERSION = "floof-cloud 5";
+const VERSION = "floof-cloud 6";
 // Used only when the live model list can't be fetched. Free-tier models first (checked against Google's
 // pricing page, Nov 2026). gemini-2.5-* still work for keys that used them before, but new keys get
 // 404 "no longer available", so they are last and get cached as bad on the first 404.
@@ -194,6 +194,8 @@ async function diagnostics(key, test) {
     out.listed = all.length;
   }
   const own = ownServers();
+  const extra = extraServers();
+  if (extra.length) { out.ok = true; out.backups = extra.map(x => ({ name: x.name, cooling: _ownBad[x.name] && _ownBad[x.name].until > now() ? _ownBad[x.name].why : null })); }
   if (own.length) { out.ok = true; out.own = own.map(x => ({ name: x.name, model: x.model, hasKey: !!x.key, cooling: _ownBad[x.name] && _ownBad[x.name].until > now() ? _ownBad[x.name].why : null })); out.mode = own.map(x => x.name).join("+") + (key ? "+gemini" : ""); }
   out.cooling = Object.fromEntries(Object.entries(_bad).filter(([, v]) => v.until > now()).map(([m, v]) => [m, { secs: Math.round((v.until - now()) / 1000), why: v.why }]));
   out.lastError = lastError; out.lastOk = lastOk;
@@ -278,6 +280,38 @@ async function ownAI(sv, sys, raw, want, ms) {
   } finally { clearTimeout(killAll); if (first) clearTimeout(first); }
 }
 
+// ----- extra free backups (no card needed): Groq, then Cloudflare Workers AI — OpenAI-style APIs -----
+// Vercel env: GROQ_KEY (+ GROQ_MODEL), CF_ACCOUNT_ID + CF_AI_TOKEN (+ CF_MODEL)
+const GROQ_PREFER = ["openai/gpt-oss-120b", "llama-3.3-70b-versatile", "qwen/qwen3-32b", "openai/gpt-oss-20b", "llama-3.1-8b-instant"];
+let _groqModels = { t: 0, list: null };
+function extraServers() {
+  const e = process.env, list = [];
+  if (e.GROQ_KEY) list.push({ name: "groq", url: "https://api.groq.com/openai/v1/chat/completions", key: e.GROQ_KEY.trim(), model: e.GROQ_MODEL || "" });
+  if (e.CF_ACCOUNT_ID && e.CF_AI_TOKEN) list.push({ name: "cloudflare", url: "https://api.cloudflare.com/client/v4/accounts/" + e.CF_ACCOUNT_ID.trim() + "/ai/v1/chat/completions", key: e.CF_AI_TOKEN.trim(), model: e.CF_MODEL || "@cf/meta/llama-3.3-70b-instruct-fp8-fast" });
+  return list;
+}
+async function groqModel(sv) {
+  if (sv.model) return sv.model;
+  if (!_groqModels.list || now() - _groqModels.t > 3600000) {
+    try { const r = await fetch("https://api.groq.com/openai/v1/models", { headers: { Authorization: "Bearer " + sv.key }, signal: AbortSignal.timeout(5000) });
+      const d = await r.json(); if (r.ok && Array.isArray(d.data)) _groqModels = { t: now(), list: d.data.map(m => m.id) }; } catch (e) {}
+  }
+  const have = _groqModels.list || [];
+  return GROQ_PREFER.find(m => have.includes(m)) || have.find(m => !/whisper|guard|tts|playai|compound|orpheus/i.test(m)) || GROQ_PREFER[1];
+}
+async function openaiStyle(sv, sys, raw, want, ms) {
+  const model = sv.name === "groq" ? await groqModel(sv) : sv.model;
+  const r = await fetch(sv.url, { method: "POST", signal: AbortSignal.timeout(ms),
+    headers: { "Content-Type": "application/json", Authorization: "Bearer " + sv.key },
+    body: JSON.stringify({ model, messages: ownMessages(sys, raw), max_tokens: Math.min(want, 4096), temperature: 0.6 }) });
+  let d = {}; try { d = await r.json(); } catch (e) {}
+  if (!r.ok) { const m = (d.error && (d.error.message || d.error)) || (d.errors && d.errors[0] && d.errors[0].message) || ("HTTP " + r.status);
+    const err = new Error(String(m).slice(0, 120)); err.status = r.status; throw err; }
+  const c = d.choices && d.choices[0], text = String((c && c.message && c.message.content) || "").replace(/<think>[\s\S]*?<\/think>/g, "").trim();
+  if (!text) throw new Error("empty answer");
+  return { text, via: sv.name + ":" + model.replace(/^@cf\//, ""), cut: c.finish_reason === "length" };
+}
+
 export default async function handler(req, res) {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "POST, GET, OPTIONS");
@@ -291,8 +325,8 @@ export default async function handler(req, res) {
     try { return res.status(200).json(await diagnostics(key, test)); } catch (e) { return res.status(200).json({ ok: !!key, hasKey: !!key, error: "diagnostics failed" }); }
   }
   if (req.method !== "POST") return res.status(405).json({ error: "POST only" });
-  const own = ownServers();
-  if (!key && !aresOn && !own.length) return res.status(500).json({ error: "Floof Cloud isn't set up yet (the studio needs to add GEMINI_KEY in Vercel)." });
+  const own = ownServers(), extra = extraServers();
+  if (!key && !aresOn && !own.length && !extra.length) return res.status(500).json({ error: "Floof Cloud isn't set up yet (the studio needs to add GEMINI_KEY in Vercel)." });
 
   const t0 = now(), left = () => T_TOTAL - (now() - t0);
   let b = {}; try { b = typeof req.body === "string" ? JSON.parse(req.body || "{}") : (req.body || {}); } catch (e) {}
@@ -330,7 +364,7 @@ export default async function handler(req, res) {
     if (sys.trim()) body.systemInstruction = { parts: [{ text: sys }] };
     for (const m of order) {
       if (stop) break;
-      const reserve = aresOn ? T_ARES : 0, budget = Math.min(left() - reserve, isPro(m) ? T_PRO : T_CALL);
+      const reserve = (aresOn ? T_ARES : 0) + (extra.length ? 12000 : 0), budget = Math.min(left() - reserve, isPro(m) ? T_PRO : T_CALL);
       if (budget < 4000) { errs.push("out of time"); break; }
       for (let attempt = 0; attempt < 2; attempt++) { // 2nd attempt only if the model rejected our thinkingConfig
         try {
@@ -349,6 +383,18 @@ export default async function handler(req, res) {
     }
   } else errs.push("no GEMINI_KEY");
 
+  for (const sv of hasImg ? [] : extra) { // free backups when Gemini is used up
+    const bad = _ownBad[sv.name]; if (bad && bad.until > now()) { errs.push(sv.name + ": cooling (" + bad.why + ")"); continue; }
+    const ms = Math.min(T_HARD - (now() - t0) - 2000, 20000); if (ms < 4000) break;
+    try {
+      const o = await openaiStyle(sv, sys, raw, want, ms);
+      lastOk = { at: new Date().toISOString(), model: o.via };
+      return res.status(200).json({ text: o.text, via: o.via, pro: acc.pro, backup: true, finish: o.cut ? "MAX_TOKENS" : "" });
+    } catch (e) {
+      const why = clean(e.name === "TimeoutError" || e.name === "AbortError" ? "too slow" : e.message, sv.key).slice(0, 100);
+      _ownBad[sv.name] = { until: now() + (e.status === 429 ? 60000 : 120000), why }; errs.push(sv.name + ": " + why);
+    }
+  }
   const hardLeft = T_HARD - (now() - t0);
   if (aresOn && hardLeft > 5000) { // last resort: Ares Revision's server (text only)
     try {
