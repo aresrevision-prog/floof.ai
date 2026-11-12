@@ -39,7 +39,7 @@
   function sync(){state.files[state.active]=editor.value}
   function showFile(){state.active=file.value;editor.value=state.files[state.active];$("#acFilename",modal).textContent=({html:"index.html",css:"style.css",js:"script.js",python:"main.py"})[state.active]}
   file.addEventListener("change",()=>{sync();showFile()});
-  function run(){sync();const html=state.files.html.replace(/<\/head>/i,`<style>\n${state.files.css}\n</style>\n</head>`).replace(/<\/body>/i,`<script>\ntry {\n${state.files.js}\n} catch(e) { console.error(e); }\n<\\/script>\n</body>`);preview.srcdoc=html;status.textContent="Preview refreshed. External network resources may not work offline."}
+  function run(){sync();const html=state.files.html.replace(/<\/head>/i,`<style>\n${state.files.css}\n</style>\n</head>`).replace(/<\/body>/i,`<script>\ntry {\n${state.files.js}\n} catch(e) { console.error(e); }\n${"</scr" + "ipt>"}\n</body>`);preview.srcdoc=html;status.textContent="Preview refreshed. External network resources may not work offline."}
   function save(){sync();try{localStorage.setItem(storageKey,JSON.stringify({files:state.files,savedAt:new Date().toISOString()}));status.textContent="✓ Project saved in this browser on this device."}catch(e){status.textContent="Could not save locally — browser storage may be full or blocked."}}
   function download(name,content){const blob=new Blob([content],{type:"text/plain;charset=utf-8"});const url=URL.createObjectURL(blob);const a=document.createElement("a");a.href=url;a.download=name;document.body.appendChild(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),1000)}
   const templates={
