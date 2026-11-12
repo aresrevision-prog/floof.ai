@@ -1,0 +1,2 @@
+meSpeak 2.0.2 (eSpeak, GPL-3.0) bundled with its English voice for Floof AI's singing voice.
+Source: https://www.npmjs.com/package/mespeak / http://www.masswerk.at/mespeak
