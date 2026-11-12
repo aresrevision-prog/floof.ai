@@ -11,7 +11,7 @@
 const SB = "https://lakjmdyzuqrwcncxybcw.supabase.co", SB_KEY = "sb_publishable__m0zTZ3-ThJVk0pktI65Ag_yDFPPD5s";
 const API = "https://generativelanguage.googleapis.com/v1beta";
 const ARES = "https://ares-revision.vercel.app/api/ai";
-const VERSION = "floof-cloud 12";
+const VERSION = "floof-cloud 13";
 // Used only when the live model list can't be fetched. Free-tier models first (checked against Google's
 // pricing page, Nov 2026). gemini-2.5-* still work for keys that used them before, but new keys get
 // 404 "no longer available", so they are last and get cached as bad on the first 404.
@@ -254,8 +254,13 @@ async function diagnostics(key, test) {
     const r = await lastTest.p;
     out.test = cached ? { ...r, cached: true } : r;
     if (lastTest.b) out.backupTest = await lastTest.b;
+    if (!out.test.ok && out.backupTest) { // Gemini busy/out of quota but a free backup answered → Floof Cloud still works, so the test passes
+      const b = Object.values(out.backupTest).find(x => x.ok);
+      if (b) { out.geminiTest = out.test; out.test = { ok: true, model: b.via, reply: b.reply, ms: Math.round(b.secs * 1000), note: "Gemini is " + (out.geminiTest.kind || "unavailable") + " right now — the free backups are answering" }; }
+    }
   }
   if (out.test && !out.test.ok) out.hint = hintFor(out.test.kind);
+  else if (out.test && out.test.ok) out.hint = null;
   else if (lastError && lastError.kind) out.hint = hintFor(lastError.kind);
   return out;
 }
@@ -415,7 +420,7 @@ export default async function handler(req, res) {
   if (!contents.length) return res.status(400).json({ error: "No message." });
   const want = Math.min(Math.max(parseInt(b.maxTokens) || 8192, 256), acc.pro ? 16384 : 8192);
 
-  const errs = []; let stop = false, keyBad = false;
+  const errs = []; let stop = false, keyBad = false, gBusy = 0;
   const hasImg = raw.some(m => m && typeof m.img === "string" && m.img); // pictures need Gemini (the CPU models are text-only)
   const ownEnd = now() + (key ? T_OWN : T_TOTAL - 5000);
   for (const sv of hasImg ? [] : own) {
@@ -451,6 +456,7 @@ export default async function handler(req, res) {
           noteFail(m, e, key); errs.push(m + ": " + (e.kind || "") + " " + clean(e.message, key).slice(0, 80));
           if (e.kind === "key" || e.kind === "region") { stop = true; keyBad = e.kind === "key"; }
           if ((e.kind === "timeout" || e.kind === "network") && extra.length && !hasImg) stop = true; // Google is slow → go straight to the fast backups
+          if (/busy|quota/.test(e.kind || "") && extra.length && !hasImg && ++gBusy >= 2) stop = true; // Google overloaded/used up → don't keep trying, the free backups answer fast
           break;
         }
       }
