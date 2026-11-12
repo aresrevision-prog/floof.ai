@@ -11,7 +11,7 @@
 const SB = "https://lakjmdyzuqrwcncxybcw.supabase.co", SB_KEY = "sb_publishable__m0zTZ3-ThJVk0pktI65Ag_yDFPPD5s";
 const API = "https://generativelanguage.googleapis.com/v1beta";
 const ARES = "https://ares-revision.vercel.app/api/ai";
-const VERSION = "floof-cloud 7";
+const VERSION = "floof-cloud 8";
 // Used only when the live model list can't be fetched. Free-tier models first (checked against Google's
 // pricing page, Nov 2026). gemini-2.5-* still work for keys that used them before, but new keys get
 // 404 "no longer available", so they are last and get cached as bad on the first 404.
@@ -172,18 +172,23 @@ function buildContents(rawMsgs) {
   return out;
 }
 
-async function runTest(key, models) { // one tiny real call on ONE model
-  const t0 = now(), m = models[0];
-  if (!m) return { ok: false, kind: "gone", error: "no models", ms: 0 };
-  try {
-    const g = await gemini(m, key, { contents: [{ role: "user", parts: [{ text: "Reply with just: OK" }] }], generationConfig: { maxOutputTokens: 64 } }, 9000);
-    const res = { ok: !!g.text.trim(), model: m, reply: g.text.slice(0, 40), finish: g.why, ms: now() - t0 };
-    if (res.ok) lastOk = { at: new Date().toISOString(), model: m };
-    return res;
-  } catch (e) {
-    noteFail(m, e, key);
-    return { ok: false, model: m, kind: e.kind, error: clean(e.message, key), ms: now() - t0 };
+async function runTest(key, models) { // tiny real call; moves to the next model only if one is busy/overloaded (no quota used)
+  const t0 = now(); let last;
+  if (!models[0]) return { ok: false, kind: "gone", error: "no models", ms: 0 };
+  for (const m of models.slice(0, 3)) {
+    try {
+      const g = await gemini(m, key, { contents: [{ role: "user", parts: [{ text: "Reply with just: OK" }] }], generationConfig: { maxOutputTokens: 64 } }, 9000);
+      const res = { ok: !!g.text.trim(), model: m, reply: g.text.slice(0, 40), finish: g.why, ms: now() - t0 };
+      if (res.ok) lastOk = { at: new Date().toISOString(), model: m };
+      if (last) res.skipped = last;
+      return res;
+    } catch (e) {
+      noteFail(m, e, key);
+      last = { ok: false, model: m, kind: e.kind, error: clean(e.message, key), ms: now() - t0 };
+      if (e.kind !== "busy") return last;
+    }
   }
+  return last;
 }
 async function testBackups() { // one tiny real message to each free backup (shares the 5-minute test throttle)
   const out = {};
@@ -312,7 +317,7 @@ async function groqModel(sv) {
   const have = _groqModels.list || [];
   return GROQ_PREFER.find(m => have.includes(m)) || have.find(m => !/whisper|guard|tts|playai|compound|orpheus/i.test(m)) || GROQ_PREFER[1];
 }
-const GH_PREFER = ["openai/gpt-5-mini", "openai/gpt-4.1-mini", "openai/gpt-4.1", "openai/gpt-4o-mini", "meta/llama-4-scout-17b-16e-instruct", "meta/llama-3.3-70b-instruct"];
+const GH_PREFER = ["openai/gpt-4.1-mini", "openai/gpt-4.1", "openai/gpt-4o-mini", "openai/gpt-4o-mini", "meta/llama-4-scout-17b-16e-instruct", "meta/llama-3.3-70b-instruct"];
 let _ghModels = { t: 0, list: null };
 async function ghModel(sv) {
   if (sv.model) return sv.model;
@@ -338,7 +343,7 @@ async function openaiStyle(sv, sys, raw, want, ms) {
       if (r.status === 400 && Object.keys(extras).length && attempt === 0) { _noExtras[model] = true; continue; } // model didn't like reasoning_effort
       const err = new Error(String(m).slice(0, 120)); err.status = r.status; throw err; }
     const c = d.choices && d.choices[0], text = String((c && c.message && c.message.content) || "").replace(/<think>[\s\S]*?<\/think>/g, "").trim();
-    if (!text) throw new Error("empty answer" + (c && c.finish_reason ? " (" + c.finish_reason + ")" : ""));
+    if (!text) throw new Error("empty answer" + (c && c.finish_reason ? " (" + c.finish_reason + ")" : "") + " from " + model + ": " + JSON.stringify(d).slice(0, 160));
     return { text, via: sv.name + ":" + model.replace(/^@cf\//, "").replace(/^openai\//, ""), cut: c.finish_reason === "length" };
   }
 }
