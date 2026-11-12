@@ -1305,8 +1305,9 @@ function loadLex(onPct, cachedOnly = false) {
   if (LEX) return Promise.resolve(LEX);
   return lexLoading ??= (async () => {
     await loadDict(); if (!DICT_WORDS) throw new Error("dictionary not loaded");
-    let buf = null; try { buf = await idb.getRaw("lex.v1"); } catch {}
-    if (!buf) { if (cachedOnly) return null; buf = await lexFetch(onPct); idb.setRaw("lex.v1", buf).catch(() => {}); }
+    let buf = null; try { buf = await idb.getRaw("lex.v2"); } catch {}
+    if (!buf) { if (cachedOnly) return null; buf = await lexFetch(onPct); idb.setRaw("lex.v2", buf).catch(() => {}); }
+    idb.raw(st => st.delete("lex.v1")).catch(() => {}); // free the old layout's space
     const N = new Uint32Array(buf.slice(4, 8))[0], D = 64; let o = 8;
     if (N !== DICT_WORDS.length) throw new Error("dictionary mismatch");
     const vec = new Int8Array(buf, o, N * D); o += N * D;
