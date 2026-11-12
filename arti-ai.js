@@ -1,4 +1,4 @@
-/* Arti AI 1.0 — Claude-powered assistant panel with Floof's connected image studio. */
+/* Arti AI 1.0 — Free-first Arti assistant panel with Floof's connected image studio. */
 (() => {
   "use strict";
   if (window.__artiAI10Loaded) return;
@@ -22,7 +22,7 @@
   document.head.appendChild(style);
   const launch = document.createElement("button");
   launch.id = "artiLaunch"; launch.type = "button"; launch.textContent = "✨ Arti AI 1.0";
-  launch.title = "Open Arti AI 1.0 — Claude-powered";
+  launch.title = "Open Arti AI 1.0 — free-first assistant";
   const anchor = $("#flImageButton") || $("#flCreativeBar") || $("#form .inrow");
   if (anchor) anchor.insertAdjacentElement("afterend", launch);
   else document.body.appendChild(launch);
@@ -33,7 +33,7 @@
     <div class="arti-card">
       <div style="display:flex;align-items:center;gap:10px"><div style="flex:1"><div style="font-size:20px;font-weight:800">✨ Arti AI 1.0</div><div style="font-size:12px;color:#c0b7e8">Claude-powered assistant · image studio connected</div></div><button type="button" id="artiClose">✕</button></div>
       <details>
-        <summary style="cursor:pointer;color:#d8ceff">Claude connection settings</summary>
+        <summary style="cursor:pointer;color:#d8ceff">Optional Claude connection settings</summary>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:9px">
           <label style="font-size:12px">API endpoint<input id="artiEndpoint" type="url" value="https://api.anthropic.com/v1/messages" spellcheck="false"></label>
           <label style="font-size:12px">Claude model<input id="artiModel" type="text" value="claude-sonnet-4-5"></label>
@@ -41,9 +41,9 @@
         </div>
         <div style="font-size:11px;color:#c0b7e8;margin-top:6px">A Claude API key or your own Anthropic-compatible proxy is required. API usage may cost money. The key is not saved by Arti, but direct browser requests expose it to this browser session and are not recommended on shared devices. For safer use, enter your own secured proxy endpoint.</div>
       </details>
-      <div id="artiLog" aria-live="polite"><div class="arti-msg assistant">Hey! I'm Arti AI 1.0. Claude powers my conversation brain when connected. I can also send image prompts to Floof's connected image server.</div></div>
+      <div id="artiLog" aria-live="polite"><div class="arti-msg assistant">Hey! I'm Arti AI 1.0. I use Floof's free brain by default — no Claude key needed. I can also send image prompts to Floof's connected image server.</div></div>
       <div style="display:flex;gap:8px;align-items:flex-end"><textarea id="artiInput" rows="3" maxlength="12000" placeholder="Ask Arti anything…" style="flex:1;resize:vertical"></textarea><button class="primary" id="artiSend" type="button">Send</button></div>
-      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button id="artiImage" type="button">🎨 Generate an image</button><button id="artiClear" type="button">Clear chat</button><span id="artiStatus" role="status" style="flex:1">Connect Claude to start chatting.</span></div>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button id="artiImage" type="button">🎨 Generate an image</button><button id="artiClear" type="button">Clear chat</button><span id="artiStatus" role="status" style="flex:1">Free mode is ready — connect Floof to an Ollama server for AI replies.</span></div>
     </div>`;
   document.body.appendChild(modal);
   const log=$("#artiLog"), status=$("#artiStatus"), input=$("#artiInput");
@@ -59,10 +59,19 @@
   async function send(){
     const text=input.value.trim();if(!text)return;
     const endpoint=clean($("#artiEndpoint").value),model=$("#artiModel").value.trim(),key=$("#artiKey").value.trim();
+    if(!key){
+      input.value=""; add("user",text);
+      const floofInput=$("#input"), floofSend=$("#send");
+      if(!floofInput||!floofSend){add("assistant","Floof chat is not available on this page.");status.textContent="Free brain unavailable.";return;}
+      floofInput.value=text;
+      floofSend.click();
+      add("assistant","Sent to Floof free brain. Its reply will appear in the main Floof chat.");
+      status.textContent="Using Floof free mode — no Claude key needed.";
+      return;
+    }
     if(!endpoint||!model){status.textContent="Enter a Claude endpoint and model.";return}
-    if(!key&&!/localhost|127\.0\.0\.1/i.test(endpoint)){status.textContent="Add your Claude API key or configure your secured proxy.";return}
     input.value="";add("user",text);history.push({role:"user",content:text});
-    const bubble=add("assistant","Arti is thinking…");$("#artiSend").disabled=true;status.textContent="Connecting to Claude…";
+        const bubble=add("assistant","Arti is thinking…");$("#artiSend").disabled=true;status.textContent="Connecting to Claude…";
     try{
       const headers={"content-type":"application/json","anthropic-version":"2023-06-01"};
       if(key){headers["x-api-key"]=key;headers["anthropic-dangerous-direct-browser-access"]="true"}
