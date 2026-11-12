@@ -2350,8 +2350,12 @@ function gwCtxScores(M, areas, aw) { // each area gets its own size: strong topi
   });
   sc.inA = inA; sc.radius = 0; return sc;
 }
-function gwSentence(M, C, ctxSc, used, rnd) {
+function gwSentence(M, C, ctxSc, used, rnd, opener) {
   const ids = [M.BOS], hist = [M.H.start, M.H.start, M.H.start], typesOut = [], local = new Set(); let lpSum = 0, ctxSum = 0, nContent = 0, facts = 0, nPrep = 0, nJoin = 0;
+  for (const w of opener || []) { // the plan's opening words ("Dogs are…"): the tiny transformer picks which word type each one is
+    const lp = gwLogits(M, ids), ts = M.idx.get(w); if (!ts) break;
+    const t = ts.reduce((a, b) => lp[b] > lp[a] ? b : a); ids.push(t); hist.push(M.tokTag[t]); typesOut.push(M.tokTag[t]); lpSum += lp[t]; if (M.content.has(M.tokTag[t])) local.add(t);
+  }
   for (let step = 0; step < 26; step++) {
     const lp = gwLogits(M, ids);
     // word type: Markov (from sentence start) blended with what the transformer expects
@@ -2416,13 +2420,16 @@ async function gwAnswer(text, facts, onTextAll, signal, hist) {
   const calc = gwMaths(text); if (calc) { onText(calc + "\n\n*(worked out with the calculator — Avish AI never guesses sums)*"); return; }
   if (/\b(which|what) (ai|model|brain)\b|\bwho (are|made|built|created) (you|u)\b|\byour name\b|\bwhat are you\b/i.test(text)) { onText("I'm **Avish AI 1.3**, made by AdminAT at MagicWinter. I run fully on your device: word types (Markov) → context areas on a 64-D word grid → slot filling → 5 drafts → a transformer picks the best one and fixes only its grammar."); return; }
   const M = await gwLoad(p => status(`🧪 Downloading Avish AI 1.3 grid (one time, ~3 MB)… ${p}%`));
-  const C = gwContext(M, text, facts), ctxSc = gwCtxScores(M, C.areas, C.aw), used = new Set();
+  let plan = null; try { plan = await avishPlan(text, hist, signal); } catch (e) { if (e.name === "AbortError") return; console.warn("Avish: no plan", e); }
+  const topicText = plan ? [plan.subject, ...plan.topics].join(" ") : "";
+  const C = gwContext(M, (plan ? topicText + " " : "") + text, facts), ctxSc = gwCtxScores(M, C.areas, C.aw), used = new Set();
+  const words = x => x ? x.toLowerCase().match(/[a-z][a-z'-]*/g) || [] : [], openers = plan ? [words(plan.opener), words(plan.opener2)] : [];
   let seed = [...text].reduce((a, c) => a * 31 + c.charCodeAt(0) >>> 0, 7) ^ (Date.now() & 0xffff);
   const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
   const out = [], drafts = [];
   { const rounds = [], u2 = new Set(used); // Avish writes: 2 sentences × 5 drafts each
-    for (let k = 0; k < 2; k++) { const r = []; for (let i = 0; i < 5; i++) { r.push(gwSentence(M, C, ctxSc, u2, rnd)); await new Promise(z => setTimeout(z)); } r.sort((a, b) => b.score - a.score); r[0].toks.forEach(t => u2.add(t)); rounds.push(r); }
-    try { if (await avishTransform(text, C, M, rounds, onText, signal)) return; } catch (e) { console.warn("Avish transformer unavailable, using the tiny one", e); if (signal && signal.aborted) return; } }
+    for (let k = 0; k < 2; k++) { const r = []; for (let i = 0; i < 5; i++) { r.push(gwSentence(M, C, ctxSc, u2, rnd, openers[k])); await new Promise(z => setTimeout(z)); } r.sort((a, b) => b.score - a.score); r[0].toks.forEach(t => u2.add(t)); rounds.push(r); }
+    try { if (await avishTransform(text, C, M, rounds, onText, signal, plan)) return; } catch (e) { console.warn("Avish transformer unavailable, using the tiny one", e); if (signal && signal.aborted) return; } }
   for (let k = 0; k < 2; k++) {
     if (signal && signal.aborted) break;
     const cands = []; for (let i = 0; i < 8; i++) { cands.push(gwSentence(M, C, ctxSc, used, rnd)); await new Promise(r => setTimeout(r)); }
@@ -2453,20 +2460,36 @@ function avishKept(fixed, draft) { // share of the transformer's content words t
   const src = new Set((draft.match(/[a-z']+/gi) || []).map(stem)), ws = (fixed.match(/[a-z']+/gi) || []).filter(w => !AV_SMALL.has(w.toLowerCase()));
   return ws.length ? ws.filter(w => src.has(stem(w))).length / ws.length : 0;
 }
-async function avishTransform(text, C, M, rounds, onText, signal) {
+// one way to reach a real transformer: Floof Cloud (signed in + online), else the top-menu brain / 🪶 Mini on this device
+async function avishAsk(sys, user, signal, maxTokens) {
+  if (ACCOUNT_KIND === "mw" && mwToken() && navigator.onLine !== false) {
+    try { const j = await postJSON(FLOOF_API, { token: mwToken(), system: sys, messages: [{ role: "user", content: user }], maxTokens }, signal, "floof"); if (j.text && j.text.trim()) return { text: j.text.trim(), via: "Floof Cloud" + (j.via && !/^ares/i.test(j.via) ? " · " + j.via : "") }; }
+    catch (e) { if (e.name === "AbortError") throw e; console.warn("Avish: cloud transformer unavailable", e); }
+  }
+  const eng = await avishBrain(); if (!eng || (signal && signal.aborted)) return null;
+  const r = await eng.chat.completions.create({ messages: [{ role: "system", content: sys }, { role: "user", content: user }], temperature: .2, max_tokens: maxTokens, extra_body: String(loadedModel).startsWith("Qwen3") ? { enable_thinking: false } : undefined });
+  const t = (r.choices?.[0]?.message?.content || "").trim();
+  return t ? { text: t, via: loadedModel ? String(loadedModel).replace(/-q4f(16|32)_1-MLC$/, "") + " (on this device)" : "on-device brain" } : null;
+}
+// Step 2 — the transformer understands the message and chooses the context areas (topic words to place on the grid) + how the answer should start
+async function avishPlan(text, hist, signal) {
+  const convo = (hist || []).slice(-5, -1).map(m => `${m.role === "assistant" ? "Avish" : "User"}: ${String(m.content || "").replace(/\n\n> 🔍[\s\S]*$/, "").slice(0, 300)}`).join("\n");
+  const sys = `You are the planning transformer inside Avish AI. Work out what the user means and wants, using the conversation for context (e.g. "it" or "more" refer to earlier messages).
+Reply with ONLY a JSON object: {"intent":"one short phrase","subject":"main topic as 1-2 plain words","topics":["12 plain single words an expert answer would use: key nouns, verbs and adjectives"],"opener":"the first 2-4 words of a direct answer, e.g. Dogs are or The war started","opener2":"the first 2-4 words of a second sentence adding detail, e.g. They can or It began when"}. Use simple common English words.`;
+  const r = await avishAsk(sys, (convo ? "Conversation so far:\n" + convo + "\n\n" : "") + "New message: " + text, signal, 250);
+  if (!r) return null;
+  const m = r.text.match(/\{[\s\S]*\}/); if (!m) return null;
+  let j; try { j = JSON.parse(m[0]); } catch { return null; }
+  const clean = x => String(x || "").replace(/[^a-z' -]/gi, " ").trim();
+  return { intent: clean(j.intent).slice(0, 60), subject: clean(j.subject).slice(0, 40), topics: (Array.isArray(j.topics) ? j.topics : []).map(clean).filter(Boolean).slice(0, 16), opener: clean(j.opener).split(/\s+/).slice(0, 4).join(" "), opener2: clean(j.opener2).split(/\s+/).slice(0, 4).join(" "), via: r.via };
+}
+async function avishTransform(text, C, M, rounds, onText, signal, plan) {
   if (signal && signal.aborted) return false;
   const lists = rounds.map(r => r.map(d => gwDetok(M, d.toks)));
   const sys = `You are the grammar transformer inside Avish AI 1.3 (by AdminAT). You do NOT write answers yourself.
 You get the user's question and numbered drafts written by Avish's grammar engine. Pick the ONE draft that makes the most sense for the question, then fix only its grammar: you may change word order, word endings and small words (the, a, of, is, and, to…) and remove words that don't fit. Do NOT add new facts, ideas or content words that aren't in that draft. Reply with only the corrected sentence.`;
-  let eng = null, via = "";
-  const cloud = ACCOUNT_KIND === "mw" && mwToken() && navigator.onLine !== false;
-  const ask = async user => {
-    if (cloud && via !== "device") { try { const j = await postJSON(FLOOF_API, { token: mwToken(), system: sys, messages: [{ role: "user", content: user }], maxTokens: 200 }, signal, "floof"); if (j.text && j.text.trim()) { via = via || "Floof Cloud" + (j.via && !/^ares/i.test(j.via) ? " · " + j.via : ""); return j.text.trim(); } } catch (e) { if (e.name === "AbortError") throw e; console.warn("Avish: cloud transformer unavailable", e); } }
-    eng = eng || await avishBrain(); if (!eng || (signal && signal.aborted)) return "";
-    if (!via || via === "device") via = "device";
-    const r = await eng.chat.completions.create({ messages: [{ role: "system", content: sys }, { role: "user", content: user }], temperature: .2, max_tokens: 120, extra_body: String(loadedModel).startsWith("Qwen3") ? { enable_thinking: false } : undefined });
-    return (r.choices?.[0]?.message?.content || "").trim();
-  };
+  let via = "";
+  const ask = async user => { const r = await avishAsk(sys, user, signal, 200); if (!r) return ""; via = via || r.via; return r.text; };
   const out = [], picks = [];
   for (const list of lists) {
     const reply = await ask(`Question: ${text}\nDrafts:\n${list.map((d, i) => `${i + 1}) ${d}`).join("\n")}`);
@@ -2476,8 +2499,7 @@ You get the user's question and numbered drafts written by Avish's grammar engin
     const ok = fixed && bk >= .75 && fixed.length < list[best].length * 1.6 + 20;
     out.push(ok ? fixed : list[best]); picks.push(`${best + 1}${ok ? "" : " (kept as written)"}`); onText(out.join(" "));
   }
-  if (via === "device") via = loadedModel ? String(loadedModel).replace(/-q4f(16|32)_1-MLC$/, "") + " (on this device)" : "on-device brain";
-  onText(out.join(" ") + `\n\n> 🔍 **How Avish AI 1.3 wrote this** — context areas: ${C.areas.length} · ${lists.length} sentences × 5 drafts from the grammar engine · transformer picked draft ${picks.join(" & ")} and fixed the grammar only · transformer: ${via}\n> Drafts: ${lists.map(l => l.map(d => `"${d}"`).join(" · ")).join(" ‖ ")}`);
+  onText(out.join(" ") + `\n\n> 🔍 **How Avish AI 1.3 wrote this** — ${plan ? `understood: ${plan.intent || "?"} · topic: ${plan.subject} · context words: ${plan.topics.slice(0, 8).join(", ")} · ` : ""}context areas: ${C.areas.length} · ${lists.length} sentences × 5 drafts from the grammar engine · transformer picked draft ${picks.join(" & ")} and fixed the grammar only · transformer: ${via}\n> Drafts: ${lists.map(l => l.map(d => `"${d}"`).join(" · ")).join(" ‖ ")}`);
   return true;
 }
 window.Floof.addProvider({ id: "gridwriter", label: "🧪 Avish AI 1.3 — by AdminAT", ph: "", nokey: true, ok: () => true, vision: false,
