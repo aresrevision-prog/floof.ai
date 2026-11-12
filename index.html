@@ -2662,11 +2662,11 @@ window.Floof.addProvider({ id: "gridwriter", label: "🧪 Avish AI 1.5 — by Ad
     await gwAnswer(text, facts, onText, signal, msgs); status("Ready");
     return { in: 0, out: 0, model: "🧪 Avish AI 1.5", finish: "" };
   } });
-// ---------- 🏗 Construct AI 1.0 — by AdminAT: a coding team built from our AIs ----------
+// ---------- 🏗 Construct AI 1.0 — by AdminHF: a coding team built from our AIs ----------
 // 👀 Reader (Avish's typo fixer + task/language detection) → 🗺 Planner → ⌨ Coder → 🔍 Checker (syntax checks in code) → 🔧 Fixer (up to 2 rounds)
 // → then Floof's Auto-test runs the program for real (HTML / JS / Python) and sends any crash back to Construct to fix.
 // Brain: Qwen2.5-Coder on this device (💻 Coder from the top menu); Floof Cloud only if this device can't run it.
-const CON_SYS = `You are Construct AI 1.0, a coding AI made by AdminAT at MagicWinter. You are a senior software engineer.
+const CON_SYS = `You are Construct AI 1.0, a coding AI made by AdminHF at MagicWinter. You are a senior software engineer.
 Rules:
 - Write the COMPLETE program in ONE fenced code block with its language (\`\`\`html, \`\`\`python, \`\`\`javascript …). No placeholders, no TODOs, no "rest stays the same".
 - Games/apps/websites: ONE self-contained \`\`\`html file (inline CSS + JS, works offline, keyboard + touch controls, a restart button, score/state on screen).
@@ -2735,12 +2735,12 @@ function conCheck(text, R) { // 🔍 the checker: fast checks in code, no AI
   }
   return [...new Set(errs)].slice(0, 6);
 }
-window.Floof.addProvider({ id: "construct", label: "🏗 Construct AI 1.0 — by AdminAT (coding)", ph: "", nokey: true, ok: () => true, vision: false,
-  help: "Construct AI 1.0 by AdminAT — a coding team built from our AIs: 👀 reader (fixes typos, spots the language) → 🗺 planner → ⌨ coder → 🔍 checker (syntax checks) → 🔧 fixer, then Floof's Auto-test runs the program for real and sends any crash back to be fixed (up to 3 rounds). Brain: Qwen2.5-Coder on this device (~1.2 GB, downloaded once); Floof Cloud only if this device can't run it.",
+window.Floof.addProvider({ id: "construct", label: "🏗 Construct AI 1.0 — by AdminHF (coding)", ph: "", nokey: true, ok: () => true, vision: false,
+  help: "Construct AI 1.0 by AdminHF — a coding team built from our AIs: 👀 reader (fixes typos, spots the language) → 🗺 planner → ⌨ coder → 🔍 checker (syntax checks) → 🔧 fixer, then Floof's Auto-test runs the program for real and sends any crash back to be fixed (up to 3 rounds). Brain: Qwen2.5-Coder on this device (~1.2 GB, downloaded once); Floof Cloud only if this device can't run it.",
   list: async () => [{ id: "construct1", name: "Construct AI 1.0" }],
   stream: async ({ msgs, onText, signal }) => {
     const last = [...msgs].reverse().find(m => m.role === "user"); let text = String(last && last.content || "");
-    if (/\b(which|what) (ai|model|brain)\b|\bwho (are|made|built|created) (you|u)\b|\byour name\b|\bwhat are you\b/i.test(text)) { onText("I'm **Construct AI 1.0**, a coding AI made by AdminAT at MagicWinter. A team does the work: a reader, a planner, a coder, a checker and a fixer — and every program I write gets run and tested before you see the final version."); return { in: 0, out: 0, model: "🏗 Construct AI 1.0", finish: "" }; }
+    if (/\b(which|what) (ai|model|brain)\b|\bwho (are|made|built|created) (you|u)\b|\byour name\b|\bwhat are you\b/i.test(text)) { onText("I'm **Construct AI 1.0**, a coding AI made by AdminHF at MagicWinter. A team does the work: a reader, a planner, a coder, a checker and a fixer — and every program I write gets run and tested before you see the final version."); return { in: 0, out: 0, model: "🏗 Construct AI 1.0", finish: "" }; }
     const R = conRead(text);
     if (!R.hasCode) { try { text = await avishFixTypos(text, null); } catch {} } // typos in the request (never inside pasted code)
     const hist = msgs.slice(-8).map(m => ({ role: m.role === "assistant" ? "assistant" : "user", content: String(m.content || "").slice(0, 12000) }));
