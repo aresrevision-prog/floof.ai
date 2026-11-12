@@ -287,7 +287,8 @@ let _groqModels = { t: 0, list: null };
 function extraServers() {
   const e = process.env, list = [];
   if (e.GROQ_KEY) list.push({ name: "groq", url: "https://api.groq.com/openai/v1/chat/completions", key: e.GROQ_KEY.trim(), model: e.GROQ_MODEL || "" });
-  if (e.GH_MODELS_TOKEN) list.push({ name: "github", url: "https://models.github.ai/inference/chat/completions", key: e.GH_MODELS_TOKEN.trim(), model: e.GH_MODEL || "" });
+  const gh = e.GH_MODELS_TOKEN || e.GH_MODEL_TOKEN || e.GITHUB_MODELS_TOKEN;
+  if (gh) list.push({ name: "github", url: "https://models.github.ai/inference/chat/completions", key: gh.trim(), model: e.GH_MODEL || "" });
   if (e.CF_ACCOUNT_ID && e.CF_AI_TOKEN) list.push({ name: "cloudflare", url: "https://api.cloudflare.com/client/v4/accounts/" + e.CF_ACCOUNT_ID.trim() + "/ai/v1/chat/completions", key: e.CF_AI_TOKEN.trim(), model: e.CF_MODEL || "@cf/meta/llama-3.3-70b-instruct-fp8-fast" });
   return list;
 }
