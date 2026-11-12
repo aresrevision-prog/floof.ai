@@ -11,7 +11,7 @@
 const SB = "https://lakjmdyzuqrwcncxybcw.supabase.co", SB_KEY = "sb_publishable__m0zTZ3-ThJVk0pktI65Ag_yDFPPD5s";
 const API = "https://generativelanguage.googleapis.com/v1beta";
 const ARES = "https://ares-revision.vercel.app/api/ai";
-const VERSION = "floof-cloud 10";
+const VERSION = "floof-cloud 11";
 // Used only when the live model list can't be fetched. Free-tier models first (checked against Google's
 // pricing page, Nov 2026). gemini-2.5-* still work for keys that used them before, but new keys get
 // 404 "no longer available", so they are last and get cached as bad on the first 404.
@@ -308,6 +308,8 @@ function extraServers() {
   const gh = e.GH_MODELS_TOKEN || e.GH_MODEL_TOKEN || e.GITHUB_MODELS_TOKEN;
   if (gh) list.push({ name: "github", url: "https://models.github.ai/inference/chat/completions", key: gh.trim(), model: e.GH_MODEL || "" });
   if (e.CF_ACCOUNT_ID && e.CF_AI_TOKEN) list.push({ name: "cloudflare", url: "https://api.cloudflare.com/client/v4/accounts/" + e.CF_ACCOUNT_ID.trim() + "/ai/v1/chat/completions", key: e.CF_AI_TOKEN.trim(), model: e.CF_MODEL || "@cf/meta/llama-3.3-70b-instruct-fp8-fast" });
+  // always-on keyless backup, so Floof can still understand when no key is set or every free quota is used up (FLOOF_NO_POLL=1 turns it off)
+  if (e.FLOOF_NO_POLL !== "1") list.push({ name: "pollinations", url: "https://text.pollinations.ai/openai", key: (e.POLL_KEY || "").trim(), model: e.POLL_MODEL || "openai", plain: true });
   return list;
 }
 async function groqModel(sv) {
@@ -337,9 +339,10 @@ async function openaiStyle(sv, sys, raw, want, ms) {
   const max = Math.min(Math.max(want, reasoner ? 2048 : 512), 4096), t0 = now();
   for (let attempt = 0; attempt < 2; attempt++) {
     const extras = attempt || _noExtras[model] ? {} : /gpt-oss/.test(model) ? { reasoning_effort: "low" } : /gpt-5|\bo\d/.test(model) ? { reasoning_effort: "minimal" } : /qwen3/.test(model) && sv.name === "groq" ? { reasoning_effort: "none" } : {};
-    const body = { model, messages: ownMessages(sys, raw), ...extras, ...(/gpt-5|\bo\d/.test(model) ? { max_completion_tokens: max } : { max_tokens: max, temperature: 0.6 }) };
+    const body = sv.plain ? { model, messages: ownMessages(sys, raw), private: true } // keyless: send only what every model accepts
+      : { model, messages: ownMessages(sys, raw), ...extras, ...(/gpt-5|\bo\d/.test(model) ? { max_completion_tokens: max } : { max_tokens: max, temperature: 0.6 }) };
     const r = await fetch(sv.url, { method: "POST", signal: AbortSignal.timeout(Math.max(1000, ms - (now() - t0))),
-      headers: { "Content-Type": "application/json", Authorization: "Bearer " + sv.key, ...(sv.name === "github" ? { Accept: "application/json", "X-GitHub-Api-Version": "2022-11-28" } : {}) }, body: JSON.stringify(body) });
+      headers: { "Content-Type": "application/json", ...(sv.key ? { Authorization: "Bearer " + sv.key } : {}), ...(sv.name === "github" ? { Accept: "application/json", "X-GitHub-Api-Version": "2022-11-28" } : {}) }, body: JSON.stringify(body) });
     const rawText = await r.text(); let d = {}; try { d = JSON.parse(rawText); } catch (e) { d = { _raw: rawText.slice(0, 160), _type: r.headers.get("content-type"), _status: r.status }; }
     if (!r.ok) { const m = (d.error && (d.error.message || d.error)) || (d.errors && d.errors[0] && d.errors[0].message) || ("HTTP " + r.status);
       if (r.status === 400 && Object.keys(extras).length && attempt === 0) { _noExtras[model] = true; continue; } // model didn't like reasoning_effort
@@ -425,7 +428,7 @@ export default async function handler(req, res) {
 
   for (const sv of hasImg ? [] : extra) { // free backups when Gemini is used up
     const bad = _ownBad[sv.name]; if (bad && bad.until > now()) { errs.push(sv.name + ": cooling (" + bad.why + ")"); continue; }
-    const ms = Math.min(T_HARD - (now() - t0) - 2000, 20000); if (ms < 4000) break;
+    const ms = Math.min(T_HARD - (now() - t0) - 2000, sv.plain ? 30000 : 20000); if (ms < 4000) break;
     try {
       const o = await openaiStyle(sv, sys, raw, want, ms);
       lastOk = { at: new Date().toISOString(), model: o.via };

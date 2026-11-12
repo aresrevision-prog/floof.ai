@@ -381,6 +381,7 @@ form#form{padding:12px 16px 16px;border-top:1px solid var(--line)}
   <li><b>Google Gemini / OpenRouter</b> (☁ brain): your messages, and photos you choose to solve, are sent to that company to get an answer, under their privacy policies. Google requires the key holder to be 18+.</li>
   <li><b>Your own PC (Ollama):</b> stays on your network.</li>
   <li><b>Wikipedia</b> (🌐 web and learning), <b>dictionaryapi.dev</b> (word meanings).</li>
+  <li><b>Pollinations</b> (free backup brain, used only when no other brain is working): your messages are sent to it to get an answer.</li>
   <li><b>Downloads</b> from jsDelivr and Hugging Face (fonts, brains, dictionary, text reader, Python). These see an ordinary download request, like any website.</li></ul>
   <h3>Children</h3>
   <ul><li>Ares accounts use 📚 Edu mode: study-focused and age-appropriate answers.</li>
@@ -1040,7 +1041,7 @@ async function sendCore(override, extra = {}) {
   const urlOf = new Map(chat.docs.concat(docs).filter(d => d.url).map(d => [d.title, d.url]));
   const src = [...new Map(hits.map(h => [h.title, { title: h.title, sector: h.sector, url: urlOf.get(h.title) }])).values()];
 
-  if (!engine && !cloudReady()) { // grid mode: compose an answer from the best sentences
+  if (!engine && !cloudReady() && !freeReady()) { // grid mode: compose an answer from the best sentences
     let reply;
     if (/\bmy (password|passcode|pin|address|phone|bank|card)\b/i.test(text)) reply = "I won't remember that — it's private. Keep passwords and personal details to yourself. 🔒";
     else if (!hits.length && newMem.length && !calc && !scr && info.type === "statement") reply = "Got it — I'll remember that.";
@@ -1105,6 +1106,10 @@ When fixing: find the root cause, explain it in one line, and return the FULL co
       if (extra.full && hist.length) hist.at(-1).img = extra.full;
       const us = await cloudStream(sys, hist, onT); finishWhy = us.finish || "";
       status(`Ready ✓ · ${us.model || curModel()} · ${us.in + us.out} tokens · free`);
+    } else if (!engine) { // no key / server down: keyless backup brain
+      const hist = fitHistory(chat.msgs, sys.length, 40000);
+      const us = await freeStream(sys, hist, onT); finishWhy = us.finish || "";
+      status("Ready ✓ · free backup brain");
     } else {
       const history = fitHistory(chat.msgs, sys.length);
       const stream = await engine.chat.completions.create({
@@ -1118,6 +1123,7 @@ When fixing: find the root cause, explain it in one line, and return the FULL co
   } catch (e) {
     console.error(e);
     if (e.name === "AbortError") { stopped = true; status("Stopped."); }
+    else if (e.free) { freeBad = Date.now() + 300000; fallBack = true; status("Free backup brain busy — answering from the grid for now.", "err"); }
     else if ((e.kind === "net" || e.kind === "server") && PV[cloud.pv]?.nokey && !extra.depth) { // Floof Cloud / Athena unreachable: answer from the grid for a while instead of erroring every message
       cloudBad = true; fallBack = true; clearTimeout(cloudBadTimer); cloudBadTimer = setTimeout(() => { cloudBad = false; updateMode(); }, 300000); updateMode();
       status(`☁ ${pvName(cloud.pv)} unreachable — answering from the grid for now.`, "err");
@@ -1327,6 +1333,23 @@ if (!cloud) cloud = { pv: "", keys: {}, model: {}, fix: true };
 if (cloud.pv && !PV[cloud.pv] && !["floof", "athena"].includes(cloud.pv)) cloud.pv = ""; delete cloud.keys.claude; delete cloud.model.claude; ls.del("mwai.claude"); ls.set("mwai.cloud", cloud); // paid option removed: wipe any old key
 let cloudBad = false, cloudBadTimer = 0; // set when the key/server was rejected, so Floof falls back instead of erroring
 const cloudReady = () => !cloudBad && !!PV[cloud.pv] && PV[cloud.pv].ok(cloud.keys[cloud.pv] || "");
+// keyless backup brain (Pollinations): used when no other brain works, so Floof still understands instead of only matching grid sentences
+let freeBad = 0;
+const freeReady = () => !engine && !cloudReady() && freeBad < Date.now() && navigator.onLine !== false && !(cloud.pvChosen && !cloud.pv);
+async function freeStream(sys, msgs, onText) {
+  abortCtl = new AbortController(); let late = false; const tm = setTimeout(() => { late = true; abortCtl.abort(); }, 45000);
+  const fail = m => Object.assign(new Error(m), { free: true });
+  let r, j = {};
+  try {
+    r = await fetch("https://text.pollinations.ai/openai", { method: "POST", signal: abortCtl.signal, headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: "openai", private: true, messages: [{ role: "system", content: sys.slice(0, 12000) }, ...msgs.slice(-12).map(m => ({ role: m.role === "assistant" ? "assistant" : "user", content: String(m.content).slice(-6000) }))] }) });
+    try { j = await r.json(); } catch {}
+  } catch (e) { clearTimeout(tm); if (e.name === "AbortError" && !late) throw e; /* Stop pressed */ throw fail("Free backup brain unreachable"); }
+  clearTimeout(tm);
+  const t = String(j?.choices?.[0]?.message?.content || "").trim();
+  if (!r.ok || !t) throw fail("Free backup brain busy (" + r.status + ")");
+  onText(t); return { in: 0, out: 0, model: "Free backup brain" };
+}
 const curModel = () => $("#cModel").value || cloud.model[cloud.pv] || modelList[0]?.id || "";
 function saveCloud() { ls.set("mwai.cloud", cloud); updateMode(); }
 
