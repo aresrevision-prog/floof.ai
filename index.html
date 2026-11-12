@@ -1273,16 +1273,16 @@ async function defineWord(word) {
 
 // ---------- the whole dictionary on the 64-D grid: every word has a place (similar meanings sit together), a sector and a topic ----------
 // Built from GloVe word meanings (Wikipedia) → 64-D, 1 byte per number. Downloads once (~11 MB), then lives on this device.
-const LEX_BASES = window.FLOOF_LEX ? [window.FLOOF_LEX] : ["https://cdn.jsdelivr.net/gh/aresrevision-prog/floof.ai@db3559d1229d8922e253448d748b7d55f9b1a78d/lex/", "https://floofai.vercel.app/lex/"], LEX_PARTS = 4; // 4 × ~2.8 MB
+const LEX_BASES = window.FLOOF_LEX ? [window.FLOOF_LEX] : ["https://cdn.jsdelivr.net/gh/aresrevision-prog/floof.ai@d00286c7c787cf651eeb09ccf65fb1fd00e137c7/lex/", "https://floofai.vercel.app/lex/"], LEX_PARTS = 4; // 4 × ~2.8 MB
 const LEX_TOPICS = ["Animals", "Food & drink", "Sport & games", "Music & art", "Body & health", "Feelings & mind", "People & jobs", "Home & things", "Nature & plants", "Transport", "Money & business", "Law & politics", "Religion & myth", "Weather & sky", "Words & talk", "Actions & movement"];
 const LEX_HOW = ["", "meaning", "root word", "compound word", "spelling guess", "placeholder (rare word)"];
-const LEX_HUBS = [[1.0, 0.0], [0.9595, 0.2817], [0.8413, 0.5406], [0.6549, 0.7557], [0.4154, 0.9096], [0.1423, 0.9898], [-0.1423, 0.9898], [-0.4154, 0.9096], [-0.6549, 0.7557], [-0.8413, 0.5406], [-0.9595, 0.2817], [-1.0, 0.0], [-0.9595, -0.2817], [-0.8413, -0.5406], [-0.6549, -0.7557], [-0.4154, -0.9096], [-0.1423, -0.9898], [0.1423, -0.9898], [0.4154, -0.9096], [0.6549, -0.7557], [0.8413, -0.5406], [0.9595, -0.2817], [0.0, 0.0]];
+const LEX_HUBS = [[-0.0374, -0.76], [0.297, -0.7102], [-0.4007, 0.2194], [-0.2391, -0.2885], [0.1857, -0.0031], [-0.104, -0.5324], [0.5766, 0.2674], [0.6519, 0.0344], [-0.1846, 0.346], [-0.0466, 0.1536], [0.1009, -0.1725], [-0.2714, 0.0507], [-0.2907, 0.491], [0.3556, 0.2067], [0.6755, 0.2019], [0.0993, 0.1255], [-0.2813, -0.1476], [-0.5693, 0.0861], [-0.2807, 0.2068], [0.417, 0.1039], [-0.4961, -0.0849], [-0.1571, 0.208], [0.0, 0.0]], LEX_RAD = [0.0858, 0.0894, 0.0842, 0.0868, 0.0849, 0.0885, 0.0866, 0.0884, 0.0839, 0.0842, 0.0854, 0.0912, 0.0859, 0.0899, 0.0844, 0.0859, 0.0941, 0.0915, 0.0848, 0.0829, 0.0876, 0.0936, 0.384];
 const LEX_COUNTS = [1682, 2690, 1314, 1931, 1484, 2411, 1901, 2378, 1245, 1310, 1594, 3267, 1720, 2845, 1371, 1705, 4320, 3379, 1447, 1055, 2160, 4120, 226808];
 let LEX = null, lexLoading = null;
 const lexGroup = i => LEX.sec[i] < 7 ? LEX.sec[i] - 1 : (LEX.meta[i] & 31) ? 5 + (LEX.meta[i] & 31) : 22;
 const lexGroupName = g => g < 6 ? SECTORS[g + 1] : g === 22 ? "General" : "General › " + LEX_TOPICS[g - 6];
 const lexGroupSector = g => g < 6 ? g + 1 : 7;
-const LEX_COL = Array.from({ length: 23 }, (_, g) => g < 6 ? COLORS[g + 1] : g === 22 ? "#9fb8a8" : `hsl(${(g - 6) * 22 + 15} 70% 64%)`);
+const LEX_COL = Array.from({ length: 23 }, (_, g) => g < 6 ? COLORS[g + 1] : g === 22 ? "#4f6b5b" : `hsl(${(g - 6) * 22 + 15} 70% 64%)`);
 function lexLabel(i) { const t = LEX.meta[i] & 31; return LEX.sec[i] < 7 ? `Sector ${LEX.sec[i]} · ${SECTORS[LEX.sec[i]]}` : `Sector 7 · General${t ? " › " + LEX_TOPICS[t - 1] : ""}`; }
 async function lexFetch(onPct) {
   let lastErr;
@@ -1827,6 +1827,12 @@ function drawGrid() {
 let lexSel = -1, lexHover = -1, lexLabels = [];
 const lexHidden = g => hidden.has(lexGroupSector(g));
 function lexScreen(i, r, S) { return [r.width / 2 + view.x + LEX.xy[i * 2] / 32000 * S, r.height / 2 + view.y - LEX.xy[i * 2 + 1] / 32000 * S]; }
+function fitLex() { // centre and fit all the clouds on screen
+  const r = can.getBoundingClientRect(); let x0 = 9, x1 = -9, y0 = 9, y1 = -9;
+  LEX_HUBS.forEach(([x, y], g) => { const rr = LEX_RAD[g] * 1.1; x0 = Math.min(x0, x - rr); x1 = Math.max(x1, x + rr); y0 = Math.min(y0, y - rr); y1 = Math.max(y1, y + rr); });
+  const base = Math.min(r.width, r.height) * .44; view.k = Math.min((r.width * .92) / ((x1 - x0) * base), (r.height * .9) / ((y1 - y0) * base));
+  const S = base * view.k; view.x = -(x0 + x1) / 2 * S; view.y = (y0 + y1) / 2 * S;
+}
 function drawLex() {
   const r = size(); ctx.clearRect(0, 0, r.width, r.height);
   if (!LEX) {
@@ -1840,8 +1846,8 @@ function drawLex() {
   const col = LEX_COL.map(c => { const t = document.createElement("canvas").getContext("2d"); t.fillStyle = c; t.fillRect(0, 0, 1, 1); const [R, G2, B] = t.getImageData(0, 0, 1, 1).data; return (255 << 24) | (B << 16) | (G2 << 8) | R; });
   const cx = r.width / 2 + view.x, cy = r.height / 2 + view.y, k = S / 32000, big = view.k > 6 ? 2 : 1;
   const nb = lexSel >= 0 ? new Set(lexNear(lexSel, 12).map(x => x[0])) : null;
-  for (let i = 0, N = LEX.N; i < N; i++) {
-    const g = lexGroup(i); if (lexHidden(g)) continue;
+  for (let pass = 0; pass < 2; pass++) for (let i = 0, N = LEX.N; i < N; i++) { // General first (faint, underneath), then the topic clouds on top
+    const g = lexGroup(i); if ((g === 22) !== (pass === 0) || lexHidden(g)) continue;
     const x = (cx + LEX.xy[i * 2] * k) * d | 0, y = (cy - LEX.xy[i * 2 + 1] * k) * d | 0;
     if (x < 0 || y < 0 || x >= W - 1 || y >= H - 1) continue;
     const c = col[g]; px[y * W + x] = c; if (big > 1) { px[y * W + x + 1] = c; px[(y + 1) * W + x] = c; px[(y + 1) * W + x + 1] = c; }
@@ -1849,14 +1855,22 @@ function drawLex() {
   ctx.putImageData(img, 0, 0);
   // island names
   ctx.textAlign = "center";
-  LEX_HUBS.forEach(([hx, hy], g) => { if (lexHidden(g) || !LEX_COUNTS[g]) return;
-    const rad = g === 22 ? .58 : .1 + .16 * Math.sqrt(LEX_COUNTS[g] / LEX_COUNTS[22]), name = g < 6 || g === 22 ? lexGroupName(g) : LEX_TOPICS[g - 6];
-    let x, y;
-    if (g === 22) { x = cx; y = cy - rad * S - 18; ctx.textAlign = "center"; }
-    else { const a = Math.atan2(hy, hx), ux = Math.cos(a), uy = Math.sin(a); x = cx + (hx + ux * rad) * S + ux * 8 + (Math.abs(ux) < .35 ? (ux >= 0 ? 6 : -6) : 0); y = cy - (hy + uy * rad) * S - uy * 8 + 4; ctx.textAlign = ux >= 0 ? "left" : "right"; }
-    const small = r.width < 600 && view.k < 2;
-    ctx.fillStyle = LEX_COL[g]; ctx.font = `800 ${g === 22 ? 15 : small ? 10 : 12}px Syne, system-ui`; ctx.fillText(small && g !== 22 ? name.split(" ")[0] : `${lexGroupSector(g)} · ${name}`, x, y);
-    if (!small || g === 22) { ctx.font = "10px system-ui"; ctx.fillStyle = "rgba(233,245,236,.5)"; ctx.fillText(LEX_COUNTS[g].toLocaleString() + " words", x, y + 12); } });
+  { // island names: on each cloud, biggest first; skip a name that would cover another (zoom in to see it)
+    const small = r.width < 600 && view.k < 2, boxes = [];
+    const order = LEX_HUBS.map((_, g) => g).filter(g => !lexHidden(g) && LEX_COUNTS[g]).sort((a, b) => (b === 22) - (a === 22) || LEX_COUNTS[b] - LEX_COUNTS[a]);
+    ctx.textAlign = "center";
+    for (const g of order) {
+      const [hx, hy] = LEX_HUBS[g], name = g < 6 || g === 22 ? lexGroupName(g) : LEX_TOPICS[g - 6];
+      const label = small && g !== 22 ? name.split(" ")[0] : `${lexGroupSector(g)} · ${name}`;
+      ctx.font = `800 ${g === 22 ? 15 : small ? 10 : 12}px Syne, system-ui`; const w = ctx.measureText(label).width + 8;
+      const x = cx + hx * S, y = g === 22 ? cy - LEX_RAD[22] * S * .95 : cy - hy * S + 4;
+      const box = [x - w / 2, y - 13, x + w / 2, y + (small ? 2 : 14)];
+      if (boxes.some(o => box[0] < o[2] && box[2] > o[0] && box[1] < o[3] && box[3] > o[1])) continue; boxes.push(box);
+      ctx.fillStyle = "rgba(6,20,12,.55)"; ctx.fillRect(box[0], box[1], w, box[3] - box[1]);
+      ctx.fillStyle = LEX_COL[g]; ctx.fillText(label, x, y);
+      if (!small || g === 22) { ctx.font = "10px system-ui"; ctx.fillStyle = "rgba(233,245,236,.6)"; ctx.fillText(LEX_COUNTS[g].toLocaleString() + " words", x, y + 12); }
+    }
+  }
   ctx.textAlign = "start";
   // word labels when zoomed in: real (meaning-placed) words in view, spread out
   lexLabels = [];
@@ -1971,8 +1985,8 @@ $("#gfind").addEventListener("keydown", e => {
   select(v); status(`Found "${v.w}" — sector ${v.sector} (${SECTORS[v.sector]})`);
 });
 new ResizeObserver(() => drawGrid()).observe($("#gwrap"));
-function setGridMode(m) { gridMode = m; ls.set("mwai.gridmode", m === "dict" ? "topics" : m); $("#ginfo").style.display = "none"; sel = null; lexSel = -1; $("#gMode").querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.m === m)); view.k = m === "dict" ? (innerWidth < 600 ? .62 : .78) : 1; view.x = view.y = 0; drawGrid();
-  $(".ghint").textContent = m === "dict" ? "All 274,000 dictionary words in 64 dimensions — one island per sector or topic; similar meanings sit together. Scroll/pinch to zoom (names appear), click a word, or search it." : m === "topics" ? "Each bubble is a topic, with its words gathered around it (close words have similar meanings). Click a bubble to zoom in · drag to pan · scroll/pinch to zoom." : "Each dot = a word in 64 dimensions, squashed to 2D. Colour = sector. Drag to pan · scroll/pinch to zoom · click a word."; }
+function setGridMode(m) { gridMode = m; ls.set("mwai.gridmode", m === "dict" ? "topics" : m); $("#ginfo").style.display = "none"; sel = null; lexSel = -1; $("#gMode").querySelectorAll("button").forEach(b => b.classList.toggle("on", b.dataset.m === m)); view.k = 1; view.x = view.y = 0; if (m === "dict") fitLex(); drawGrid();
+  $(".ghint").textContent = m === "dict" ? "All 274,000 dictionary words in 64 dimensions — each sector or topic is a cloud, and clouds with similar meanings float near each other (they can overlap). Scroll/pinch to zoom (names appear), click a word, or search it." : m === "topics" ? "Each bubble is a topic, with its words gathered around it (close words have similar meanings). Click a bubble to zoom in · drag to pan · scroll/pinch to zoom." : "Each dot = a word in 64 dimensions, squashed to 2D. Colour = sector. Drag to pan · scroll/pinch to zoom · click a word."; }
 $("#gMode").querySelectorAll("button").forEach(b => b.onclick = () => setGridMode(b.dataset.m));
 setGridMode(gridMode);
 
