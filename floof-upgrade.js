@@ -209,6 +209,24 @@
   document.body.appendChild(modal);
 
   let currentImageUrl = "";
+  // Ten successful images per UTC day, tracked locally in this browser.
+  const imageQuotaKey = "floof.arti.images.v1";
+  const utcDay = () => new Date().toISOString().slice(0, 10);
+  function imageUsage() {
+    try {
+      const saved = JSON.parse(localStorage.getItem(imageQuotaKey) || "{}");
+      return saved.day === utcDay() ? Math.max(0, Math.min(10, Number(saved.count) || 0)) : 0;
+    } catch { return 0; }
+  }
+  function saveImageUsage(count) {
+    try { localStorage.setItem(imageQuotaKey, JSON.stringify({ day: utcDay(), count })); } catch {}
+  }
+  function showImageQuota() {
+    const remaining = Math.max(0, 10 - imageUsage());
+    $("#flImageStatus").textContent = "Arti free image allowance: " + remaining + "/10 images left today (resets at 00:00 UTC).";
+    $("#flImageGenerate").disabled = remaining === 0;
+  }
+
   const close = () => { modal.style.display = "none"; };
   $("#flImageClose").onclick = close;
   modal.addEventListener("click", e => { if (e.target === modal) close(); });
@@ -217,7 +235,7 @@
     modal.style.display = "flex";
     $("#flImagePrompt").value = input?.value?.trim() || "";
     $("#flImageUrl").value = getConfig().imageUrl;
-    $("#flImageStatus").textContent = "Ready when your local image server is running.";
+    showImageQuota();
     $("#flImagePrompt").focus();
   };
   $("#flImageAgain").onclick = () => { $("#flImageResult").style.display = "none"; $("#flImagePrompt").focus(); };
@@ -238,6 +256,7 @@
   };
   $("#flImageGenerate").onclick = async () => {
     const prompt = $("#flImagePrompt").value.trim();
+    if (imageUsage() >= 10) { showImageQuota(); return; }
     const negative = $("#flImageNegative").value.trim();
     const button = $("#flImageGenerate"), status = $("#flImageStatus");
     const base = cleanUrl($("#flImageUrl").value);
@@ -272,10 +291,12 @@
       $("#flImagePreview").src = currentImageUrl;
       $("#flImageDownload").href = currentImageUrl;
       $("#flImageResult").style.display = "flex";
-      status.textContent = "✨ Your image is ready — generated on your computer.";
+      saveImageUsage(imageUsage() + 1);
+      status.textContent = "✨ Image ready! " + (10 - imageUsage()) + "/10 free images left today.";
     } catch (e) {
       status.textContent = (e.message || "Floof couldn't create that image.") +
         " Check that Forge/AUTOMATIC1111 is running with --api and CORS enabled.";
-    } finally { button.disabled = false; }
+    } finally { button.disabled = imageUsage() >= 10; }
   };
+  showImageQuota();
 })();
