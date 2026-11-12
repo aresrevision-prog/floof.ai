@@ -2258,7 +2258,7 @@ window.Floof.addProvider({ id: "floof", label: "☁ Floof Cloud — free, no key
 // 3) context areas on the grid come from your message (+ any matching notes)
 // 4) for each slot the engine picks words of that type from the context areas; a tiny transformer (2 layers, ~0.7M numbers) judges the fit
 // 5) it writes 5 drafts, the transformer picks the one that makes the most sense, and the numbers are turned back into words
-const GW_BASES = window.FLOOF_GW ? [window.FLOOF_GW] : ["https://cdn.jsdelivr.net/gh/aresrevision-prog/floof.ai@81c94208d123d7a50674100232d0710c492d2e21/lex/", "https://floofai.vercel.app/lex/"], GW_PARTS = 2; // download in 2 parts
+const GW_BASES = window.FLOOF_GW ? [window.FLOOF_GW] : ["https://cdn.jsdelivr.net/gh/aresrevision-prog/floof.ai@cc3ac24f384fbfab203fc65d09fbbc77696ba32b/lex/", "https://floofai.vercel.app/lex/"], GW_PARTS = 2; // download in 2 parts
 let GWM = null, gwLoading = null;
 async function gwFetch(onPct) {
   let lastErr;
@@ -2266,7 +2266,7 @@ async function gwFetch(onPct) {
     try {
       const parts = []; let got = 0; const total = 3.2e6;
       for (let k = 0; k < GW_PARTS; k++) {
-        const r = await fetch(base + "gw1.gz.part" + k); if (!r.ok) throw new Error(base.split("/")[2] + " " + r.status);
+        const r = await fetch(base + "gw15.gz.part" + k); if (!r.ok) throw new Error(base.split("/")[2] + " " + r.status);
         const rd = r.body.getReader(); for (;;) { const { value, done } = await rd.read(); if (done) break; parts.push(value); got += value.length; onPct && onPct(Math.min(99, got / total * 100 | 0)); }
       }
       const buf = await new Response(new Blob(parts).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer();
@@ -2279,8 +2279,8 @@ async function gwFetch(onPct) {
 function gwLoad(onPct) {
   if (GWM) return Promise.resolve(GWM);
   return gwLoading ??= (async () => {
-    let buf = null; try { buf = await idb.getRaw("gw.v2"); } catch {}
-    if (!buf) { buf = await gwFetch(onPct); idb.setRaw("gw.v2", buf).catch(() => {}); }
+    let buf = null; try { buf = await idb.getRaw("gw.v3"); } catch {}
+    if (!buf) { buf = await gwFetch(onPct); idb.setRaw("gw.v3", buf).catch(() => {}); }
     const hl = new Uint32Array(buf.slice(4, 8))[0], H = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 8, hl)));
     const arr = (name) => { const s = H.sec[name]; return s.t === "i8" ? new Int8Array(buf, s.o, s.n) : new Float32Array(buf, s.o, s.n); };
     const M = { H, V: H.V, tags: H.tags, words: H.words, tokTag: Int16Array.from(H.tokTag), BOS: H.BOS, EOS: H.EOS, UNK0: H.UNK0 };
