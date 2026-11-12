@@ -2350,7 +2350,7 @@ function gwCtxScores(M, areas, aw) { // each area gets its own size: strong topi
   sc.inA = inA; sc.radius = 0; return sc;
 }
 function gwSentence(M, C, ctxSc, used, rnd) {
-  const ids = [M.BOS], hist = [M.H.start, M.H.start, M.H.start], typesOut = [], local = new Set(); let lpSum = 0, ctxSum = 0, nContent = 0, facts = 0;
+  const ids = [M.BOS], hist = [M.H.start, M.H.start, M.H.start], typesOut = [], local = new Set(); let lpSum = 0, ctxSum = 0, nContent = 0, facts = 0, nPrep = 0, nJoin = 0;
   for (let step = 0; step < 26; step++) {
     const lp = gwLogits(M, ids);
     // word type: Markov (from sentence start) blended with what the transformer expects
@@ -2358,7 +2358,10 @@ function gwSentence(M, C, ctxSc, used, rnd) {
     const mk = gwTagProbs(M, hist), cand = new Map();
     for (const [t, p] of mk) cand.set(t, .5 * p + .5 * (tm.get(t) || 0));
     if (step < 3) cand.delete(M.H.end); if (step < 3) cand.delete(M.tagIdx["."]);
-    if (step > 20) cand.set(M.tagIdx["."], (cand.get(M.tagIdx["."]) || 0) + .5);
+    const lastT = M.tags[hist.at(-1)] || "", dangling = /^(in|at|ap|cc|cs|to|,|dt|pp\$|wdt|hv|be|md|abn)/.test(lastT); // can't stop on "of", "the", "and", a comma…
+    if (dangling) { cand.delete(M.H.end); cand.delete(M.tagIdx["."]); }
+    for (const [t, p] of cand) { const tg = M.tags[t] || ""; if (tg === "in" && nPrep >= 2) cand.set(t, p * .15 ** (nPrep - 1)); if ((tg === "cc" || tg === ",") && nJoin >= 2) cand.set(t, p * .2); } // fewer "of the X of the Y" chains and long lists
+    if (step > 11 && !dangling) cand.set(M.tagIdx["."], (cand.get(M.tagIdx["."]) || 0) + .15 * (step - 11));
     const inArea = t => !M.content.has(t) || ctxSc.radius < 0 || M.byTag[t].some(w => ctxSc.inA[w] && !local.has(w)); // grammar adapts to the words available in the context areas
     const tops = [...cand].filter(([t]) => t === M.H.end || t === M.tagIdx["."] || M.byTag[t] && M.byTag[t].length && inArea(t)).sort((a, b) => b[1] - a[1]).slice(0, 4);
     if (!tops.length) break;
@@ -2369,20 +2372,24 @@ function gwSentence(M, C, ctxSc, used, rnd) {
     for (const t of M.byTag[tag]) {
       if (isC && ctxSc.radius >= 0 && !ctxSc.inA[t]) continue; // content words only from inside the context areas
       let s = lp[t];
-      if (isC) { s += 5 * ctxSc[t]; if ((C.factToks.has(t) || C.askToks.has(t)) && !used.has(t)) s += 1.5; if (used.has(t)) s -= 3; if (local.has(t)) s -= 6; }
+      if (isC) { s += 3.5 * ctxSc[t]; if ((C.factToks.has(t) || C.askToks.has(t)) && !used.has(t)) s += 1.5; if (used.has(t)) s -= 3; if (local.has(t)) s -= 6; }
       opts.push([t, s]);
     }
     if (!opts.length) break;
     opts.sort((a, b) => b[1] - a[1]); const five = opts.slice(0, 5);
     const mx = five[0][1], ws = five.map(([, s]) => Math.exp((s - mx) / .7)), Z = ws.reduce((a, b) => a + b, 0);
     let rr = rnd() * Z, pick = five[0][0]; for (let i = 0; i < five.length; i++) { rr -= ws[i]; if (rr <= 0) { pick = five[i][0]; break; } }
+    { const tg = M.tags[tag] || ""; if (tg === "in") nPrep++; if (tg === "cc" || tg === ",") nJoin++; }
     ids.push(pick); hist.push(tag); typesOut.push(tag); lpSum += lp[pick]; if (isC) local.add(pick);
     if (isC) { ctxSum += ctxSc[pick]; nContent++; if (C.factToks.has(pick)) facts++; }
     if (tag === M.tagIdx["."]) break;
   }
   const toks = ids.slice(1), n = Math.max(1, toks.length);
   const content = toks.filter(t => M.content.has(M.tokTag[t])), rep = content.length - new Set(content).size;
-  const score = lpSum / n + 1.6 * (nContent ? ctxSum / nContent : 0) + .4 * facts - .8 * rep - (toks.length < 5 ? 2 : 0) - (M.tokTag[toks.at(-1)] !== M.tagIdx["."] ? 1 : 0);
+  const wd = toks.map(t => M.words[t].toLowerCase()), first = wd.filter(w => w === "i" || w === "me" || w === "my").length;
+  const tgs = toks.map(t => M.tags[M.tokTag[t]] || ""), verb = tgs.some(g => /^(vbd|vbz|vb$|vbp|bed|bez|ber|bem|hv|hvd|hvz|md|do)/.test(g)); // a real sentence needs a verb
+  const style = (verb ? 0 : -2.5) - (/^(rb|ql|jj)/.test(tgs.at(-2) || "") ? .5 : 0) - 1.6 * first - (wd[0] === "he" || wd[0] === "she" ? .6 : 0) - .5 * Math.max(0, nJoin - 2) - .4 * Math.max(0, nPrep - 2) - .12 * Math.max(0, toks.length - 15);
+  const score = 1.3 * lpSum / n + style + 1.4 * (nContent ? ctxSum / nContent : 0) + .4 * facts - .8 * rep - (toks.length < 5 ? 2 : 0) - (M.tokTag[toks.at(-1)] !== M.tagIdx["."] ? 1 : 0);
   return { toks, types: typesOut, score };
 }
 function gwDetok(M, toks) {
@@ -2392,6 +2399,7 @@ function gwDetok(M, toks) {
     if (/^[.,;:?!)]$/.test(w) || /^'(s|t|re|ve|ll|d|m)$/.test(w) || w === "n't") s += w; else s += (s ? " " : "") + w;
   }
   s = s.replace(/\s+/g, " ").trim(); s = s.replace(/\bi\b/g, "I");
+  s = s.replace(/\b(a|an) ([a-z]+)/gi, (m, a, w) => { const v = /^(?:[aeio]|u(?![nr]i|s[eu])|hour|honest|heir)/i.test(w) && !/^(?:one|once|eu)/i.test(w); return (a[0] === "A" ? (v ? "An" : "A") : (v ? "an" : "a")) + " " + w; }); // "a animal" → "an animal"
   if (s && !/[.?!]$/.test(s)) s += ".";
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
@@ -2412,10 +2420,10 @@ async function gwAnswer(text, facts, onTextAll, signal) {
   const out = [], drafts = [];
   for (let k = 0; k < 2; k++) {
     if (signal && signal.aborted) break;
-    const cands = []; for (let i = 0; i < 5; i++) { cands.push(gwSentence(M, C, ctxSc, used, rnd)); await new Promise(r => setTimeout(r)); }
+    const cands = []; for (let i = 0; i < 8; i++) { cands.push(gwSentence(M, C, ctxSc, used, rnd)); await new Promise(r => setTimeout(r)); }
     cands.sort((a, b) => b.score - a.score); const best = cands[0];
     best.toks.forEach(t => used.add(t)); out.push(gwDetok(M, best.toks)); onText(out.join(" "));
-    if (k === 0) drafts.push(...cands);
+    if (k === 0) drafts.push(...cands.slice(0, 5));
   }
   const top = drafts[0];
   onText(out.join(" ") + `\n\n> 🔍 **How Avish AI wrote this** — context areas: ${C.areas.length} · word types for sentence 1: ${top.types.join(" ")}\n> The 5 drafts it scored: ${drafts.map(c => `"${gwDetok(M, c.toks)}" (${c.score.toFixed(2)})`).join(" · ")}`);
