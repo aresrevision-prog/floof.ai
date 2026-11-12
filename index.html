@@ -250,6 +250,10 @@ figure.arti figcaption a{color:var(--dim)}
   <button id="newChat" class="go">＋ New chat</button>
   <div class="sbhead small" style="margin:2px 2px -4px">Chats</div>
   <div id="chats"></div>
+  <details class="sbcard" id="arcadeCard">
+    <summary class="sbhead"><span>🎮 Arcade</span><span class="small" id="arcadeN" style="margin-left:auto"></span></summary>
+    <div id="arcadeList" style="display:flex;flex-direction:column;gap:4px;margin-top:8px;max-height:220px;overflow:auto"></div>
+  </details>
   <div class="sbcard">
     <div class="sbhead"><label for="pv">🧠 Brain</label></div>
     <select id="pv"><option value="">Off — on-device only</option></select>
@@ -299,6 +303,8 @@ figure.arti figcaption a{color:var(--dim)}
         <button type="button" id="camBtn" class="tog" title="Use your camera — point it at a question, worksheet or object">📷</button>
         <button type="button" id="coderBtn" class="tog" title="Coder mode: Floof's best coding setup">💻</button>
         <label class="tog" title="Solve a picture/screenshot (or paste one with Ctrl+V)" style="cursor:pointer;border:1px solid var(--line);border-radius:10px">🖼<input type="file" id="imgIn" accept="image/*" hidden></label>
+        <button type="button" id="micBtn" class="tog" title="Talk — speak your message (Chrome)">🎙</button>
+        <button type="button" id="ttsBtn" class="tog" title="Read replies out loud">🔊</button>
         <textarea id="input" rows="1" placeholder="Message Floof AI…"></textarea>
         <button id="send" class="go" type="submit">Send</button>
       </div>
@@ -328,6 +334,13 @@ figure.arti figcaption a{color:var(--dim)}
         <div class="row"><input type="text" id="mAdd" placeholder="Add something yourself, e.g. I'm doing triple science"><button class="go" id="mAddBtn">Add</button></div>
         <div id="mList" style="display:flex;flex-direction:column;gap:6px"></div>
         <div class="row"><button id="mClear" style="font-size:12px">Forget everything</button></div>
+      </div>
+      <div class="card">
+        <div class="row" style="justify-content:space-between"><h3>🔊 Voice</h3><label class="row small" style="cursor:pointer"><input type="checkbox" id="vAuto"> Send when I stop talking</label></div>
+        <div class="small">Floof can listen (🎙) and talk or sing (🔊) using your device's built-in voices — free and private. "Natural" / "Google" / "Online" voices sound the most real.</div>
+        <select id="vVoice"></select>
+        <div class="row" style="gap:10px"><label class="small" style="flex:1">Speed <input type="range" id="vRate" min="0.6" max="1.6" step="0.05" style="width:100%"></label><label class="small" style="flex:1">Pitch <input type="range" id="vPitch" min="0.5" max="1.8" step="0.05" style="width:100%"></label></div>
+        <div class="row"><button id="vTest" type="button">▶ Test voice</button><button id="vSing" type="button">🎵 Test singing</button></div>
       </div>
       <div class="card" id="proCard">
         <div class="row" style="justify-content:space-between"><h3>⭐ Floof Pro</h3><span id="proState" class="small"></span></div>
@@ -1313,6 +1326,7 @@ When fixing: find the root cause, explain it in one line, and return the FULL co
       out.querySelector(".retry").onclick = () => { if (busy || !last) return; if (chat.msgs.at(-1) === last) chat.msgs.pop(); save(); if (chats.includes(chat)) cur = chat; renderLog(); send(last.content, { ...extra, retry: true }); };
     } else decorateArtifacts(out, true);
     if (!empty) chat.msgs.push({ role: "assistant", content: reply, src, u }); save();
+    if (!empty && !extra.depth) voiceReply(reply, text);
     scroll(); input.focus();
   }
   // self-testing loop: run the code it just wrote (JS, Python or HTML); if it crashes, send the error back to be fixed
@@ -2976,6 +2990,79 @@ window.Floof.addProvider({ id: "ultima", label: "🌟 Ultima AI 1.0 — Avish + 
     return { ...r, model: "🌟 Ultima AI 1.0 · " + (to === "arti" ? "🎨 Arti" : to === "construct" ? "🏗 Construct" : "🧪 Avish") };
   }
 });
+
+// ---------- 🎮 Arcade: every game Floof makes is kept here, with its saves ----------
+let arcade = [];
+idb.get("arcade").then(v => { if (Array.isArray(v)) arcade = v; renderArcade(); }).catch(() => renderArcade());
+function arcadeAdd(code) {
+  const id = gameId(code); if (arcade.some(g => g.id === id)) return;
+  arcade.unshift({ id, title: titleOf(code, "html").replace(/^Preview$/, "Game"), code, t: Date.now() }); arcade = arcade.slice(0, 60);
+  idb.set("arcade", arcade).catch(() => {}); renderArcade();
+}
+function renderArcade() {
+  const box = $("#arcadeList"); if (!box) return; box.innerHTML = ""; $("#arcadeN").textContent = arcade.length ? arcade.length + (arcade.length > 1 ? " games" : " game") : "";
+  if (!arcade.length) { box.innerHTML = '<div class="small">Games Floof makes for you land here — ask for one!</div>'; return; }
+  for (const g of arcade) {
+    const d = document.createElement("div"); d.className = "chat"; d.title = "Play " + g.title;
+    d.innerHTML = `<span>▶ ${esc(g.title)}</span><button class="x" title="Remove">✕</button>`;
+    d.onclick = e => { if (e.target.classList.contains("x")) { if (!confirm(`Remove "${g.title}" from the arcade? (its saves are deleted too)`)) return; arcade = arcade.filter(x => x !== g); ls.del("game." + g.id); idb.set("arcade", arcade).catch(() => {}); renderArcade(); return; } openArtifact(g.code, "html"); $("#side").classList.remove("open"); };
+    box.appendChild(d);
+  }
+}
+
+// ---------- 🎙 Voice: talk to Floof, and it talks (or sings) back — browser voices, free ----------
+const VKEY = "mwai.voice"; let vset = ls.get(VKEY, { voice: "", rate: 1, pitch: 1, tts: false, auto: true });
+const synth = window.speechSynthesis;
+function voices() { return synth ? synth.getVoices().filter(v => /^en/i.test(v.lang)) : []; }
+function bestVoice() { const vs = voices(); return vs.find(v => v.name === vset.voice) || vs.find(v => /natural|neural|online/i.test(v.name) && /GB/.test(v.lang)) || vs.find(v => /Google UK English Female|Google UK/i.test(v.name)) || vs.find(v => /natural|neural|online|google/i.test(v.name)) || vs.find(v => /GB/.test(v.lang)) || vs[0] || null; }
+function fillVoices() {
+  const sel = $("#vVoice"); if (!sel) return; const vs = voices(), b = bestVoice();
+  sel.innerHTML = vs.length ? vs.map(v => `<option value="${esc(v.name)}"${b && v.name === b.name ? " selected" : ""}>${esc(v.name)} (${v.lang})${/natural|neural|online|google/i.test(v.name) ? " ★" : ""}</option>`).join("") : "<option>No voices on this device</option>";
+}
+if (synth) { fillVoices(); synth.onvoiceschanged = fillVoices; }
+function speakable(t) { return String(t).replace(/```[\s\S]*?```/g, " (code below) ").replace(/!\[[^\]]*\]\([^)]*\)/g, " here's your picture. ").replace(/<[^>]+>/g, " ").replace(/[*_#>`|]/g, "").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1").replace(/https?:\/\/\S+/g, "").replace(/\s+/g, " ").trim(); }
+function say(text, opts = {}) {
+  if (!synth) return status("This browser can't talk — try Chrome.", "err");
+  synth.cancel(); const t = speakable(text); if (!t) return;
+  for (const part of t.match(/[^.!?]+[.!?]*\s*/g) || [t]) { const u = new SpeechSynthesisUtterance(part); const v = bestVoice(); if (v) u.voice = v; u.rate = opts.rate || vset.rate; u.pitch = opts.pitch || vset.pitch; synth.speak(u); }
+}
+function sing(text) { // sing-song: each word gets a note from a happy pentatonic tune (browser voices can't truly sing, but this follows a melody)
+  if (!synth) return status("This browser can't sing — try Chrome.", "err");
+  synth.cancel(); const v = bestVoice(), tune = [1, 1.12, 1.26, 1.5, 1.68, 1.5, 1.26, 1.12];
+  const lines = speakable(text).split(/(?<=[.!?,;])\s+|\n+/).filter(Boolean);
+  let n = 0;
+  for (const line of lines) {
+    for (const w of line.split(/\s+/).filter(Boolean)) { const u = new SpeechSynthesisUtterance(w); if (v) u.voice = v; u.pitch = Math.min(2, (vset.pitch || 1) * tune[n++ % tune.length] * .9); u.rate = .82; u.volume = 1; synth.speak(u); }
+    const r = new SpeechSynthesisUtterance(" "); r.rate = .5; synth.speak(r); // a breath between lines
+  }
+}
+function voiceReply(reply, asked) {
+  const singIt = /\b(sing|song|rap|lyrics|lullaby|nursery rhyme)\b/i.test(asked || "");
+  if (singIt) return sing(reply.replace(/^[^\n]*?:\s*\n/, "")); // asked to sing → it sings, even if 🔊 is off
+  if (vset.tts) say(reply);
+}
+function saveV() { ls.set(VKEY, vset); $("#ttsBtn").classList.toggle("on", !!vset.tts); }
+$("#ttsBtn").onclick = () => { vset.tts = !vset.tts; saveV(); if (!vset.tts && synth) synth.cancel(); status(vset.tts ? "🔊 Floof will read its replies out loud." : "🔇 Reading aloud is off."); };
+$("#vVoice").onchange = e => { vset.voice = e.target.value; saveV(); };
+$("#vRate").value = vset.rate; $("#vPitch").value = vset.pitch; $("#vAuto").checked = vset.auto !== false;
+$("#vRate").oninput = e => { vset.rate = +e.target.value; saveV(); }; $("#vPitch").oninput = e => { vset.pitch = +e.target.value; saveV(); };
+$("#vAuto").onchange = e => { vset.auto = e.target.checked; saveV(); };
+$("#vTest").onclick = () => say("Hi! I'm Floof AI. This is how I sound.");
+$("#vSing").onclick = () => sing("Twinkle twinkle little star, how I wonder what you are. Up above the world so high, like a diamond in the sky.");
+saveV();
+// 🎙 listening (Chrome's speech recognition)
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition; let rec = null, recOn = false;
+$("#micBtn").onclick = () => {
+  if (!SR) return status("Voice input needs Chrome or Edge.", "err");
+  if (recOn) { rec && rec.stop(); return; }
+  rec = new SR(); rec.lang = "en-GB"; rec.interimResults = true; rec.continuous = false;
+  const base = $("#input").value ? $("#input").value.trim() + " " : "";
+  rec.onresult = e => { let t = ""; for (const r of e.results) t += r[0].transcript; $("#input").value = base + t; $("#input").dispatchEvent(new Event("input")); };
+  rec.onstart = () => { recOn = true; $("#micBtn").classList.add("on"); if (synth) synth.cancel(); status("🎙 Listening… speak now (tap 🎙 again to stop)"); };
+  rec.onerror = e => status(e.error === "not-allowed" ? "🎙 Microphone blocked — allow it in the address bar." : e.error === "network" ? "🎙 Voice input needs the internet." : "🎙 Didn't catch that — try again.", "err");
+  rec.onend = () => { recOn = false; $("#micBtn").classList.remove("on"); status("Ready"); if (vset.auto !== false && $("#input").value.trim() && !busy) send(); };
+  try { rec.start(); } catch (e) { status("🎙 " + e.message, "err"); }
+};
 window.FloofGW = { fixTypos: t => avishFixTypos(t, null), logits: async ids => { const M = await gwLoad(); return { V: M.V, BOS: M.BOS, lp: Array.from(gwLogits(M, ids)) }; }, debug: async (t) => { const M = await gwLoad(), C = gwContext(M, t, ""), sc = gwCtxScores(M, C.areas, C.aw); const top = [...Array(M.UNK0).keys()].filter(i => M.content.has(M.tokTag[i]) && sc.inA[i]).sort((a, b) => sc[b] - sc[a]); return { areas: C.areas.length, pts: C.pts.length, radius: sc.radius, inArea: top.length, top: top.slice(0, 25).map(i => M.words[i] + "/" + M.tags[M.tokTag[i]]), state: sc[M.idx.get("state")[0]], time: sc[M.idx.get("time")[0]] }; }, load: () => gwLoad(), answer: (t, f) => new Promise(ok => { let last = ""; gwAnswer(t, f || "", x => last += x).then(() => ok(last)); }) };
 window.Floof.addProvider({ id: "athena", label: "🦉 Athena — Ares servers, no key", ph: "", nokey: true, ok: () => ACCOUNT_KIND === "ares", vision: false,
   help: "Athena runs on Ares Revision's own AI server — nothing to set up for Ares accounts.",
@@ -3081,9 +3168,14 @@ function downloadCode(code, lang) {
 }
 // sandboxed games can't use real storage, so give them a safe in-memory one instead of crashing
 const STORE_SHIM = `<script>(()=>{const mk=()=>{const m=new Map();return{getItem:k=>m.has(k)?m.get(k):null,setItem:(k,v)=>m.set(String(k),String(v)),removeItem:k=>m.delete(k),clear:()=>m.clear(),key:i=>[...m.keys()][i]??null,get length(){return m.size}}};for(const n of["localStorage","sessionStorage"]){try{window[n].length}catch(e){try{Object.defineProperty(window,n,{value:mk(),configurable:true})}catch(_){}}}})();<\/script>`;
+// games keep their saves (high scores, levels, settings): their localStorage is mirrored to Floof's storage, one box per game
+const gameShim = (gid, saved) => `<script>(()=>{const m=new Map(Object.entries(${JSON.stringify(saved || {}).replace(/</g, "\\u003c")}));const send=()=>{try{parent.postMessage({__floofSave:${JSON.stringify(gid)},data:Object.fromEntries(m)},"*")}catch(e){}};const st={getItem:k=>m.has(String(k))?m.get(String(k)):null,setItem:(k,v)=>{m.set(String(k),String(v));send()},removeItem:k=>{m.delete(String(k));send()},clear:()=>{m.clear();send()},key:i=>[...m.keys()][i]??null,get length(){return m.size}};try{Object.defineProperty(window,"localStorage",{value:st,configurable:true})}catch(e){}try{Object.defineProperty(window,"sessionStorage",{value:(()=>{const s=new Map();return{getItem:k=>s.has(k)?s.get(k):null,setItem:(k,v)=>s.set(String(k),String(v)),removeItem:k=>s.delete(k),clear:()=>s.clear(),key:i=>[...s.keys()][i]??null,get length(){return s.size}}})(),configurable:true})}catch(e){}})();<\/script>`;
+const gameId = code => { let h = 0; for (let i = 0; i < code.length; i++) h = (h * 31 + code.charCodeAt(i)) | 0; return "g" + (h >>> 0).toString(36); };
+window.addEventListener("message", e => { const d = e.data; if (!d || !d.__floofSave || e.source !== $("#artFrame").contentWindow) return; const s = JSON.stringify(d.data || {}); if (s.length < 200000) ls.set("game." + d.__floofSave, d.data || {}); });
 function openArtifact(code, lang) {
   artNow = { code, lang }; const html = lang === "svg" ? `<!doctype html><body style="margin:0;display:grid;place-items:center;min-height:100vh">${code}</body>` : code;
-  $("#artFrame").srcdoc = /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, m => m + STORE_SHIM) : STORE_SHIM + html;
+  const shim = lang === "html" ? gameShim(gameId(code), ls.get("game." + gameId(code), {})) : STORE_SHIM;
+  $("#artFrame").srcdoc = /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, m => m + shim) : shim + html;
   $("#artCode").textContent = code; $("#artTitle").textContent = titleOf(code, lang);
   $("#art").classList.add("on"); artTab("p");
 }
@@ -3094,6 +3186,7 @@ function decorateArtifacts(el, auto) { // add a card under big html/svg blocks; 
     card.innerHTML = `<span style="font-size:22px">${/canvas|requestAnimationFrame|game/i.test(c) ? "🎮" : p.dataset.lang === "svg" ? "🎨" : "🌐"}</span><div><b>${esc(titleOf(c, p.dataset.lang))}</b><span class="small">Click to open · ${fileOf(c, p.dataset.lang)}</span></div>`;
     p.after(card); });
   if (auto && pres.length) { const p = pres.at(-1); openArtifact(p.querySelector("code").textContent, p.dataset.lang); }
+  pres.forEach(p => { const c = p.querySelector("code").textContent; if (p.dataset.lang === "html" && /canvas|requestAnimationFrame|keydown|game|score/i.test(c)) arcadeAdd(c); });
 }
 $("#artTP").onclick = () => artTab("p"); $("#artTC").onclick = () => artTab("c");
 $("#artX").onclick = () => { $("#art").classList.remove("on", "full"); $("#artFrame").srcdoc = ""; };
