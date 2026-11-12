@@ -224,7 +224,7 @@
   $("#flImageTest").onclick = async () => {
     const button = $("#flImageTest"), status = $("#flImageStatus");
     const base = cleanUrl($("#flImageUrl").value);
-    if (!base || !/^https?:\\/\\//i.test(base)) { status.textContent = "Enter the full address of your external Forge/AUTOMATIC1111 image server first."; return; }
+    if (!base || !(base.startsWith("https://") || base.startsWith("http://"))) { status.textContent = "Enter the full address of your external Forge/AUTOMATIC1111 image server first."; return; }
     const cfg = getConfig(); cfg.imageUrl = base; window.Floof.setKey(KEY_ID, JSON.stringify(cfg));
     button.disabled = true; status.textContent = "Checking the external image server…";
     try {
