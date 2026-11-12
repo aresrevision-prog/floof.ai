@@ -3063,12 +3063,13 @@ async function singSong(lyrics) {
   const AC = new (window.AudioContext || window.webkitAudioContext)(); const out = AC.createGain(); out.gain.value = .9; out.connect(AC.destination);
   const echo = AC.createDelay(); echo.delayTime.value = .06; const wet = AC.createGain(); wet.gain.value = .12; echo.connect(wet); wet.connect(out); // just a touch of room, no repeats
   const comp = AC.createDynamicsCompressor(); comp.threshold.value = -20; comp.ratio.value = 3; comp.attack.value = .01; comp.release.value = .2;
-  const warm = AC.createBiquadFilter(); warm.type = "lowpass"; warm.frequency.value = 5200; // softens eSpeak's buzz
-  const voiceBus = AC.createGain(); voiceBus.gain.value = .9; voiceBus.connect(warm); warm.connect(comp); comp.connect(out); comp.connect(echo);
-  const padBus = AC.createBiquadFilter(); padBus.type = "lowpass"; padBus.frequency.value = 1400; padBus.connect(out);
+  const warm = AC.createBiquadFilter(); warm.type = "lowpass"; warm.frequency.value = 3800; warm.Q.value = .5; // softens eSpeak's buzz
+  const hall = AC.createConvolver(), irL = Math.floor(AC.sampleRate * 1.4), ir = AC.createBuffer(2, irL, AC.sampleRate); for (let c = 0; c < 2; c++) { const ch = ir.getChannelData(c); for (let k = 0; k < irL; k++) ch[k] = (Math.random() * 2 - 1) * Math.pow(1 - k / irL, 3.2); } hall.buffer = ir; const hallWet = AC.createGain(); hallWet.gain.value = .16; hall.connect(hallWet); hallWet.connect(out); // soft, smooth room (no repeats)
+  const voiceBus = AC.createGain(); voiceBus.gain.value = .9; voiceBus.connect(warm); warm.connect(comp); comp.connect(out); comp.connect(hall);
+  const padBus = AC.createBiquadFilter(); padBus.type = "lowpass"; padBus.frequency.value = 1400; padBus.connect(out); padBus.connect(hall);
   const singVoice = await singLang(); const lines = speakable(lyrics).split(/(?<=[.!?;])\s+|\n+/).map(l => l.replace(/[^\p{L}' -]/gu, " ").trim()).filter(Boolean).slice(0, 24);
   if (!lines.length) return;
-  const female = (vset.pitch || 1) >= 1.05, bpm = 100, beat = 60 / bpm, t0 = AC.currentTime + .4;
+  const female = (vset.pitch || 1) >= 1.05, bpm = 84, beat = 60 / bpm, t0 = AC.currentTime + .4;
   const chords = [[0, 4, 7], [7, 11, 14], [9, 12, 16], [5, 9, 12]], root = female ? 53 : 45; // C G Am F, in the singer's range (MIDI)
   const hz = m => 440 * Math.pow(2, (m - 69) / 12), scale = [0, 2, 4, 5, 7, 9, 11, 12, 14];
   const words = []; let beatN = 0, deg = 2;
@@ -3108,13 +3109,14 @@ async function singSong(lyrics) {
     src.buffer = buf;
     if (wordLen < noteLen) { // hold the vowel: loop a few whole pitch periods near the end of the voiced sound
       const per = 1 / f0, le = Math.max(per * 4, buf.duration - .04), ls = Math.max(0, le - per * Math.max(2, Math.round(.035 / per)));
-      src.loop = true; src.loopStart = ls; src.loopEnd = le;
+      const zc = t => { let k = Math.floor(t * buf.sampleRate); while (k > 1 && !(d[k - 1] < 0 && d[k] >= 0)) k--; return k / buf.sampleRate; }; // snap to a rising zero-crossing
+      const zs = zc(ls), ze = zc(le); src.loop = true; src.loopStart = zs; src.loopEnd = ze > zs + per ? ze : le;
     }
     // glide into the note from the last one (portamento) + gentle vibrato that grows on long notes
-    src.playbackRate.setValueAtTime(prevRate && Math.abs(Math.log(prevRate / rate)) < .5 ? prevRate : rate, st); src.playbackRate.linearRampToValueAtTime(rate, st + .07); prevRate = rate;
-    vib.frequency.value = 5.2; vg.gain.setValueAtTime(0, st); vg.gain.linearRampToValueAtTime(rate * .014, st + Math.min(.4, noteLen)); vib.connect(vg); vg.connect(src.playbackRate);
-    const lvl = .55 / Math.max(.05, pk), rel = Math.min(.12, noteLen * .3), endT = st + noteLen + .04; // notes overlap a touch so words flow together
-    g.gain.setValueAtTime(0, st); g.gain.linearRampToValueAtTime(lvl, st + .03); g.gain.setValueAtTime(lvl, endT - rel); g.gain.linearRampToValueAtTime(0, endT);
+    src.playbackRate.setValueAtTime(prevRate && Math.abs(Math.log(prevRate / rate)) < .5 ? prevRate : rate, st); src.playbackRate.linearRampToValueAtTime(rate, st + .11); prevRate = rate;
+    vib.frequency.value = 5.2; vg.gain.setValueAtTime(0, st); vg.gain.linearRampToValueAtTime(rate * .009, st + Math.min(.6, noteLen)); vib.connect(vg); vg.connect(src.playbackRate);
+    const lvl = .55 / Math.max(.05, pk), rel = Math.min(.18, noteLen * .35), endT = st + noteLen + .1; // notes overlap so words melt into each other
+    g.gain.setValueAtTime(0, st); g.gain.linearRampToValueAtTime(lvl * .7, st + .025); g.gain.linearRampToValueAtTime(lvl, st + .09); g.gain.setValueAtTime(lvl, endT - rel); g.gain.linearRampToValueAtTime(0, endT);
     src.connect(g); g.connect(voiceBus); src.start(Math.max(st, AC.currentTime)); src.stop(endT + .02); vib.start(st); vib.stop(endT + .02); nodes.push(src, vib);
   }
   const end = t0 + total * beat + 1;
