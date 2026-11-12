@@ -2350,7 +2350,8 @@ function gwCtxScores(M, areas, aw) { // each area gets its own size: strong topi
   });
   sc.inA = inA; sc.radius = 0; return sc;
 }
-function gwSentence(M, C, ctxSc, used, rnd, opener) {
+function gwSentence(M, C, ctxSc, used, rnd, opener, st) {
+  const ctxW = st && st.ctxW || 3.5, temp = st && st.temp || .7;
   const ids = [M.BOS], hist = [M.H.start, M.H.start, M.H.start], typesOut = [], local = new Set(); let lpSum = 0, ctxSum = 0, nContent = 0, facts = 0, nPrep = 0, nJoin = 0;
   for (const w of opener || []) { // the plan's opening words ("Dogs are…"): the tiny transformer picks which word type each one is
     const lp = gwLogits(M, ids), ts = M.idx.get(w); if (!ts) break;
@@ -2377,12 +2378,12 @@ function gwSentence(M, C, ctxSc, used, rnd, opener) {
     for (const t of M.byTag[tag]) {
       if (isC && ctxSc.radius >= 0 && !ctxSc.inA[t]) continue; // content words only from inside the context areas
       let s = lp[t];
-      if (isC) { s += 3.5 * ctxSc[t]; if ((C.factToks.has(t) || C.askToks.has(t)) && !used.has(t)) s += 1.5; if (used.has(t)) s -= 3; if (local.has(t)) s -= 6; }
+      if (isC) { s += ctxW * ctxSc[t]; if ((C.factToks.has(t) || C.askToks.has(t)) && !used.has(t)) s += 1.5; if (used.has(t)) s -= 3; if (local.has(t)) s -= 6; }
       opts.push([t, s]);
     }
     if (!opts.length) break;
     opts.sort((a, b) => b[1] - a[1]); const five = opts.slice(0, 5);
-    const mx = five[0][1], ws = five.map(([, s]) => Math.exp((s - mx) / .7)), Z = ws.reduce((a, b) => a + b, 0);
+    const mx = five[0][1], ws = five.map(([, s]) => Math.exp((s - mx) / temp)), Z = ws.reduce((a, b) => a + b, 0);
     let rr = rnd() * Z, pick = five[0][0]; for (let i = 0; i < five.length; i++) { rr -= ws[i]; if (rr <= 0) { pick = five[i][0]; break; } }
     { const tg = M.tags[tag] || ""; if (tg === "in") nPrep++; if (tg === "cc" || tg === ",") nJoin++; }
     ids.push(pick); hist.push(tag); typesOut.push(tag); lpSum += lp[pick]; if (isC) local.add(pick);
@@ -2418,18 +2419,13 @@ function gwMaths(text) { // sums go to a real calculator, never to word-guessing
 async function gwAnswer(text, facts, onTextAll, signal, hist) {
   let sent = ""; const onText = full => { if (full.startsWith(sent)) { const d = full.slice(sent.length); if (d) onTextAll(d); } else onTextAll(full); sent = full; }; // Floof adds each piece to the reply, so send only what's new
   const calc = gwMaths(text); if (calc) { onText(calc + "\n\n*(worked out with the calculator — Avish AI never guesses sums)*"); return; }
-  if (/\b(which|what) (ai|model|brain)\b|\bwho (are|made|built|created) (you|u)\b|\byour name\b|\bwhat are you\b/i.test(text)) { onText("I'm **Avish AI 1.3**, made by AdminAT at MagicWinter. I run fully on your device: word types (Markov) → context areas on a 64-D word grid → slot filling → 5 drafts → a transformer picks the best one and fixes only its grammar."); return; }
+  if (/\b(which|what) (ai|model|brain)\b|\bwho (are|made|built|created) (you|u)\b|\byour name\b|\bwhat are you\b/i.test(text)) { onText("I'm **Avish AI 1.3**, made by AdminAT at MagicWinter. I run fully on your device: word types (Markov) → context areas on a 64-D word grid → a team: 1 reader, 2 interpreters, 2 drafters, 2 checkers, 2 deciders and 1 judge."); return; }
   const M = await gwLoad(p => status(`🧪 Downloading Avish AI 1.3 grid (one time, ~3 MB)… ${p}%`));
-  let plan = null; try { plan = await avishPlan(text, hist, signal); } catch (e) { if (e.name === "AbortError") return; console.warn("Avish: no plan", e); }
-  const topicText = plan ? [plan.subject, ...plan.topics].join(" ") : "";
-  const C = gwContext(M, (plan ? topicText + " " : "") + text, facts), ctxSc = gwCtxScores(M, C.areas, C.aw), used = new Set();
-  const words = x => x ? x.toLowerCase().match(/[a-z][a-z'-]*/g) || [] : [], openers = plan ? [words(plan.opener), words(plan.opener2)] : [];
+  try { if (await avishTeam(M, text, facts, hist, onText, signal)) return; } catch (e) { if (e.name === "AbortError" || (signal && signal.aborted)) return; console.warn("Avish team failed, tiny transformer only", e); }
+  const C = gwContext(M, text, facts), ctxSc = gwCtxScores(M, C.areas, C.aw), used = new Set();
   let seed = [...text].reduce((a, c) => a * 31 + c.charCodeAt(0) >>> 0, 7) ^ (Date.now() & 0xffff);
   const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
   const out = [], drafts = [];
-  { const rounds = [], u2 = new Set(used); // Avish writes: 2 sentences × 5 drafts each
-    for (let k = 0; k < 2; k++) { const r = []; for (let i = 0; i < 5; i++) { r.push(gwSentence(M, C, ctxSc, u2, rnd, openers[k])); await new Promise(z => setTimeout(z)); } r.sort((a, b) => b.score - a.score); r[0].toks.forEach(t => u2.add(t)); rounds.push(r); }
-    try { if (await avishTransform(text, C, M, rounds, onText, signal, plan)) return; } catch (e) { console.warn("Avish transformer unavailable, using the tiny one", e); if (signal && signal.aborted) return; } }
   for (let k = 0; k < 2; k++) {
     if (signal && signal.aborted) break;
     const cands = []; for (let i = 0; i < 8; i++) { cands.push(gwSentence(M, C, ctxSc, used, rnd)); await new Promise(r => setTimeout(r)); }
@@ -2442,7 +2438,7 @@ async function gwAnswer(text, facts, onTextAll, signal, hist) {
 }
 // Avish AI 1.3: the grid + Markov + 5 drafts still do the groundwork; a real transformer (the brain picked in the top menu,
 // or 🪶 Mini ~0.5 GB for weaker devices) reads them and decides what makes sense. No WebGPU → Avish's own tiny transformer answers.
-async function avishBrain() {
+async function avishBrain1() {
   if (window.__avishEngine) return window.__avishEngine; // test hook
   if (engine && loadedModel) return engine;
   let ok = false; try { ok = !!(navigator.gpu && await navigator.gpu.requestAdapter()); } catch {}
@@ -2452,6 +2448,8 @@ async function avishBrain() {
   if (!engine) $("#model").value = was;
   return engine;
 }
+let _avBrain = null; // parallel team members share one load
+function avishBrain() { if (engine && loadedModel) return Promise.resolve(engine); if (!_avBrain) _avBrain = avishBrain1().finally(() => { _avBrain = null; }); return _avBrain; }
 // The transformer does NOT write the answer: for each sentence it picks the best of Avish's 5 drafts and only fixes the grammar.
 // Code then checks it kept Avish's words — if it slipped in its own content, Avish's draft is used as it is.
 const AV_SMALL = new Set("a an the of in on at by to for from with and or but so as is are was were be been being has have had do does did it its this that these those there their they them he she his her we our you your i my me not no very also than then which who what when where how can could will would should may might into onto over under about".split(" "));
@@ -2471,39 +2469,94 @@ async function avishAsk(sys, user, signal, maxTokens) {
   const t = (r.choices?.[0]?.message?.content || "").trim();
   return t ? { text: t, via: loadedModel ? String(loadedModel).replace(/-q4f(16|32)_1-MLC$/, "") + " (on this device)" : "on-device brain" } : null;
 }
-// Step 2 — the transformer understands the message and chooses the context areas (topic words to place on the grid) + how the answer should start
-async function avishPlan(text, hist, signal) {
+// ---------- Avish AI team: 1 reader → 2 interpreters → 2 drafters → 2 checkers → 2 deciders → 1 judge ----------
+// Reader, drafters and checkers are Avish's own code (free, on this device); interpreters, deciders and the judge are a real
+// transformer (Floof Cloud, else the top-menu brain / 🪶 Mini). Deciders may only pick a draft and fix its grammar.
+function avishRead(text, hist) { // 👀 Reader: cleans the message and notes what kind of request it is
+  const t = String(text).replace(/\s+/g, " ").trim(), low = t.toLowerCase();
+  const kind = /^(hi|hey|hello|yo|sup|good (morning|evening))\b/.test(low) ? "greeting" : /^why\b|\bcaus/.test(low) ? "why / cause" : /^how\b/.test(low) ? "how" : /^(what|who|which)\b/.test(low) ? "what / who" : /^(when|where)\b/.test(low) ? "when / where" : /^(is|are|can|do|does|did|will|should|could|would)\b/.test(low) ? "yes / no" : /^(tell|explain|describe|write|give|make|list|show)\b/.test(low) ? "request" : "statement";
+  const followUp = /^(and|but|so|what about|more|why|it|they|that|this)\b/.test(low) && (hist || []).length > 1;
   const convo = (hist || []).slice(-5, -1).map(m => `${m.role === "assistant" ? "Avish" : "User"}: ${String(m.content || "").replace(/\n\n> 🔍[\s\S]*$/, "").slice(0, 300)}`).join("\n");
-  const sys = `You are the planning transformer inside Avish AI. Work out what the user means and wants, using the conversation for context (e.g. "it" or "more" refer to earlier messages).
-Reply with ONLY a JSON object: {"intent":"one short phrase","subject":"main topic as 1-2 plain words","topics":["12 plain single words an expert answer would use: key nouns, verbs and adjectives"],"opener":"the first 2-4 words of a direct answer, e.g. Dogs are or The war started","opener2":"the first 2-4 words of a second sentence adding detail, e.g. They can or It began when"}. Use simple common English words.`;
-  const r = await avishAsk(sys, (convo ? "Conversation so far:\n" + convo + "\n\n" : "") + "New message: " + text, signal, 250);
-  if (!r) return null;
-  const m = r.text.match(/\{[\s\S]*\}/); if (!m) return null;
-  let j; try { j = JSON.parse(m[0]); } catch { return null; }
-  const clean = x => String(x || "").replace(/[^a-z' -]/gi, " ").trim();
-  return { intent: clean(j.intent).slice(0, 60), subject: clean(j.subject).slice(0, 40), topics: (Array.isArray(j.topics) ? j.topics : []).map(clean).filter(Boolean).slice(0, 16), opener: clean(j.opener).split(/\s+/).slice(0, 4).join(" "), opener2: clean(j.opener2).split(/\s+/).slice(0, 4).join(" "), via: r.via };
+  return { text: t, kind, followUp, convo };
 }
-async function avishTransform(text, C, M, rounds, onText, signal, plan) {
-  if (signal && signal.aborted) return false;
-  const lists = rounds.map(r => r.map(d => gwDetok(M, d.toks)));
-  const sys = `You are the grammar transformer inside Avish AI 1.3 (by AdminAT). You do NOT write answers yourself.
-You get the user's question and numbered drafts written by Avish's grammar engine. Pick the ONE draft that makes the most sense for the question, then fix only its grammar: you may change word order, word endings and small words (the, a, of, is, and, to…) and remove words that don't fit. Do NOT add new facts, ideas or content words that aren't in that draft. Reply with only the corrected sentence.`;
-  let via = "";
-  const ask = async user => { const r = await avishAsk(sys, user, signal, 200); if (!r) return ""; via = via || r.via; return r.text; };
-  const out = [], picks = [];
-  for (const list of lists) {
-    const reply = await ask(`Question: ${text}\nDrafts:\n${list.map((d, i) => `${i + 1}) ${d}`).join("\n")}`);
-    if (!reply) { if (!out.length) return false; break; }
-    const fixed = reply.split("\n").map(x => x.replace(/^\s*(\d+[).:]|draft\s*\d+:?|corrected( sentence)?:)\s*/i, "").replace(/^["“]|["”]$/g, "").trim()).filter(Boolean)[0] || "";
-    let best = 0, bk = -1; list.forEach((d, i) => { const k = avishKept(fixed, d); if (k > bk) { bk = k; best = i; } }); // which draft it chose
-    const ok = fixed && bk >= .75 && fixed.length < list[best].length * 1.6 + 20;
-    out.push(ok ? fixed : list[best]); picks.push(`${best + 1}${ok ? "" : " (kept as written)"}`); onText(out.join(" "));
+const AV_INTERP = [ // 🧠 two interpreters with different angles
+  "You are Interpreter 1 (LITERAL) in Avish AI's team: work out exactly what the message literally asks.",
+  "You are Interpreter 2 (INTENT) in Avish AI's team: work out what the user really wants and why, using the conversation (\"it\", \"more\", \"that\" refer to earlier messages)."];
+async function avishInterpret(n, R, signal) {
+  const sys = AV_INTERP[n] + `\nReply with ONLY a JSON object: {"intent":"one short phrase","subject":"main topic as 1-2 plain words","topics":["12 plain single words an expert answer would use: key nouns, verbs and adjectives"],"opener":"first 2-4 words of a direct answer, e.g. Dogs are","opener2":"first 2-4 words of a second sentence adding detail, e.g. They can"}. Simple common English words only.`;
+  const r = await avishAsk(sys, (R.convo ? "Conversation so far:\n" + R.convo + "\n\n" : "") + `Message type: ${R.kind}${R.followUp ? " (follow-up)" : ""}\nNew message: ${R.text}`, signal, 250);
+  const m = r && r.text.match(/\{[\s\S]*\}/); if (!m) return null;
+  let j; try { j = JSON.parse(m[0]); } catch { return null; }
+  const clean = x => String(x || "").replace(/[^a-z' -]/gi, " ").trim(), cut = x => clean(x).split(/\s+/).slice(0, 4).join(" ");
+  return { intent: clean(j.intent).slice(0, 60), subject: clean(j.subject).slice(0, 40), topics: (Array.isArray(j.topics) ? j.topics : []).map(clean).filter(Boolean).slice(0, 16), opener: cut(j.opener), opener2: cut(j.opener2), via: r.via };
+}
+function avishCheck(M, d, ctxSc, topicSet) { // ✅ two checkers: grammar (tiny transformer fluency + rules) and topic (closeness to the context areas + interpreters' words)
+  const content = d.toks.filter(t => M.content.has(M.tokTag[t]));
+  const topic = (content.length ? content.reduce((a, t) => a + ctxSc[t], 0) / content.length : 0) + .5 * content.filter(t => topicSet.has(M.words[t].toLowerCase())).length;
+  return { grammar: d.score, topic, total: d.score + 1.5 * topic };
+}
+async function avishDecide(n, R, lists, signal) { // ⚖ two deciders: pick the best shortlisted draft per sentence, fix grammar only
+  const sys = `You are Decider ${n + 1} in Avish AI's team (made by AdminAT). You do NOT write answers yourself.
+${n ? "Choose by which drafts best give the user what they want." : "Choose by which drafts make the most sense and are most likely true."}
+For each sentence slot, pick ONE numbered draft, then fix only its grammar: you may change word order, word endings and small words (the, a, of, is, and, to…) and remove words that don't fit. Do NOT add new facts, ideas or content words.
+Reply with ONLY JSON: {"picks":[n1,n2],"fixed":["sentence 1","sentence 2"]}`;
+  const user = `Question: ${R.text}\n` + lists.map((l, k) => `Sentence ${k + 1} drafts:\n` + l.map((d, i) => `${i + 1}) ${d}`).join("\n")).join("\n");
+  const r = await avishAsk(sys, user, signal, 300); const m = r && r.text.match(/\{[\s\S]*\}/); if (!m) return null;
+  let j; try { j = JSON.parse(m[0]); } catch { return null; }
+  const out = lists.map((l, k) => { const p = Math.min(l.length, Math.max(1, parseInt((j.picks || [])[k]) || 1)) - 1, f = String((j.fixed || [])[k] || "").trim(), ok = f && avishKept(f, l[p]) >= .75 && f.length < l[p].length * 1.6 + 20; return { pick: p, text: ok ? f : l[p], fixed: !!ok }; });
+  return { out, via: r.via };
+}
+async function avishJudge(R, a, b, signal) { // 👩‍⚖️ the judge: only called when the deciders disagree
+  const r = await avishAsk(`You are the Judge in Avish AI's team. Two deciders chose different answers. Pick the one that makes more sense and better answers the question. Reply with ONLY 1 or 2.`, `Question: ${R.text}\n1) ${a}\n2) ${b}`, signal, 10);
+  return r && /2/.test(r.text.slice(0, 3)) ? 1 : 0;
+}
+async function avishTeam(M, text, facts, hist, onText, signal) {
+  const log = [];
+  // 👀 Reader
+  const R = avishRead(text, hist); log.push(`👀 Reader: ${R.kind}${R.followUp ? " (follow-up)" : ""}`);
+  // 🧠🧠 Interpreters (in parallel)
+  status("🧪 Avish team: interpreting…");
+  const I = (await Promise.all([0, 1].map(n => avishInterpret(n, R, signal).catch(e => { if (e.name === "AbortError") throw e; return null; })))); if (signal && signal.aborted) return true;
+  const I1 = I[0] || I[1], I2 = I[1] || I[0];
+  if (I1) log.push(`🧠 Interpreters: "${I[0] ? I[0].intent : "—"}" / "${I[1] ? I[1].intent : "—"}"`);
+  const topics = [...new Set([...(I1 ? [I1.subject, ...I1.topics] : []), ...(I2 ? [I2.subject, ...I2.topics] : [])].join(" ").toLowerCase().split(/\s+/).filter(Boolean))];
+  // context areas: the interpreters' words + the message, placed on the 64-D grid
+  const C = gwContext(M, topics.join(" ") + " " + R.text, facts), ctxSc = gwCtxScores(M, C.areas, C.aw), topicSet = new Set(topics);
+  // ✍✍ Drafters: A is focused (stays near the area centres), B is freer; each writes 5 drafts per sentence
+  status("🧪 Avish team: drafting…");
+  let seed = [...text].reduce((a, c) => a * 31 + c.charCodeAt(0) >>> 0, 7) ^ (Date.now() & 0xffff); const rnd = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296);
+  const W = x => x ? x.toLowerCase().match(/[a-z][a-z'-]*/g) || [] : [];
+  const drafters = [{ name: "A (focused)", st: { ctxW: 4.5, temp: .5 }, I: I1 }, { name: "B (free)", st: { ctxW: 2.5, temp: 1 }, I: I2 }];
+  const used = new Set(), short = [[], []], all = [[], []];
+  for (let k = 0; k < 2; k++) {
+    for (const D of drafters) {
+      const r = []; for (let i = 0; i < 5; i++) { r.push(gwSentence(M, C, ctxSc, used, rnd, D.I ? W(k ? D.I.opener2 : D.I.opener) : null, D.st)); await new Promise(z => setTimeout(z)); }
+      // ✅✅ Checkers score every draft; each drafter's best 3 go on the shortlist
+      r.forEach(d => d.chk = avishCheck(M, d, ctxSc, topicSet)); r.sort((a, b) => b.chk.total - a.chk.total);
+      all[k].push(...r.map(d => ({ d, by: D.name }))); short[k].push(...r.slice(0, 3));
+    }
+    short[k].sort((a, b) => b.chk.total - a.chk.total); short[k][0].toks.forEach(t => used.add(t));
+    if (signal && signal.aborted) return true;
   }
-  onText(out.join(" ") + `\n\n> 🔍 **How Avish AI 1.3 wrote this** — ${plan ? `understood: ${plan.intent || "?"} · topic: ${plan.subject} · context words: ${plan.topics.slice(0, 8).join(", ")} · ` : ""}context areas: ${C.areas.length} · ${lists.length} sentences × 5 drafts from the grammar engine · transformer picked draft ${picks.join(" & ")} and fixed the grammar only · transformer: ${via}\n> Drafts: ${lists.map(l => l.map(d => `"${d}"`).join(" · ")).join(" ‖ ")}`);
+  log.push(`✍ Drafters: 2 × 5 drafts per sentence (20 total)`, `✅ Checkers: grammar + topic → shortlist of ${short[0].length} per sentence`);
+  const lists = short.map(l => l.map(d => gwDetok(M, d.toks)));
+  // ⚖⚖ Deciders (in parallel) → 👩‍⚖️ Judge if they disagree
+  status("🧪 Avish team: deciding…");
+  const Ds = await Promise.all([0, 1].map(n => avishDecide(n, R, lists, signal).catch(e => { if (e.name === "AbortError") throw e; return null; }))); if (signal && signal.aborted) return true;
+  let final, via = (Ds[0] || Ds[1] || I1 || {}).via || "";
+  if (Ds[0] && Ds[1]) {
+    const same = Ds[0].out.every((o, k) => o.pick === Ds[1].out[k].pick);
+    log.push(`⚖ Deciders: ${Ds.map((D, n) => `${n + 1} picked ${D.out.map(o => o.pick + 1).join(" & ")}`).join(", ")}`);
+    if (same) { final = Ds[0].out; log.push("👩‍⚖️ Judge: not needed — the deciders agreed"); }
+    else { status("🧪 Avish team: the judge is deciding…"); const a = Ds[0].out.map(o => o.text).join(" "), b = Ds[1].out.map(o => o.text).join(" "); const w = await avishJudge(R, a, b, signal).catch(() => 0); final = Ds[w].out; log.push(`👩‍⚖️ Judge: chose Decider ${w + 1}`); }
+  } else if (Ds[0] || Ds[1]) { final = (Ds[0] || Ds[1]).out; log.push("⚖ Deciders: only one could answer"); }
+  else { final = lists.map(l => ({ pick: 0, text: l[0], fixed: false })); via = "none (no big transformer reachable — the checkers' top drafts)"; log.push("⚖ Deciders: unavailable — used the checkers' top drafts"); }
+  status("Ready");
+  onText(final.map(o => o.text).join(" ") + `\n\n> 🔍 **How the Avish AI 1.3 team wrote this** — transformer: ${via}${topics.length ? ` · context words: ${topics.slice(0, 8).join(", ")}` : ""} · context areas: ${C.areas.length}\n> ${log.join("\n> ")}\n> Shortlist: ${lists.map(l => l.map(d => `"${d}"`).join(" · ")).join(" ‖ ")}`);
   return true;
 }
 window.Floof.addProvider({ id: "gridwriter", label: "🧪 Avish AI 1.3 — by AdminAT", ph: "", nokey: true, ok: () => true, vision: false,
-  help: "Avish AI 1.3 by AdminAT — your own AI design: word types (Markov) → context areas on the 64-D grid → slot filling → 5 drafts → a real transformer picks the best draft and fixes only its grammar (it can't add its own content). Transformer: Floof Cloud when you're signed in and online (best, any device), otherwise the top-menu brain or 🪶 Mini (~0.5 GB, offline), otherwise its own tiny one. Sums always go to a calculator.",
+  help: "Avish AI 1.3 by AdminAT — a team built on your design: 👀 1 reader → 🧠 2 interpreters (a transformer works out what you mean and picks the context areas) → ✍ 2 drafters (Markov word types + words from the 64-D grid areas, 5 drafts each per sentence) → ✅ 2 checkers (grammar + topic) → ⚖ 2 deciders (pick a draft, fix grammar only) → 👩‍⚖️ 1 judge (only if the deciders disagree). Transformer: Floof Cloud when signed in, else the top-menu brain or 🪶 Mini. Sums go to a calculator.",
   list: async () => [{ id: "gw1", name: "Avish AI 1.3" }],
   stream: async ({ sys, msgs, onText, signal }) => {
     const last = [...msgs].reverse().find(m => m.role === "user"), text = String(last && last.content || "");
