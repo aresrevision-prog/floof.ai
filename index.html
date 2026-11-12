@@ -3062,6 +3062,10 @@ async function singSong(lyrics) {
   let ms; try { ms = await singerLoad(); } catch (e) { status("🎤 Couldn't load the singing voice — using the speaking voice instead.", "err"); return sing(lyrics); }
   const AC = new (window.AudioContext || window.webkitAudioContext)(); const out = AC.createGain(); out.gain.value = .9; out.connect(AC.destination);
   const echo = AC.createDelay(); echo.delayTime.value = .06; const wet = AC.createGain(); wet.gain.value = .12; echo.connect(wet); wet.connect(out); // just a touch of room, no repeats
+  const comp = AC.createDynamicsCompressor(); comp.threshold.value = -20; comp.ratio.value = 3; comp.attack.value = .01; comp.release.value = .2;
+  const warm = AC.createBiquadFilter(); warm.type = "lowpass"; warm.frequency.value = 5200; // softens eSpeak's buzz
+  const voiceBus = AC.createGain(); voiceBus.gain.value = .9; voiceBus.connect(warm); warm.connect(comp); comp.connect(out); comp.connect(echo);
+  const padBus = AC.createBiquadFilter(); padBus.type = "lowpass"; padBus.frequency.value = 1400; padBus.connect(out);
   const singVoice = await singLang(); const lines = speakable(lyrics).split(/(?<=[.!?;])\s+|\n+/).map(l => l.replace(/[^\p{L}' -]/gu, " ").trim()).filter(Boolean).slice(0, 24);
   if (!lines.length) return;
   const female = (vset.pitch || 1) >= 1.05, bpm = 100, beat = 60 / bpm, t0 = AC.currentTime + .4;
@@ -3080,23 +3084,38 @@ async function singSong(lyrics) {
   // the band: chords, bass, soft drums
   for (let b = 0; b < total; b += 4) {
     const ch = chords[(b / 4) % 4], tt = t0 + b * beat;
-    ch.forEach(c => { const o = AC.createOscillator(), g = AC.createGain(); o.type = "triangle"; o.frequency.value = hz(48 + c); g.gain.setValueAtTime(0, tt); g.gain.linearRampToValueAtTime(.045, tt + .05); g.gain.exponentialRampToValueAtTime(.008, tt + 4 * beat); o.connect(g); g.connect(out); o.start(tt); o.stop(tt + 4 * beat + .05); nodes.push(o); });
+    ch.forEach(c => { for (const det of [-6, 6]) { const o = AC.createOscillator(), g = AC.createGain(); o.type = "sawtooth"; o.frequency.value = hz(48 + c); o.detune.value = det; g.gain.setValueAtTime(0.0001, tt); g.gain.linearRampToValueAtTime(.018, tt + .35); g.gain.setValueAtTime(.018, tt + 4 * beat - .2); g.gain.linearRampToValueAtTime(0.0001, tt + 4 * beat + .15); o.connect(g); g.connect(padBus); o.start(tt); o.stop(tt + 4 * beat + .2); nodes.push(o); } }); // soft string-pad chords
     for (let k = 0; k < 4; k++) { const tk = tt + k * beat;
-      const bo = AC.createOscillator(), bg = AC.createGain(); bo.type = "sine"; bo.frequency.value = hz(36 + ch[0] % 12); bg.gain.setValueAtTime(.12, tk); bg.gain.exponentialRampToValueAtTime(.001, tk + beat * .9); bo.connect(bg); bg.connect(out); bo.start(tk); bo.stop(tk + beat); nodes.push(bo);
-      if (k % 2 === 0) { const ko = AC.createOscillator(), kg = AC.createGain(); ko.frequency.setValueAtTime(140, tk); ko.frequency.exponentialRampToValueAtTime(45, tk + .12); kg.gain.setValueAtTime(.35, tk); kg.gain.exponentialRampToValueAtTime(.001, tk + .15); ko.connect(kg); kg.connect(out); ko.start(tk); ko.stop(tk + .16); nodes.push(ko); } }
+      const bo = AC.createOscillator(), bg = AC.createGain(); bo.type = "sine"; bo.frequency.value = hz(36 + ch[0] % 12); bg.gain.setValueAtTime(0.0001, tk); bg.gain.linearRampToValueAtTime(.09, tk + .03); bg.gain.exponentialRampToValueAtTime(.01, tk + beat * .95); bo.connect(bg); bg.connect(out); bo.start(tk); bo.stop(tk + beat); nodes.push(bo);
+    }
   }
-  // the singer: make each word with eSpeak, measure its pitch, tune it to the note
+  // the singer: make each word with eSpeak, trim its silence, tune it to the note, hold the last vowel so notes join up (legato)
   status("🎤 Singing… (press 🔊 or send a message to stop)");
-  for (const nw of words) {
+  let prevRate = 0;
+  for (let wi = 0; wi < words.length; wi++) {
+    const nw = words[wi], next = words[wi + 1];
     const target = hz(nw.midi), p = Math.max(10, Math.min(99, Math.round(25 + Math.log(target / 74) / .011))); // eSpeak pitch ≈ 74 Hz·e^(0.011·(p−25))
-    let wav; try { wav = ms.speak(nw.w, { pitch: p, speed: 165, amplitude: 120, rawdata: "array", ...(singVoice ? { voice: singVoice } : {}) }); } catch {} if (!wav) continue;
-    let buf; try { buf = await AC.decodeAudioData(new Uint8Array(wav).buffer); } catch { continue; }
-    const f0 = f0Of(buf), rate = f0 ? Math.max(.6, Math.min(1.8, target / f0)) : 1;
+    let wav; try { wav = ms.speak(nw.w, { pitch: p, speed: 150, amplitude: 120, rawdata: "array", ...(singVoice ? { voice: singVoice } : {}) }); } catch {} if (!wav) continue;
+    let raw; try { raw = await AC.decodeAudioData(new Uint8Array(wav).buffer); } catch { continue; }
+    // trim the silence eSpeak puts before and after the word, and even out the loudness
+    const d0 = raw.getChannelData(0), thr = .02; let a = 0, z = d0.length - 1, pk = 0;
+    while (a < z && Math.abs(d0[a]) < thr) a++; while (z > a && Math.abs(d0[z]) < thr) z--;
+    a = Math.max(0, a - 200); z = Math.min(d0.length - 1, z + 200);
+    const buf = AC.createBuffer(1, z - a + 1, raw.sampleRate), d = buf.getChannelData(0); for (let k = a; k <= z; k++) { d[k - a] = d0[k]; pk = Math.max(pk, Math.abs(d0[k])); }
+    const f0 = f0Of(buf) || target, rate = Math.max(.6, Math.min(1.8, target / f0));
+    const st = t0 + nw.beat * beat, noteLen = (next && next.beat - nw.beat < nw.len + .01 ? next.beat - nw.beat : nw.len) * beat, wordLen = buf.duration / rate;
     const src = AC.createBufferSource(), g = AC.createGain(), vib = AC.createOscillator(), vg = AC.createGain();
-    src.buffer = buf; src.playbackRate.value = rate; vib.frequency.value = 5.5; vg.gain.value = rate * .012; vib.connect(vg); vg.connect(src.playbackRate); // gentle vibrato
-    const st = t0 + nw.beat * beat, dur = Math.max(buf.duration / rate, nw.len * beat * .9);
-    g.gain.setValueAtTime(0, st); g.gain.linearRampToValueAtTime(1, st + .02); g.gain.setValueAtTime(1, st + Math.min(buf.duration / rate, nw.len * beat) - .05); g.gain.linearRampToValueAtTime(0, st + Math.min(buf.duration / rate, nw.len * beat) + .05);
-    src.connect(g); g.connect(out); g.connect(echo); src.start(Math.max(st, AC.currentTime)); vib.start(st); vib.stop(st + dur); nodes.push(src, vib);
+    src.buffer = buf;
+    if (wordLen < noteLen) { // hold the vowel: loop a few whole pitch periods near the end of the voiced sound
+      const per = 1 / f0, le = Math.max(per * 4, buf.duration - .04), ls = Math.max(0, le - per * Math.max(2, Math.round(.035 / per)));
+      src.loop = true; src.loopStart = ls; src.loopEnd = le;
+    }
+    // glide into the note from the last one (portamento) + gentle vibrato that grows on long notes
+    src.playbackRate.setValueAtTime(prevRate && Math.abs(Math.log(prevRate / rate)) < .5 ? prevRate : rate, st); src.playbackRate.linearRampToValueAtTime(rate, st + .07); prevRate = rate;
+    vib.frequency.value = 5.2; vg.gain.setValueAtTime(0, st); vg.gain.linearRampToValueAtTime(rate * .014, st + Math.min(.4, noteLen)); vib.connect(vg); vg.connect(src.playbackRate);
+    const lvl = .55 / Math.max(.05, pk), rel = Math.min(.12, noteLen * .3), endT = st + noteLen + .04; // notes overlap a touch so words flow together
+    g.gain.setValueAtTime(0, st); g.gain.linearRampToValueAtTime(lvl, st + .03); g.gain.setValueAtTime(lvl, endT - rel); g.gain.linearRampToValueAtTime(0, endT);
+    src.connect(g); g.connect(voiceBus); src.start(Math.max(st, AC.currentTime)); src.stop(endT + .02); vib.start(st); vib.stop(endT + .02); nodes.push(src, vib);
   }
   const end = t0 + total * beat + 1;
   const tm = setTimeout(() => { status("Ready"); AC.close(); singStop = null; }, (end - AC.currentTime) * 1000);
