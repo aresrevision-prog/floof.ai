@@ -2826,17 +2826,18 @@ $("#dlX").onclick = () => $("#dlm").classList.remove("on");
 // ---------- 🎨 Arti Mini — Arti's OWN image model (trained by us; runs on this device) ----------
 // A tiny diffusion model: your words → a 64-D meaning vector from the dictionary grid → 30 denoising steps in a
 // 256-number picture space → a 32×32 picture (smoothly enlarged). Trained on ~1,600 Twemoji pictures (CC-BY 4.0, Twitter).
-const AM_BASES = window.FLOOF_ARTI ? [window.FLOOF_ARTI] : ["https://cdn.jsdelivr.net/gh/aresrevision-prog/floof.ai@39bcc1fd6f384b8ce544e924c735bdb9d49421b5/lex/", "https://floofai.vercel.app/lex/"];
+const AM_BASES = window.FLOOF_ARTI ? [window.FLOOF_ARTI] : ["https://cdn.jsdelivr.net/gh/aresrevision-prog/floof.ai@8932fd4feaa0d283d4cf5387051c6032eeb9ea18/lex/", "https://floofai.vercel.app/lex/"];
+const AM_FILE = { name: "arti2", parts: 4, size: 9093286 }; // 64×64 model
 let AM = null, amLoading = null;
 function amLoad(onPct) {
   if (AM) return Promise.resolve(AM);
   return amLoading ??= (async () => {
-    let buf = null; try { buf = await idb.getRaw("arti1.v2"); } catch {}
+    let buf = null; try { buf = await idb.getRaw(AM_FILE.name + ".v1"); } catch {}
     if (!buf) {
       let gz = null;
-      for (const b of AM_BASES) { try { const parts = []; let got = 0; for (let k = 0; k < 2; k++) { const r = await fetch(b + "arti1.gz.part" + k); if (!r.ok) throw new Error(r.status); const rd = r.body.getReader(); for (;;) { const { done, value } = await rd.read(); if (done) break; parts.push(value); got += value.length; if (onPct) onPct(Math.min(99, Math.round(got * 100 / 4330502))); } } gz = new Blob(parts); break; } catch {} }
+      for (const b of AM_BASES) { try { const parts = []; let got = 0; for (let k = 0; k < AM_FILE.parts; k++) { const r = await fetch(b + AM_FILE.name + ".gz.part" + k); if (!r.ok) throw new Error(r.status); const rd = r.body.getReader(); for (;;) { const { done, value } = await rd.read(); if (done) break; parts.push(value); got += value.length; if (onPct) onPct(Math.min(99, Math.round(got * 100 / AM_FILE.size))); } } gz = new Blob(parts); break; } catch {} }
       if (!gz) throw new Error("Arti Mini couldn't download");
-      buf = await new Response(gz.stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer(); idb.setRaw("arti1.v2", buf).catch(() => {});
+      buf = await new Response(gz.stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer(); idb.setRaw(AM_FILE.name + ".v1", buf).catch(() => {});
     }
     const dv = new DataView(buf); if (new TextDecoder().decode(new Uint8Array(buf, 0, 4)) !== "FAR1") throw new Error("bad Arti file");
     const hl = dv.getUint32(4, true), H = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 8, hl))), base = 8 + hl, W = {};
