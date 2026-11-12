@@ -1498,7 +1498,7 @@ const PV = {
 };
 let cloud = ls.get("mwai.cloud", null), abortCtl = null, modelList = [];
 if (!cloud) cloud = { pv: "", keys: {}, model: {}, fix: true };
-if (cloud.pv && !PV[cloud.pv] && !["floof", "athena", "gridwriter"].includes(cloud.pv)) cloud.pv = ""; delete cloud.keys.claude; delete cloud.model.claude; ls.del("mwai.claude"); ls.set("mwai.cloud", cloud); // paid option removed: wipe any old key
+if (cloud.pv && !PV[cloud.pv] && !["floof", "athena", "gridwriter", "construct"].includes(cloud.pv)) cloud.pv = ""; delete cloud.keys.claude; delete cloud.model.claude; ls.del("mwai.claude"); ls.set("mwai.cloud", cloud); // paid option removed: wipe any old key
 let cloudBad = false, cloudBadTimer = 0; // set when the key/server was rejected, so Floof falls back instead of erroring
 const cloudReady = () => !cloudBad && !!PV[cloud.pv] && PV[cloud.pv].ok(cloud.keys[cloud.pv] || "");
 // keyless backup brain (Pollinations): used when no other brain works, so Floof still understands instead of only matching grid sentences
@@ -1795,6 +1795,11 @@ function updateMode() {
   if (cloudReady()) { $("#modeNote").textContent = `☁ ${$("#pv").selectedOptions[0].text.split("—")[0].replace(/^☁\s*/, "").trim()} (${curModel() || "…"}): ${cloud.pv === "gridwriter" ? "AdminAT's own AI" : "smart answers & coding"}${cloud.pv === "gridwriter" ? "" : cloud.pv === "ollama" ? " on your PC, free & private" : " for free"}. Grid, web & screen still feed it.`; return; }
   $("#modeNote").textContent = engine ? "Brain + grid: the grid finds facts, the brain writes the answer. Can still make mistakes." : "Grid mode: answers come straight from your knowledge. Load a brain for written answers.";
 }
+let _persistAsked = false;
+async function keepOnDevice() { // ask the browser to never clear our saved transformers / grid when space runs low
+  if (_persistAsked) return; _persistAsked = true;
+  try { if (navigator.storage && navigator.storage.persist && !(await navigator.storage.persisted())) await navigator.storage.persist(); } catch {}
+}
 async function loadModel() {
   if (location.protocol === "file:") { status("Open this from a website (Vercel/GitHub Pages), not as a file — downloads can't be saved from file://.", "err"); return; }
   let adapter = null; try { adapter = navigator.gpu && await navigator.gpu.requestAdapter(); } catch {}
@@ -1836,6 +1841,7 @@ async function loadModel() {
     }
     if (lastErr) throw lastErr;
     loadedModel = id; $("#model").value = pick; ls.set(MKEY, pick);
+    keepOnDevice(); // the transformer stays saved on this device (no re-download)
     if (shrunk || ctxSize < CTX) setTimeout(() => status("Ready ✓ — your device ran out of graphics memory, so Floof loaded " + $("#model").selectedOptions[0].text.split("—")[0].trim() + (ctxSize < CTX ? " with shorter memory" : "") + ". ☁ Floof Cloud is smarter if you're online."), 900);
     bar(1); status("Ready ✓ " + $("#model").selectedOptions[0].text.split("—")[0].trim() + " brain + grid" + (f16 ? "" : " (compat mode)"));
     setTimeout(() => bar(0), 800);
@@ -2459,7 +2465,7 @@ async function gwAnswer(text, facts, onTextAll, signal, hist) {
   let sent = ""; const onText = full => { if (full.startsWith(sent)) { const d = full.slice(sent.length); if (d) onTextAll(d); } else onTextAll(full); sent = full; }; // Floof adds each piece to the reply, so send only what's new
   const calc = gwMaths(text); if (calc) { onText(calc + "\n\n*(worked out with the calculator — Avish AI never guesses sums)*"); return; }
   if (/\b(which|what) (ai|model|brain)\b|\bwho (are|made|built|created) (you|u)\b|\byour name\b|\bwhat are you\b/i.test(text)) { onText("I'm **Avish AI 1.3**, made by AdminAT at MagicWinter. I run fully on your device: word types (Markov) → context areas on a 64-D word grid → a team: 1 reader, 2 interpreters, 3 drafters, 2 checkers, 2 deciders and 1 judge."); return; }
-  const M = await gwLoad(p => status(`🧪 Downloading Avish AI 1.3 grid (one time, ~3 MB)… ${p}%`));
+  const M = await gwLoad(p => status(`🧪 Downloading Avish AI 1.3 grid (one time, ~3 MB)… ${p}%`)); keepOnDevice();
   text = await avishFixTypos(text, M); // 👀 typos → real words before anything else reads it
   try { if (await avishTeam(M, text, facts, hist, onText, signal)) return; } catch (e) { if (e.name === "AbortError" || (signal && signal.aborted)) return; console.warn("Avish team failed, tiny transformer only", e); }
   const C = gwContext(M, text, facts), ctxSc = gwCtxScores(M, C.areas, C.aw), used = new Set();
@@ -2660,6 +2666,115 @@ window.Floof.addProvider({ id: "gridwriter", label: "🧪 Avish AI 1.3 — by Ad
     await gwAnswer(text, facts, onText, signal, msgs); status("Ready");
     return { in: 0, out: 0, model: "🧪 Avish AI 1.3", finish: "" };
   } });
+// ---------- 🏗 Construct AI 1.0 — by AdminAT: a coding team built from our AIs ----------
+// 👀 Reader (Avish's typo fixer + task/language detection) → 🗺 Planner → ⌨ Coder → 🔍 Checker (syntax checks in code) → 🔧 Fixer (up to 2 rounds)
+// → then Floof's Auto-test runs the program for real (HTML / JS / Python) and sends any crash back to Construct to fix.
+// Brain: Qwen2.5-Coder on this device (💻 Coder from the top menu); Floof Cloud only if this device can't run it.
+const CON_SYS = `You are Construct AI 1.0, a coding AI made by AdminAT at MagicWinter. You are a senior software engineer.
+Rules:
+- Write the COMPLETE program in ONE fenced code block with its language (\`\`\`html, \`\`\`python, \`\`\`javascript …). No placeholders, no TODOs, no "rest stays the same".
+- Games/apps/websites: ONE self-contained \`\`\`html file (inline CSS + JS, works offline, keyboard + touch controls, a restart button, score/state on screen).
+- Scripts and school tasks: \`\`\`python unless another language is asked for.
+- Before answering, mentally run the code: every variable defined, every function called correctly, brackets balanced, no infinite loops.
+- After the code: how to use it in 1-3 lines. Keep explanations short.
+- When fixing: say the root cause in one line, then give the FULL corrected program.`;
+function conRead(text) { // 👀 what kind of coding job is this?
+  const t = String(text), low = t.toLowerCase(), hasCode = /```|[{};]\s*\n|def \w+\(|function \w*\(|<\/?\w+[^>]*>/.test(t);
+  const lang = /\bpython|\.py\b|def \w+\(/.test(low) ? "python" : /\bhtml|website|web page|webpage|game|app\b|canvas/.test(low) ? "html" : /javascript|\bjs\b|node/.test(low) ? "javascript" : /\bjava\b/.test(low) ? "java" : /c\+\+|cpp/.test(low) ? "cpp" : /\bc#|csharp/.test(low) ? "csharp" : /\bsql\b/.test(low) ? "sql" : "";
+  const kind = /i tested that|failed with|error|bug|fix|doesn'?t work|not working|broken/.test(low) ? "fix" : /explain|what does|how does|why does/.test(low) && hasCode ? "explain" : "build";
+  return { lang, kind, hasCode };
+}
+async function conBrain1() {
+  if (window.__constructEngine) return window.__constructEngine; // test hook
+  if (engine && /Coder/.test(String(loadedModel))) return engine;
+  let ok = false; try { ok = !!(navigator.gpu && await navigator.gpu.requestAdapter()); } catch {}
+  if (!ok) return null;
+  const was = $("#model").value; $("#model").value = "Qwen2.5-Coder-1.5B-Instruct";
+  try { await loadModel(); } finally { busy = true; $("#send").disabled = true; }
+  if (!engine || !/Coder/.test(String(loadedModel))) { $("#model").value = was; return engine && /Qwen|Llama/.test(String(loadedModel)) ? engine : null; } // out of memory → whatever smaller brain loaded
+  return engine;
+}
+let _conBrain = null;
+function conBrain() { if (window.__constructEngine) return Promise.resolve(window.__constructEngine); if (engine && /Coder/.test(String(loadedModel))) return Promise.resolve(engine); if (!_conBrain) _conBrain = conBrain1().finally(() => { _conBrain = null; }); return _conBrain; }
+async function conAsk(messages, { onDelta, maxTokens = 3000, temperature = .2, signal } = {}) { // device Qwen-Coder first, Floof Cloud only as a fallback
+  const eng = await conBrain().catch(() => null);
+  if (eng && !(signal && signal.aborted)) {
+    try {
+      const stop = () => { try { eng.interruptGenerate(); } catch {} }; if (signal) signal.addEventListener("abort", stop, { once: true });
+      let out = "";
+      if (onDelta) { const st = await eng.chat.completions.create({ messages, stream: true, temperature, max_tokens: maxTokens, extra_body: String(loadedModel).startsWith("Qwen3") ? { enable_thinking: false } : undefined }); for await (const ch of st) { const d = ch.choices[0]?.delta?.content || ""; if (d) { out += d; onDelta(d); } } }
+      else { const r = await eng.chat.completions.create({ messages, temperature, max_tokens: maxTokens, extra_body: String(loadedModel).startsWith("Qwen3") ? { enable_thinking: false } : undefined }); out = r.choices?.[0]?.message?.content || ""; }
+      if (out.trim()) return { text: out, via: (loadedModel ? String(loadedModel).replace(/-q4f(16|32)_1-MLC$/, "") : "Qwen2.5-Coder") + " on this device" };
+    } catch (e) { if (signal && signal.aborted) throw e; console.warn("Construct: on-device coder failed", e); }
+  }
+  if (signal && signal.aborted) return null;
+  if (ACCOUNT_KIND === "mw" && mwToken() && navigator.onLine !== false) {
+    const sys = messages[0].role === "system" ? messages[0].content : "", rest = messages.filter(m => m.role !== "system");
+    const j = await postJSON(FLOOF_API, { token: mwToken(), system: sys, messages: rest, maxTokens: Math.max(maxTokens, 4096) }, signal, "floof");
+    if (j.text && j.text.trim()) { if (onDelta) onDelta(j.text); return { text: j.text, via: "Floof Cloud (this device can't run Qwen-Coder)" }; }
+  }
+  return null;
+}
+function conBlocks(text) { return [...String(text).matchAll(/```([\w+#-]*)[^\n]*\n([\s\S]*?)```/g)].map(m => ({ lang: (m[1] || "").toLowerCase(), code: m[2] })); }
+function conCheck(text, R) { // 🔍 the checker: fast checks in code, no AI
+  const errs = [], blocks = conBlocks(text);
+  if (/```[\w+#-]*[^\n]*\n(?![\s\S]*```)/.test(String(text).replace(/```[\w+#-]*[^\n]*\n[\s\S]*?```/g, ""))) errs.push("The code block is cut off (no closing ```) — the program is incomplete.");
+  if (R.kind !== "explain" && !blocks.length) { errs.push("There is no code block — give the complete program in one fenced code block."); return errs; }
+  for (const { lang, code } of blocks) {
+    if (/\b(TODO|FIXME)\b|\.\.\.\s*(rest|same|existing)|\/\/\s*\.\.\.|#\s*\.\.\.|rest of (the )?code/i.test(code)) errs.push(`The ${lang || "code"} has placeholders (TODO / "..." / "rest of code") — write it all out.`);
+    const js = [];
+    if (/^(js|javascript|mjs)$/.test(lang)) js.push(code);
+    if (lang === "html") {
+      for (const m of code.matchAll(/<script(\s[^>]*)?>([\s\S]*?)<\/script>/gi)) if (!/\bsrc=|type=["']?(module|text\/babel|application\/json)/i.test(m[1] || "")) js.push(m[2]);
+      const opens = (code.match(/<script\b/gi) || []).length, closes = (code.match(/<\/script>/gi) || []).length; if (opens !== closes) errs.push("The HTML has a <script> tag that is never closed.");
+      if (!/<\/html>\s*$/i.test(code.trim()) && /<html/i.test(code)) errs.push("The HTML file ends before </html> — it's incomplete.");
+    }
+    for (const j of js) { try { new Function(j); } catch (e) { if (!/import|export|await is only|Cannot use import/i.test(e.message)) errs.push(`JavaScript syntax error: ${e.message}`); } }
+    if (lang === "json") { try { JSON.parse(code); } catch (e) { errs.push("Invalid JSON: " + e.message); } }
+    if (/^(py|python)$/.test(lang)) {
+      let depth = 0; for (const ch of code.replace(/(["'])(?:\\.|(?!\1).)*\1|#.*$/gm, "")) { if ("([{".includes(ch)) depth++; else if (")]}".includes(ch)) depth--; }
+      if (depth !== 0) errs.push("Python brackets don't balance (a ( [ or { is missing its partner).");
+      if (/^\t+ +| +\t/m.test(code)) errs.push("Python mixes tabs and spaces for indentation.");
+    }
+  }
+  return [...new Set(errs)].slice(0, 6);
+}
+window.Floof.addProvider({ id: "construct", label: "🏗 Construct AI 1.0 — by AdminAT (coding)", ph: "", nokey: true, ok: () => true, vision: false,
+  help: "Construct AI 1.0 by AdminAT — a coding team built from our AIs: 👀 reader (fixes typos, spots the language) → 🗺 planner → ⌨ coder → 🔍 checker (syntax checks) → 🔧 fixer, then Floof's Auto-test runs the program for real and sends any crash back to be fixed (up to 3 rounds). Brain: Qwen2.5-Coder on this device (~1.2 GB, downloaded once); Floof Cloud only if this device can't run it.",
+  list: async () => [{ id: "construct1", name: "Construct AI 1.0" }],
+  stream: async ({ msgs, onText, signal }) => {
+    const last = [...msgs].reverse().find(m => m.role === "user"); let text = String(last && last.content || "");
+    if (/\b(which|what) (ai|model|brain)\b|\bwho (are|made|built|created) (you|u)\b|\byour name\b|\bwhat are you\b/i.test(text)) { onText("I'm **Construct AI 1.0**, a coding AI made by AdminAT at MagicWinter. A team does the work: a reader, a planner, a coder, a checker and a fixer — and every program I write gets run and tested before you see the final version."); return { in: 0, out: 0, model: "🏗 Construct AI 1.0", finish: "" }; }
+    const R = conRead(text);
+    if (!R.hasCode) { try { text = await avishFixTypos(text, null); } catch {} } // typos in the request (never inside pasted code)
+    const hist = msgs.slice(-8).map(m => ({ role: m.role === "assistant" ? "assistant" : "user", content: String(m.content || "").slice(0, 12000) }));
+    hist[hist.length - 1] = { role: "user", content: text };
+    let via = "", plan = "";
+    // 🗺 Planner (new builds only)
+    if (R.kind === "build") {
+      status("🏗 Construct: planning…");
+      const p = await conAsk([{ role: "system", content: "You are the planner in Construct AI's coding team. Write a short plan (3-6 bullet points: language, structure, data, key functions, controls). No code." }, { role: "user", content: text }], { maxTokens: 300, signal });
+      if (p) { plan = p.text.trim(); via = p.via; onText("**🗺 Plan**\n" + plan + "\n\n"); }
+    }
+    if (signal && signal.aborted) return { in: 0, out: 0, model: "🏗 Construct AI 1.0", finish: "" };
+    // ⌨ Coder
+    status("🏗 Construct: writing the code…");
+    const sys = CON_SYS + (R.lang ? `\nLanguage: ${R.lang}.` : "") + (plan ? "\nFollow this plan:\n" + plan : "");
+    const c = await conAsk([{ role: "system", content: sys }, ...hist], { onDelta: onText, maxTokens: 3500, signal });
+    if (!c) { onText("Construct AI needs a brain: this device couldn't run Qwen-Coder and Floof Cloud isn't reachable. Try Chrome on a device with WebGPU, or sign in to MagicWinter."); return { in: 0, out: 0, model: "🏗 Construct AI 1.0", finish: "" }; }
+    via = c.via; let answer = c.text;
+    // 🔍 Checker → 🔧 Fixer (up to 2 rounds)
+    for (let round = 1; round <= 2 && !(signal && signal.aborted); round++) {
+      const errs = conCheck(answer, R); if (!errs.length) break;
+      status(`🏗 Construct: the checker found ${errs.length} problem${errs.length > 1 ? "s" : ""} — fixing (round ${round})…`);
+      onText(`\n\n**🔧 Checker found:** ${errs.join(" ")}\n\n**Fixed version:**\n\n`);
+      const f = await conAsk([{ role: "system", content: CON_SYS }, { role: "user", content: `Task: ${text}\n\nThis answer has problems:\n${answer.slice(0, 14000)}\n\nProblems found:\n- ${errs.join("\n- ")}\n\nFix them and give the FULL corrected program.` }], { onDelta: onText, maxTokens: 3500, signal });
+      if (!f) break; answer = f.text;
+    }
+    status("Ready");
+    return { in: 0, out: 0, model: "🏗 Construct AI 1.0 · " + via, finish: "" };
+  }
+});
 window.FloofGW = { fixTypos: t => avishFixTypos(t, null), logits: async ids => { const M = await gwLoad(); return { V: M.V, BOS: M.BOS, lp: Array.from(gwLogits(M, ids)) }; }, debug: async (t) => { const M = await gwLoad(), C = gwContext(M, t, ""), sc = gwCtxScores(M, C.areas, C.aw); const top = [...Array(M.UNK0).keys()].filter(i => M.content.has(M.tokTag[i]) && sc.inA[i]).sort((a, b) => sc[b] - sc[a]); return { areas: C.areas.length, pts: C.pts.length, radius: sc.radius, inArea: top.length, top: top.slice(0, 25).map(i => M.words[i] + "/" + M.tags[M.tokTag[i]]), state: sc[M.idx.get("state")[0]], time: sc[M.idx.get("time")[0]] }; }, load: () => gwLoad(), answer: (t, f) => new Promise(ok => { let last = ""; gwAnswer(t, f || "", x => last += x).then(() => ok(last)); }) };
 window.Floof.addProvider({ id: "athena", label: "🦉 Athena — Ares servers, no key", ph: "", nokey: true, ok: () => ACCOUNT_KIND === "ares", vision: false,
   help: "Athena runs on Ares Revision's own AI server — nothing to set up for Ares accounts.",
