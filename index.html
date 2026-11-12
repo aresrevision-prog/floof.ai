@@ -2460,6 +2460,7 @@ async function gwAnswer(text, facts, onTextAll, signal, hist) {
   const calc = gwMaths(text); if (calc) { onText(calc + "\n\n*(worked out with the calculator — Avish AI never guesses sums)*"); return; }
   if (/\b(which|what) (ai|model|brain)\b|\bwho (are|made|built|created) (you|u)\b|\byour name\b|\bwhat are you\b/i.test(text)) { onText("I'm **Avish AI 1.3**, made by AdminAT at MagicWinter. I run fully on your device: word types (Markov) → context areas on a 64-D word grid → a team: 1 reader, 2 interpreters, 3 drafters, 2 checkers, 2 deciders and 1 judge."); return; }
   const M = await gwLoad(p => status(`🧪 Downloading Avish AI 1.3 grid (one time, ~3 MB)… ${p}%`));
+  text = await avishFixTypos(text, M); // 👀 typos → real words before anything else reads it
   try { if (await avishTeam(M, text, facts, hist, onText, signal)) return; } catch (e) { if (e.name === "AbortError" || (signal && signal.aborted)) return; console.warn("Avish team failed, tiny transformer only", e); }
   const C = gwContext(M, text, facts), ctxSc = gwCtxScores(M, C.areas, C.aw), used = new Set();
   let seed = [...text].reduce((a, c) => a * 31 + c.charCodeAt(0) >>> 0, 7) ^ (Date.now() & 0xffff);
@@ -2511,6 +2512,28 @@ async function avishAsk(sys, user, signal, maxTokens) {
 // ---------- Avish AI team: 1 reader → 2 interpreters → 2 drafters → 2 checkers → 2 deciders → 1 judge ----------
 // Reader, drafters and checkers are Avish's own code (free, on this device); interpreters, deciders and the judge are a real
 // transformer (Floof Cloud, else the top-menu brain / 🪶 Mini). Deciders may only pick a draft and fix its grammar.
+const subseq = (a, b) => { let i = 0; for (const ch of b) if (ch === a[i]) i++; return i === a.length; };
+async function avishFixTypos(text, M) { // "wat causd wolrd war 1" → "what caused world war 1": everyday words first (Avish's vocab is ranked by how common words are)
+  try { M = M || await gwLoad(); } catch {}
+  try { await loadDict(); } catch {}
+  if (!M) return text;
+  if (!M.typoIdx) { M.typoIdx = new Map(); const seen = new Set(); for (let t = 0; t < M.UNK0; t++) { const w = M.words[t].toLowerCase(); if (!/^[a-z]+$/.test(w) || seen.has(w)) continue; seen.add(w); if (!M.typoIdx.has(w.length)) M.typoIdx.set(w.length, []); M.typoIdx.get(w.length).push([w, seen.size]); } }
+  const fixes = [];
+  const out = String(text).replace(/[A-Za-z][a-z']*/g, w => {
+    const lw = w.toLowerCase(); if (lw.length < 2 || /'/.test(lw) || M.idx.has(lw) || (typeof COMMON !== "undefined" && COMMON.has(lw))) return w;
+    const max = lw.length <= 4 ? 1 : 2; let best = null, bs = 1e9;
+    for (let L = lw.length - max; L <= lw.length + max; L++) for (const [c, rank] of M.typoIdx.get(L) || []) {
+      if (c[0] !== lw[0] && c[1] !== lw[1]) continue;
+      const d = editDist(lw, c, max); if (d > max) continue;
+      const sc = d * 10 + Math.log(rank) - (isSwap(lw, c) ? 4 : 0) - (c[0] === lw[0] ? 1 : 0) - (c.length === lw.length + 1 && subseq(lw, c) ? 4 : 0); /* a missed letter is the commonest typo */ if (sc < bs) { bs = sc; best = c; }
+    }
+    if (!best && DICT && !DICT.has(lw)) { const sg = suggest(lw); if (sg) best = sg; } // rarer words from the 274k dictionary
+    if (!best || (DICT && DICT.has(lw) && bs >= 20)) return w; // a real (rare) word, not a typo
+    fixes.push(w + "→" + best); return w[0] === w[0].toUpperCase() && w.length > 1 ? best[0].toUpperCase() + best.slice(1) : best;
+  });
+  if (fixes.length) console.info("Avish fixed typos:", fixes.join(", "));
+  return out;
+}
 function avishRead(text, hist) { // 👀 Reader: cleans the message and notes what kind of request it is
   const t = String(text).replace(/\s+/g, " ").trim(), low = t.toLowerCase();
   const kind = /^(hi|hey|hello|yo|sup|good (morning|evening))\b/.test(low) ? "greeting" : /^why\b|\bcaus/.test(low) ? "why / cause" : /^how\b/.test(low) ? "how" : /^(what|who|which)\b/.test(low) ? "what / who" : /^(when|where)\b/.test(low) ? "when / where" : /^(is|are|can|do|does|did|will|should|could|would)\b/.test(low) ? "yes / no" : /^(tell|explain|describe|write|give|make|list|show)\b/.test(low) ? "request" : "statement";
@@ -2625,7 +2648,7 @@ window.Floof.addProvider({ id: "gridwriter", label: "🧪 Avish AI 1.3 — by Ad
     await gwAnswer(text, facts, onText, signal, msgs); status("Ready");
     return { in: 0, out: 0, model: "🧪 Avish AI 1.3", finish: "" };
   } });
-window.FloofGW = { logits: async ids => { const M = await gwLoad(); return { V: M.V, BOS: M.BOS, lp: Array.from(gwLogits(M, ids)) }; }, debug: async (t) => { const M = await gwLoad(), C = gwContext(M, t, ""), sc = gwCtxScores(M, C.areas, C.aw); const top = [...Array(M.UNK0).keys()].filter(i => M.content.has(M.tokTag[i]) && sc.inA[i]).sort((a, b) => sc[b] - sc[a]); return { areas: C.areas.length, pts: C.pts.length, radius: sc.radius, inArea: top.length, top: top.slice(0, 25).map(i => M.words[i] + "/" + M.tags[M.tokTag[i]]), state: sc[M.idx.get("state")[0]], time: sc[M.idx.get("time")[0]] }; }, load: () => gwLoad(), answer: (t, f) => new Promise(ok => { let last = ""; gwAnswer(t, f || "", x => last += x).then(() => ok(last)); }) };
+window.FloofGW = { fixTypos: t => avishFixTypos(t, null), logits: async ids => { const M = await gwLoad(); return { V: M.V, BOS: M.BOS, lp: Array.from(gwLogits(M, ids)) }; }, debug: async (t) => { const M = await gwLoad(), C = gwContext(M, t, ""), sc = gwCtxScores(M, C.areas, C.aw); const top = [...Array(M.UNK0).keys()].filter(i => M.content.has(M.tokTag[i]) && sc.inA[i]).sort((a, b) => sc[b] - sc[a]); return { areas: C.areas.length, pts: C.pts.length, radius: sc.radius, inArea: top.length, top: top.slice(0, 25).map(i => M.words[i] + "/" + M.tags[M.tokTag[i]]), state: sc[M.idx.get("state")[0]], time: sc[M.idx.get("time")[0]] }; }, load: () => gwLoad(), answer: (t, f) => new Promise(ok => { let last = ""; gwAnswer(t, f || "", x => last += x).then(() => ok(last)); }) };
 window.Floof.addProvider({ id: "athena", label: "🦉 Athena — Ares servers, no key", ph: "", nokey: true, ok: () => ACCOUNT_KIND === "ares", vision: false,
   help: "Athena runs on Ares Revision's own AI server — nothing to set up for Ares accounts.",
   list: async () => [{ id: "athena", name: "Athena (Ares)" }],
