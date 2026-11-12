@@ -11,7 +11,7 @@
 const SB = "https://lakjmdyzuqrwcncxybcw.supabase.co", SB_KEY = "sb_publishable__m0zTZ3-ThJVk0pktI65Ag_yDFPPD5s";
 const API = "https://generativelanguage.googleapis.com/v1beta";
 const ARES = "https://ares-revision.vercel.app/api/ai";
-const VERSION = "floof-cloud 13";
+const VERSION = "floof-cloud 14";
 // Used only when the live model list can't be fetched. Free-tier models first (checked against Google's
 // pricing page, Nov 2026). gemini-2.5-* still work for keys that used them before, but new keys get
 // 404 "no longer available", so they are last and get cached as bad on the first 404.
@@ -294,16 +294,19 @@ function ownServers() {
   if (e.OWN_AI_URL2) list.push({ name: "huggingface", url: e.OWN_AI_URL2, key: e.OWN_AI_KEY2 || e.OWN_AI_KEY, model: e.OWN_AI_MODEL2 || "qwen3:1.7b" });
   return list.map(x => ({ ...x, url: String(x.url).trim().replace(/\/+$/, ""), key: String(x.key || "").trim() }));
 }
-function ownMessages(sys, raw) {
-  const msgs = [];
-  if (sys.trim()) msgs.push({ role: "system", content: sys.slice(0, 6000) }); // CPU machines: keep the prompt short so they start fast
+// how much text each free brain accepts per message (free tiers have small per-request limits; ~4 characters per token)
+const BUDGET = { groq: 22000, github: 24000, cloudflare: 24000, pollinations: 40000, oracle: 24000, huggingface: 16000 };
+function ownMessages(sys, raw, budget = 60000) {
   const cut = (t, n) => t.length <= n ? t : t.slice(0, n * .65) + "\n\n[… middle of a long message left out …]\n\n" + t.slice(-n * .35); // keep both ends: the question is usually at the start or end
-  const list = raw.slice(-10);
-  for (const [i, m] of list.entries()) {
-    const t = cut(String((m && m.content) || ""), i === list.length - 1 ? 16000 : 4000); // the latest message gets the most room
-    if (t.trim()) msgs.push({ role: m.role === "assistant" ? "assistant" : "user", content: t });
+  const list = raw.slice(-10).map(m => ({ role: m && m.role === "assistant" ? "assistant" : "user", t: String((m && m.content) || "") })).filter(m => m.t.trim());
+  const sysRoom = Math.min(sys.length, 6000, Math.round(budget * .3));
+  let room = budget - sysRoom; const out = [];
+  for (let i = list.length - 1; i >= 0 && room > 400; i--) { // newest first: the latest message gets the most room, older ones what's left
+    const want = i === list.length - 1 ? Math.min(16000, room) : Math.min(4000, room);
+    const t = cut(list[i].t, want); out.unshift({ role: list[i].role, content: t }); room -= t.length;
   }
-  return msgs;
+  if (sys.trim()) out.unshift({ role: "system", content: sys.length <= sysRoom ? sys : cut(sys, sysRoom) });
+  return out;
 }
 async function ownAI(sv, sys, raw, want, ms) {
   const ctl = new AbortController(), t0 = now();
@@ -313,7 +316,7 @@ async function ownAI(sv, sys, raw, want, ms) {
   try {
     const r = await fetch(sv.url + "/api/chat", { method: "POST", signal: ctl.signal,
       headers: { "Content-Type": "application/json", ...(sv.key ? { Authorization: "Bearer " + sv.key } : {}) },
-      body: JSON.stringify({ model: sv.model, messages: ownMessages(sys, raw), stream: true, think: false, keep_alive: -1,
+      body: JSON.stringify({ model: sv.model, messages: ownMessages(sys, raw, BUDGET[sv.name]), stream: true, think: false, keep_alive: -1,
         options: { num_predict: Math.min(want, 1500), num_ctx: 8192 } }) });
     if (!r.ok) throw new Error("HTTP " + r.status + (r.status === 401 ? " (OWN_AI_KEY doesn't match the machine's secret)" : ""));
     const rd = r.body.getReader(), dec = new TextDecoder(); let buf = "";
@@ -375,15 +378,18 @@ async function openaiStyle(sv, sys, raw, want, ms) {
   const model = sv.name === "groq" ? await groqModel(sv) : sv.name === "github" ? await ghModel(sv) : sv.model;
   const reasoner = /gpt-oss|gpt-5|\bo\d|qwen3|deepseek-r1|magistral/i.test(model);
   const max = Math.min(Math.max(want, reasoner ? 2048 : 512), 4096), t0 = now();
+  let tooBig = false;
   for (let attempt = 0; attempt < 2; attempt++) {
-    const extras = attempt || _noExtras[model] ? {} : /gpt-oss/.test(model) ? { reasoning_effort: "low" } : /gpt-5|\bo\d/.test(model) ? { reasoning_effort: "minimal" } : /qwen3/.test(model) && sv.name === "groq" ? { reasoning_effort: "none" } : {};
-    const body = sv.plain ? { model, messages: ownMessages(sys, raw), private: true } // keyless: send only what every model accepts
-      : { model, messages: ownMessages(sys, raw), ...extras, ...(/gpt-5|\bo\d/.test(model) ? { max_completion_tokens: max } : { max_tokens: max, temperature: 0.6 }) };
+    const extras = (attempt && !tooBig) || _noExtras[model] ? {} : /gpt-oss/.test(model) ? { reasoning_effort: "low" } : /gpt-5|\bo\d/.test(model) ? { reasoning_effort: "minimal" } : /qwen3/.test(model) && sv.name === "groq" ? { reasoning_effort: "none" } : {};
+    const msgs = ownMessages(sys, raw, (BUDGET[sv.name] || 24000) / (attempt && tooBig ? 2 : 1));
+    const body = sv.plain ? { model, messages: msgs, private: true } // keyless: send only what every model accepts
+      : { model, messages: msgs, ...extras, ...(/gpt-5|\bo\d/.test(model) ? { max_completion_tokens: max } : { max_tokens: max, temperature: 0.6 }) };
     const r = await fetch(sv.url, { method: "POST", signal: AbortSignal.timeout(Math.max(1000, ms - (now() - t0))),
       headers: { "Content-Type": "application/json", ...(sv.key ? { Authorization: "Bearer " + sv.key } : {}), ...(sv.name === "github" ? { Accept: "application/json", "X-GitHub-Api-Version": "2022-11-28" } : {}) }, body: JSON.stringify(body) });
     const rawText = await r.text(); let d = {}; try { d = JSON.parse(rawText); } catch (e) { d = { _raw: rawText.slice(0, 160), _type: r.headers.get("content-type"), _status: r.status }; }
     if (!r.ok) { const m = (d.error && (d.error.message || d.error)) || (d.errors && d.errors[0] && d.errors[0].message) || ("HTTP " + r.status);
       if (r.status === 400 && Object.keys(extras).length && attempt === 0) { _noExtras[model] = true; continue; } // model didn't like reasoning_effort
+      if (attempt === 0 && (r.status === 413 || /too large|too long|context length|maximum context|tokens per minute|TPM|reduce the length/i.test(String(m)))) { tooBig = true; continue; } // free tier per-request limit → retry with half the text
       const err = new Error(String(m).slice(0, 120)); err.status = r.status; throw err; }
     if (d._raw !== undefined && r.ok && /text\/plain/i.test(d._type || "") && d._raw.trim()) d = { choices: [{ message: { content: rawText }, finish_reason: "stop" }] }; // GitHub may reply as plain text
     const c = d.choices && d.choices[0], text = String((c && c.message && c.message.content) || "").replace(/<think>[\s\S]*?<\/think>/g, "").trim();
