@@ -1140,9 +1140,10 @@ When fixing: find the root cause, explain it in one line, and return the FULL co
     console.error(e);
     if (e.name === "AbortError") { stopped = true; status("Stopped."); }
     else if (e.free) { freeBad = Date.now() + 300000; fallBack = true; status("Free backup brain busy — answering from the grid for now.", "err"); }
-    else if ((e.kind === "net" || e.kind === "server") && PV[cloud.pv]?.nokey && !extra.depth) { // Floof Cloud / Athena unreachable: answer from the grid for a while instead of erroring every message
-      cloudBad = true; fallBack = true; clearTimeout(cloudBadTimer); cloudBadTimer = setTimeout(() => { cloudBad = false; updateMode(); }, 300000); updateMode();
-      status(`☁ ${pvName(cloud.pv)} unreachable — answering from the grid for now.`, "err");
+    else if (e.kind && PV[cloud.pv]?.nokey && !extra.depth && !extra.retry) { // Floof Cloud / Athena busy or unreachable: retry with the free backup brain (then the grid) instead of erroring
+      const brief = /busy|quota/.test(e.kind);
+      cloudBad = true; fallBack = true; clearTimeout(cloudBadTimer); cloudBadTimer = setTimeout(() => { cloudBad = false; updateMode(); }, brief ? 60000 : 300000); updateMode();
+      status(`☁ ${pvName(cloud.pv)} ${brief ? "busy" : "unreachable"} — using the free backup brain for now.`, "err");
     }
     else if (e.kind || cloudReady()) { status(e.kind ? "☁ " + e.message : /failed to fetch|network|load failed/i.test(e.message || "") ? "☁ Can't reach the AI service — check your internet, or switch ☁ off to use basic mode." : "☁ " + (e.message || e), "err"); if (e.kind) finishWhy = "ERR:" + e.message.replace(/[.\s]+$/, "") + " (press 🩺 Test brain in the sidebar for details)"; }
     else if (/context|window|prompt.*(long|exceed)/i.test(e.message || "")) reply += "\n\n_(That was more than the brain can hold at once — start a new chat, or ask about one part.)_";
