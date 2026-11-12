@@ -3072,10 +3072,17 @@ window.Floof.addProvider({ id: "arti", label: "🎨 Arti — free image maker (2
     }
     // 2) backup: the keyless Pollinations service (smaller pictures, a small logo, one at a time per network)
     const pw = Math.min(768, wide ? 768 : tall ? 432 : 768), ph = Math.min(768, wide ? 432 : 768);
-    let seed = Math.floor(Math.random() * 1e9); const base = `https://image.pollinations.ai/prompt/${encodeURIComponent(fullPrompt)}?width=${pw}&height=${ph}&model=flux&safe=true&referrer=floofai&seed=`;
+    let seed = Math.floor(Math.random() * 1e9); const base = `https://image.pollinations.ai/prompt/${encodeURIComponent(fullPrompt).replace(/[()'!*]/g, c => "%" + c.charCodeAt(0).toString(16).toUpperCase())}?width=${pw}&height=${ph}&model=flux&safe=true&referrer=floofai&seed=`;
     ls.set(artiDayKey(), used + 1); refreshModels?.();
-    if (!(await artiImageOK(base + seed))) { status("✅ A checker didn't like that picture — painting it again…"); seed += 7; } // ✅ checker 3
+    // download it ONCE (the free painter allows one picture at a time), check it, keep it on this device → it always shows
+    let pic = null;
+    for (let attempt = 0; attempt < 2 && !pic; attempt++) {
+      try { const r = await fetch(base + seed, { signal: AbortSignal.timeout(60000) }); if (r.status === 402 || r.status === 429) { const wait = Math.min(45, +r.headers.get("retry-after") || 20); status(`🎨 The free painter is busy — trying again in ${wait}s…`); await new Promise(z => setTimeout(z, wait * 1000)); continue; }
+        if (r.ok && /^image\//.test(r.headers.get("content-type") || "")) { const blob = await r.blob(); const u = URL.createObjectURL(blob); const ok = await artiImageOK(u); URL.revokeObjectURL(u); if (ok) pic = blob; else { status("✅ A checker didn't like that picture — painting it again…"); seed += 7; } } // ✅ checker 3
+      } catch { break; }
+    }
     status("Ready");
+    if (pic) { const id = Date.now().toString(36) + Math.random().toString(36).slice(2, 7); await idb.setRaw("img." + id, pic); return done(`![${tagFor(false)}](idb:${id})${rs}${note(false, "the free backup painter")}${grid ? "\n\n*(The 3×3 grid needs Floof's picture server — sign in to MagicWinter, or try again later.)*" : ""}`); }
     return done(`![${tagFor(false)}](${base}${seed})${rs}${note(false, "the free backup painter")}${grid ? "\n\n*(The 3×3 grid needs Floof's picture server — sign in to MagicWinter, or try again later.)*" : ""}`);
   }
 });
