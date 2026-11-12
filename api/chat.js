@@ -297,8 +297,10 @@ function ownServers() {
 function ownMessages(sys, raw) {
   const msgs = [];
   if (sys.trim()) msgs.push({ role: "system", content: sys.slice(0, 6000) }); // CPU machines: keep the prompt short so they start fast
-  for (const m of raw.slice(-10)) {
-    const t = String((m && m.content) || "").slice(-6000);
+  const cut = (t, n) => t.length <= n ? t : t.slice(0, n * .65) + "\n\n[… middle of a long message left out …]\n\n" + t.slice(-n * .35); // keep both ends: the question is usually at the start or end
+  const list = raw.slice(-10);
+  for (const [i, m] of list.entries()) {
+    const t = cut(String((m && m.content) || ""), i === list.length - 1 ? 16000 : 4000); // the latest message gets the most room
     if (t.trim()) msgs.push({ role: m.role === "assistant" ? "assistant" : "user", content: t });
   }
   return msgs;
