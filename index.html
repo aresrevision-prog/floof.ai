@@ -217,6 +217,7 @@ form#form{padding:12px 16px 16px;border-top:1px solid var(--line)}
     <option value="Qwen2.5-Coder-7B-Instruct">💻 Coder Pro — best on-device coding, needs strong GPU (~5 GB)</option>
   </select>
   <button id="load">Load brain</button>
+  <button id="dlBtn" type="button">💾 Download transformers</button>
   <button id="reset" style="font-size:12px">Reset downloads</button>
   <div style="border-top:1px solid var(--line);padding-top:10px;display:flex;flex-direction:column;gap:8px">
     <label class="small" for="pv" style="color:var(--text)">☁ Smarter brain (free)</label>
@@ -369,6 +370,12 @@ form#form{padding:12px 16px 16px;border-top:1px solid var(--line)}
   <pre id="artCode"></pre>
 </aside>
 
+<div id="dlm" class="modal"><div class="modalbox">
+  <div class="row" style="justify-content:space-between"><h2 style="margin:0">💾 Download transformers</h2><button type="button" id="dlX">✕</button></div>
+  <p class="small" style="margin:6px 0 12px">Download once, then they run on this device — free, private and offline. They stay saved until you delete them.</p>
+  <div id="dlList"></div>
+  <p class="small" id="dlFoot" style="margin-top:10px"></p>
+</div></div>
 <div id="priv" class="modal"><div class="modalbox">
   <div class="row" style="justify-content:space-between"><h2 style="margin:0">🔒 Privacy notice</h2><button type="button" id="privX">✕</button></div>
   <div class="privbody">
@@ -2662,6 +2669,66 @@ window.Floof.addProvider({ id: "gridwriter", label: "🧪 Avish AI 1.5 — by Ad
     await gwAnswer(text, facts, onText, signal, msgs); status("Ready");
     return { in: 0, out: 0, model: "🧪 Avish AI 1.5", finish: "" };
   } });
+// ---------- 💾 Download transformers: save them on this device to run locally ----------
+const DL_LIST = [
+  { id: "avish", name: "🧪 Avish AI 1.5 — word grid + tiny transformer", size: "3.5 MB", note: "Your own AI design. Runs on any device." },
+  { id: "Qwen2.5-0.5B-Instruct", name: "🪶 Mini (Qwen 0.5B) — Avish AI's transformer", size: "≈0.5 GB", note: "For weaker devices." },
+  { id: "Qwen2.5-Coder-1.5B-Instruct", name: "🏗 Qwen2.5-Coder 1.5B — Construct AI's brain", size: "≈1.2 GB", note: "Coding." },
+  { id: "SmolLM2-360M-Instruct", name: "⚡ Tiny (SmolLM2 360M)", size: "≈0.4 GB", note: "Fastest." },
+  { id: "Llama-3.2-1B-Instruct", name: "🌨 Light (Llama 3.2 1B)", size: "≈0.9 GB", note: "" },
+  { id: "Qwen2.5-1.5B-Instruct", name: "🌟 Balanced (Qwen 1.5B)", size: "≈1.1 GB", note: "Recommended." },
+  { id: "Qwen3-1.7B", name: "🧠 Smart (Qwen3 1.7B)", size: "≈1.3 GB", note: "Better reasoning." },
+  { id: "Llama-3.2-3B-Instruct", name: "🏔 Big (Llama 3.2 3B)", size: "≈2.3 GB", note: "Needs a strong device." },
+];
+let _dlF16 = null;
+async function dlSuffix() { if (_dlF16 === null) { try { const a = navigator.gpu && await navigator.gpu.requestAdapter(); _dlF16 = a ? a.features.has("shader-f16") : null; } catch { _dlF16 = null; } } return _dlF16 === null ? null : _dlF16 ? "-q4f16_1-MLC" : "-q4f32_1-MLC"; }
+async function dlHas(item) {
+  if (item.id === "avish") { try { return !!(await idb.getRaw("gw.v3")); } catch { return false; } }
+  const suf = await dlSuffix(); if (!suf) return null;
+  try { webllm ??= await import("https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.88/+esm"); return await webllm.hasModelInCache(item.id + suf, { ...webllm.prebuiltAppConfig, cacheBackend: ls.get(CKEY, "cache") }); } catch { return false; }
+}
+async function dlRender() {
+  const box = $("#dlList"); box.innerHTML = "";
+  const gpu = await dlSuffix();
+  $("#dlFoot").textContent = gpu ? "Downloading a brain also loads it, so you can use it straight away." : "This device/browser has no WebGPU, so only Avish AI can run here. Use Chrome on a device with WebGPU for the others.";
+  for (const it of DL_LIST) {
+    const row = document.createElement("div"); row.className = "row"; row.style.cssText = "justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid rgba(255,255,255,.08)";
+    row.innerHTML = `<div style="min-width:0"><b>${it.name}</b><div class="small">${it.size}${it.note ? " · " + it.note : ""} <span class="dlst">· checking…</span></div></div><div class="row" style="gap:6px;flex:none"></div>`;
+    box.appendChild(row);
+    const has = await dlHas(it), st = row.querySelector(".dlst"), btns = row.lastElementChild;
+    st.textContent = has ? "· ✓ saved on this device" : has === null ? "· needs WebGPU" : "";
+    if (has === null) continue;
+    const b = document.createElement("button"); b.type = "button";
+    if (!has) { b.textContent = "Download"; b.onclick = () => dlGet(it, b); }
+    else { b.textContent = "Delete"; b.onclick = () => dlDel(it, b); }
+    btns.appendChild(b);
+  }
+}
+async function dlGet(it, b) {
+  b.disabled = true; b.textContent = "Downloading…";
+  try {
+    if (it.id === "avish") await gwLoad(p => { b.textContent = p + "%"; status(`💾 Downloading Avish AI 1.5… ${p}%`); });
+    else { $("#model").value = it.id; ls.set(MKEY, it.id); $("#dlm").classList.remove("on"); await loadModel(); }
+    keepOnDevice(); status("💾 " + it.name.split("—")[0].trim() + " saved on this device ✓");
+  } catch (e) { status("Download failed: " + (e.message || e), "err"); }
+  dlRender();
+}
+async function dlDel(it, b) {
+  if (!confirm(`Delete ${it.name.split("—")[0].trim()} from this device? You can download it again later.`)) return;
+  b.disabled = true;
+  try {
+    if (it.id === "avish") { await idb.raw(st => st.delete("gw.v3")); GWM = null; gwLoading = null; }
+    else {
+      const suf = await dlSuffix(), mid = it.id + suf;
+      if (loadedModel === mid && engine) { try { await engine.unload(); } catch {} engine = null; loadedModel = null; updateMode(); }
+      await webllm.deleteModelAllInfoInCache(mid, { ...webllm.prebuiltAppConfig, cacheBackend: ls.get(CKEY, "cache") });
+    }
+    status("🗑 Deleted from this device.");
+  } catch (e) { status("Couldn't delete: " + (e.message || e), "err"); }
+  dlRender();
+}
+$("#dlBtn").onclick = () => { $("#dlm").classList.add("on"); dlRender(); };
+$("#dlX").onclick = () => $("#dlm").classList.remove("on");
 // ---------- 🏗 Construct AI 1.0 — by AdminHF: a coding team built from our AIs ----------
 // 👀 Reader (Avish's typo fixer + task/language detection) → 🗺 Planner → ⌨ Coder → 🔍 Checker (syntax checks in code) → 🔧 Fixer (up to 2 rounds)
 // → then Floof's Auto-test runs the program for real (HTML / JS / Python) and sends any crash back to Construct to fix.
