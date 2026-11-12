@@ -181,6 +181,17 @@ figure.arti.bad img{display:none}figure.arti.bad::before{content:"🎨 Arti coul
 @keyframes artiload{to{background-position:-300% 0}}
 figure.arti figcaption{display:flex;gap:10px;align-items:center;margin-top:6px;font-size:12px}
 figure.arti figcaption a{color:var(--dim)}
+
+figure.arti.meme .memew{position:relative;line-height:0}
+figure.arti.meme img{width:100%}
+.memet{position:absolute;left:4%;right:4%;text-align:center;font:900 clamp(22px,7.5vw,54px)/1.05 Impact,"Anton","Arial Black",sans-serif;color:#fff;text-transform:uppercase;letter-spacing:.02em;-webkit-text-stroke:2px #000;paint-order:stroke fill;text-shadow:0 0 4px #000,2px 2px 0 #000,-2px 2px 0 #000,2px -2px 0 #000,-2px -2px 0 #000}
+@container (min-width:1px){.memet{font-size:clamp(22px,9cqw,60px)}}
+figure.arti.meme .memew{container-type:inline-size}
+.memet.top{top:3%}.memet.bot{bottom:3%}
+figure.arti.grid9{max-width:560px}
+.g9{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}
+.g9 img{width:100%;aspect-ratio:1;object-fit:cover;border-radius:8px;border:1px solid var(--line);cursor:pointer;background:linear-gradient(110deg,#0f2419 30%,#1a3a28 50%,#0f2419 70%);background-size:300% 100%;animation:artiload 1.4s linear infinite;transition:transform .12s}
+.g9 img.ok{animation:none;background:none}.g9 img:hover{transform:scale(1.03);border-color:var(--accent)}
 /* grid view */
 .gtool{display:flex;flex-wrap:wrap;gap:8px;align-items:center;padding:10px 12px;border-bottom:1px solid var(--line)}
 .gtool input{max-width:220px}
@@ -989,6 +1000,7 @@ function md(src) {
       return `<pre data-lang="${esc(lang)}"><div class="cbtns">${run}<button class="dl" title="Download">⬇</button><button class="copy">Copy</button></div><code>${esc(code.replace(/\n$/, ""))}</code></pre>`;
     }
     const h = esc(p).replace(/!\[([^\]\n]*)\]\((data:image\/(?:png|jpeg);base64,[A-Za-z0-9+\/=]+)\)/g, (m, alt, url) => `<figure class="arti ok"><img src="${url}" alt="${alt}" style="image-rendering:auto"><figcaption><button type="button" class="artidl" data-u="${url}">⬇ Download</button></figcaption></figure>`)
+      .replace(/!\[(meme|arti9):([^\]\n]*)\]\((https:\/\/image\.pollinations\.ai\/[^)\s]+)\)/g, (m, kind, cap, url) => artiFigure(kind, cap, url))
       .replace(/!\[([^\]\n]*)\]\((https:\/\/image\.pollinations\.ai\/[^)\s]+)\)/g, (m, alt, url) => `<figure class="arti"><img src="${url}" alt="${alt}" loading="lazy" onload="this.parentNode.classList.add('ok')" onerror="this.parentNode.classList.add('bad')"><figcaption><button type="button" class="artidl" data-u="${url}">⬇ Download</button><a href="${url}" target="_blank" rel="noopener">Open full size ↗</a></figcaption></figure>`)
       .replace(/`([^`\n]+)`/g, "<code>$1</code>").replace(/\*\*([^*\n]+)\*\*/g, "<b>$1</b>")
       .replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<i>$2</i>").replace(/^#{1,6} (.+)$/gm, "<b>$1</b>").replace(/^\s*[-*] (.+)$/gm, "• $1");
@@ -1410,6 +1422,7 @@ function fixTypos(text) { // returns { text, fixes:[[from,to]] }
     const lw = w.toLowerCase().replace(/'s$/, ""); if (lw.includes("'") || COMMON.has(lw) || (G && G.vocab.has(MW.stem(lw)))) return w;
     if (DICT.has(lw)) { const sw = lw.length >= 3 && swapFix(lw); if (sw) { fixes.push([w, sw]); return sw; } return w; }
     if (/^[A-Z]/.test(w) && w !== text.trim().split(/\s/)[0]) return w; // probably a name
+    if (/z/.test(lw) && DICT.has(lw.replace(/z/g, "s"))) { const z2 = lw.replace(/z/g, "s"); fixes.push([w, z2]); return z2; } // lazers → lasers
     const s = suggest(lw); if (!s || s === lw) return w; fixes.push([w, s]); return s;
   });
   return { text: out, fixes };
@@ -2613,6 +2626,8 @@ async function avishFixTypos(text, M) { // "wat causd wolrd war 1" → "what cau
   const fixes = [];
   const out = String(text).replace(/[A-Za-z][a-z']*/g, w => {
     const lw = w.toLowerCase(); if (lw.length < 2 || /'/.test(lw) || M.idx.has(lw) || (typeof COMMON !== "undefined" && COMMON.has(lw))) return w;
+    if (DICT && DICT.has(lw) && lw.length >= 4) return w; // a real word (e.g. "meme") is never "corrected"
+    if (DICT && /z/.test(lw) && DICT.has(lw.replace(/z/g, "s"))) { const b2 = lw.replace(/z/g, "s"); fixes.push(w + "→" + b2); return b2; } // lazers → lasers
     const max = lw.length <= 4 ? 1 : 2; let best = null, bs = 1e9;
     for (let L = lw.length - max; L <= lw.length + max; L++) for (const [c, rank] of M.typoIdx.get(L) || []) {
       if (c[0] !== lw[0] && c[1] !== lw[1]) continue;
@@ -2878,11 +2893,12 @@ function amRecolour(pix, rgb) { // move the main colours to the new colour, keep
 function amCanvas(pix) { const c = document.createElement("canvas"); c.width = c.height = 32; const x = c.getContext("2d"), im = x.createImageData(32, 32); for (let q = 0; q < 1024; q++) { for (let ch = 0; ch < 3; ch++) im.data[q * 4 + ch] = pix[q * 3 + ch]; const w = Math.min(pix[q * 3], pix[q * 3 + 1], pix[q * 3 + 2]); im.data[q * 4 + 3] = w > 232 ? 0 : w > 215 ? 120 : 255; } x.putImageData(im, 0, 0); return c; } // white → see-through
 async function artiMini(text, n = 4) {
   const A = await amLoad(p => status(`🎨 Downloading Arti's own model (one time)… ${p}%`)); await loadLex(p => status(`🎨 Getting word meanings… ${p}%`));
-  const parts = String(text).toLowerCase().split(/\s+(?:with|wearing|and|holding|on|in|plus|\+|&)\s+|\s*\+\s*/).map(x => x.trim()).filter(Boolean).slice(0, 2);
+  const low = String(text).toLowerCase(), jm = low.match(/\s+(with|wearing|and|holding|on top of|on|inside|in|plus|&)\s+|\s*\+\s*/), joiner = jm ? (jm[1] || "+") : "";
+  const parts = low.split(/\s+(?:with|wearing|and|holding|on top of|on|inside|in|plus|&)\s+|\s*\+\s*/).map(x => x.replace(/^(a|an|the|some)\s+/, "").trim()).filter(Boolean).slice(0, 2);
   const layers = [];
   for (let pi = 0; pi < parts.length; pi++) {
     let words = parts[pi].split(/\s+/), colour = null; words = words.filter(w => { if (AM_COLOURS[w] && !colour && words.length > 1) { colour = AM_COLOURS[w]; return false; } return true; });
-    const subj0 = words.join(" "), subj = { hat: "top hat", hats: "top hat", cap: "billed cap", glasses: "eyeglasses", sunglasses: "sunglasses", crown: "crown" }[subj0] || subj0; let pics = await amPaint(A, subj, n, parts.length > 1 ? ` (${pi + 1}/${parts.length}: ${subj})` : ""); if (!pics) { if (pi === 0) return null; continue; }
+    const subj0 = words.join(" "), subj = { hat: "top hat", hats: "top hat", cap: "billed cap", glasses: "eyeglasses", sunglasses: "sunglasses", crown: "crown", bag: "shopping bags", box: "package", basket: "basket" }[subj0] || subj0; let pics = await amPaint(A, subj, n, parts.length > 1 ? ` (${pi + 1}/${parts.length}: ${subj})` : ""); if (!pics) { if (pi === 0) return null; continue; }
     if (colour) pics = pics.map(p => amRecolour(p, colour));
     layers.push({ pics, subj });
   }
@@ -2891,11 +2907,41 @@ async function artiMini(text, n = 4) {
   for (let k = 0; k < n; k++) {
     const ox = (k % 2) * 128, oy = Math.floor(k / 2) * 128;
     bx.drawImage(amCanvas(layers[0].pics[k]), ox, oy, 128, 128);
+    if (layers[1] && /^(in|inside)$/.test(joiner)) { // "cat in a bag": the bag in front, the cat peeking out of the top
+      bx.fillStyle = "#fff"; bx.fillRect(ox, oy, 128, 128); bx.drawImage(amCanvas(layers[0].pics[k]), ox + 30, oy - 4, 68, 68); bx.drawImage(amCanvas(layers[1].pics[k]), ox + 6, oy + 26, 116, 102); continue;
+    }
+    if (layers[1] && /^(on|on top of)$/.test(joiner) && !AM_WEAR.test(layers[1].subj)) { // "cat on a car": the car below, the cat sitting on it
+      bx.fillStyle = "#fff"; bx.fillRect(ox, oy, 128, 128); bx.drawImage(amCanvas(layers[1].pics[k]), ox + 8, oy + 44, 112, 84); bx.drawImage(amCanvas(layers[0].pics[k]), ox + 32, oy + 2, 64, 64); continue;
+    }
     if (layers[1]) { const top = layers[1], c = amCanvas(top.pics[k]);
       if (AM_WEAR.test(top.subj)) { const glasses = /glass|mask/.test(top.subj); bx.drawImage(c, ox + 32, oy + (glasses ? 34 : -6), 64, 64); } // worn on the head / face
       else bx.drawImage(c, ox + 62, oy + 62, 64, 64); } // held / beside it
   }
   status("Ready"); return big.toDataURL("image/jpeg", .88); // small enough to keep in the chat
+}
+// 🖼 meme pictures (words drawn by Floof on top) and the 3×3 team grid (9 bots, one square each)
+function artiMemeHTML(url, cap) {
+  const [top, bot] = cap.includes("|") ? cap.split("|").map(x => x.trim()) : ["", cap.trim()];
+  return `<div class="memew"><img src="${url}" alt="${cap}" loading="lazy" crossorigin="anonymous" onload="this.closest('figure').classList.add('ok')" onerror="this.closest('figure').classList.add('bad')">${top ? `<div class="memet top">${top}</div>` : ""}${bot ? `<div class="memet bot">${bot}</div>` : ""}</div>`;
+}
+function artiFigure(kind, cap, url) {
+  if (kind === "meme") return `<figure class="arti meme">${artiMemeHTML(url, cap)}<figcaption><button type="button" class="artidl" data-u="${url}" data-cap="${cap}">⬇ Download meme</button><a href="${url}" target="_blank" rel="noopener">Picture only ↗</a></figcaption></figure>`;
+  const base = url.replace(/seed=\d+$/, "seed="), s0 = +((url.match(/seed=(\d+)$/) || [])[1] || 1);
+  return `<figure class="arti grid9" data-cap="${cap}"><div class="g9">${Array.from({ length: 9 }, (_, i) => `<img src="${base}${s0 + i}" loading="lazy" alt="Version ${i + 1}" title="Bot ${i + 1} — tap to make this one big" data-u="${base}${s0 + i}" onload="this.classList.add('ok')">`).join("")}</div><figcaption class="small">9 bots · tap your favourite</figcaption></figure>`;
+}
+document.addEventListener("click", e => { // pick one of the 9 → it becomes the big picture (with the meme words)
+  const im = e.target.closest(".grid9 .g9 img"); if (!im) return;
+  const fig = im.closest("figure"), cap = fig.dataset.cap || "", u = im.dataset.u;
+  fig.outerHTML = cap ? artiFigure("meme", cap, u) : `<figure class="arti ok"><img src="${u}" alt="picked"><figcaption><button type="button" class="artidl" data-u="${u}">⬇ Download</button><a href="${u}" target="_blank" rel="noopener">Open full size ↗</a></figcaption></figure>`;
+});
+async function artiBakeMeme(url, cap) { // draws the words onto the picture for the download (Impact-style: white, thick black outline)
+  const img = new Image(); img.crossOrigin = "anonymous"; img.src = url; await img.decode();
+  const c = document.createElement("canvas"); c.width = img.naturalWidth; c.height = img.naturalHeight; const x = c.getContext("2d"); x.drawImage(img, 0, 0);
+  const [top, bot] = cap.includes("|") ? cap.split("|").map(t => t.trim()) : ["", cap.trim()];
+  const draw = (t, y, base) => { if (!t) return; let fs = c.width / 7; x.font = `900 ${fs}px Impact, "Anton", "Arial Black", sans-serif`; while (x.measureText(t).width > c.width * .92 && fs > 12) { fs -= 4; x.font = `900 ${fs}px Impact, "Anton", "Arial Black", sans-serif`; }
+    x.textAlign = "center"; x.textBaseline = base; x.lineJoin = "round"; x.lineWidth = fs / 7; x.strokeStyle = "#000"; x.fillStyle = "#fff"; x.strokeText(t, c.width / 2, y); x.fillText(t, c.width / 2, y); };
+  draw(top, c.height * .03, "top"); draw(bot, c.height * .97, "bottom");
+  return await new Promise(r => c.toBlob(r, "image/jpeg", .92));
 }
 // ---------- 🎨 Arti — free image maker (Pollinations FLUX, no key, 25 images per person per day on this device) ----------
 const ARTI_MAX = 25;
@@ -2919,21 +2965,27 @@ window.Floof.addProvider({ id: "arti", label: "🎨 Arti — free image maker (2
     }
     const used = artiUsed(); if (used >= ARTI_MAX) return done(`You've used all **${ARTI_MAX}** of today's images. Arti refills at midnight — see you tomorrow! 🎨`);
     try { text = await avishFixTypos(text, null); } catch {} // "a dragn in spcae" → "a dragon in space"
-    const prompt = text.replace(/^(please\s+)?(can you\s+|could you\s+)?(make|draw|create|generate|paint|show)( me)?( an?| the)?( image| picture| pic| drawing)?( of)?\s*/i, "").slice(0, 600) || text;
+    // meme text: anything in quotes is written on the picture by Floof (crisp, spelled right) — the AI only paints the picture
+    const quoted = [...text.matchAll(/["“”']([^"“”']{1,60})["“”']/g)].map(m => m[1].trim()).filter(Boolean);
+    const meme = quoted.length > 0 || /\bmeme\b/i.test(text), grid = /\b(3 ?x ?3|nine|9 (bots|versions|pictures|pics|images|options)|grid)\b/i.test(text);
+    let prompt = text.replace(/["“”'][^"“”']{1,60}["“”']/g, " ").replace(/\b(that |which |and )?(says?|saying|with the (words?|text)|text|caption(ed)?)\b\s*:?/gi, " ").replace(/\b(as |like )?(it'?s |its )?(a )?meme( type| style)?( test| text)?s?\b/gi, " ").replace(/\b(3 ?x ?3|nine|9 (bots|versions|pictures|pics|images|options)|grid|higher quality( pics)?|high quality|assign [^,.]*|each bot[^,.]*)\b/gi, " ")
+      .replace(/^\s*(please\s+)?(can you\s+|could you\s+)?(make|draw|create|generate|paint|show)( me)?( an?| the)?( image| picture| pic| drawing)?( of)?\s*/i, "").replace(/\s+/g, " ").replace(/^[\s,.]+|[\s,.]+$/g, "").slice(0, 600) || text;
     const wide = /\b(wide|landscape|banner|wallpaper for (pc|laptop|desktop)|youtube thumbnail|16:9)\b/i.test(text), tall = /\b(tall|portrait|phone wallpaper|poster|9:16)\b/i.test(text);
-    const [w, h] = wide ? [1280, 720] : tall ? [768, 1152] : [1024, 1024];
-    const seed = Math.floor(Math.random() * 1e9);
-    const url = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt + ", high quality, detailed")}?width=${w}&height=${h}&model=flux&seed=${seed}&nologo=true&safe=true&referrer=floofai`;
-    ls.set(artiDayKey(), used + 1); refreshModels?.();
-    status("🎨 Arti is painting… (about 5-15 seconds)");
-    setTimeout(() => status("Ready"), 15000);
-    return done(`![${prompt.replace(/[\[\]()]/g, "")}](${url})\n\n🎨 *Arti · image ${used + 1} of ${ARTI_MAX} today*`);
+    const [w, h] = wide ? [1536, 864] : tall ? [896, 1536] : [1280, 1280];
+    const style = meme ? ", bold cartoon meme style, vivid colours, sharp clean lines, centred subject, plain background, no words, no captions" : ", high quality, highly detailed, sharp focus";
+    const seed = Math.floor(Math.random() * 1e9), base = `https://image.pollinations.ai/prompt/${encodeURIComponent(prompt + style)}?width=${w}&height=${h}&model=flux&nologo=true&safe=true&referrer=floofai&seed=`;
+    const cap = quoted.join(" | ").replace(/[\[\]()]/g, "").toUpperCase();
+    const cost = grid ? 3 : 1; if (used + cost > ARTI_MAX) return done(`That needs ${cost} of your daily images and you have ${ARTI_MAX - used} left — try a single picture instead.`);
+    ls.set(artiDayKey(), used + cost); refreshModels?.();
+    status(grid ? "🎨 9 Arti bots are painting one square each… (about 15-30 seconds)" : "🎨 Arti is painting… (about 5-15 seconds)"); setTimeout(() => status("Ready"), grid ? 30000 : 15000);
+    const tag = (grid ? "arti9" : meme ? "meme" : "") + (grid || meme ? ":" + cap : prompt.replace(/[\[\]()]/g, ""));
+    return done(`![${tag}](${base}${seed})\n\n🎨 *Arti · ${grid ? "9 bots painted 9 versions — tap the best one to make it big" : meme ? "meme — the words are written on by Floof, so they're always spelled right" : "picture"} · ${used + cost} of ${ARTI_MAX} used today*`);
   }
 });
 document.addEventListener("click", async e => { // download the picture as a file
   const b = e.target.closest(".artidl"); if (!b) return;
   b.disabled = true; b.textContent = "Saving…";
-  try { const r = await fetch(b.dataset.u); const bl = await r.blob(); const a = document.createElement("a"); a.href = URL.createObjectURL(bl); a.download = "arti-" + Date.now() + ".jpg"; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); b.textContent = "✓ Saved"; }
+  try { const bl = b.dataset.cap ? await artiBakeMeme(b.dataset.u, b.dataset.cap) : await (await fetch(b.dataset.u)).blob(); const a = document.createElement("a"); a.href = URL.createObjectURL(bl); a.download = "arti-" + Date.now() + ".jpg"; a.click(); setTimeout(() => URL.revokeObjectURL(a.href), 5000); b.textContent = "✓ Saved"; }
   catch { window.open(b.dataset.u, "_blank"); b.textContent = "⬇ Download"; }
   b.disabled = false;
 });
