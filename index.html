@@ -149,7 +149,8 @@ form#form{padding:12px 16px 16px;border-top:1px solid var(--line)}
 /* knowledge */
 .kn{flex:1;overflow:auto;padding:16px}
 .kgrid{max-width:900px;margin:0 auto;display:grid;grid-template-columns:1fr 1fr;gap:16px}
-.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:14px;display:flex;flex-direction:column;gap:10px;min-width:0}
+.card .row>input,.card .row>select{min-width:0;flex:1}
 .card h3{margin:0;font-size:16px}
 .row{display:flex;gap:8px;align-items:center}
 .doc{display:flex;gap:8px;align-items:center;padding:8px 10px;border:1px solid var(--line);border-radius:10px;background:var(--panel2)}
@@ -160,10 +161,10 @@ form#form{padding:12px 16px 16px;border-top:1px solid var(--line)}
 .stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;text-align:center}
 .stats b{display:block;font-size:20px;color:var(--accent);font-variant-numeric:tabular-nums}
 .stats div{background:var(--panel2);border-radius:10px;padding:8px 4px;font-size:11px;color:var(--dim)}
-@media(max-width:820px){.kgrid{grid-template-columns:1fr}#ginfo{width:auto;left:12px;top:auto;bottom:12px;max-height:45%}}
+@media(max-width:820px){.kgrid{grid-template-columns:minmax(0,1fr)}#ginfo{width:auto;left:12px;top:auto;bottom:12px;max-height:45%}}
 @media(max-width:720px){header{flex-wrap:wrap}#status{order:5;flex-basis:100%;font-size:12px}.tabs{flex:1;min-width:0;overflow-x:auto}#acctNm{display:none}}
 @media(max-width:520px){.authtop{position:static;padding:0 0 14px;width:100%;max-width:380px}#auth{display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:14px}.authtop a.back{font-size:12px;padding:5px 10px}}
-@media(max-width:720px){#side{position:fixed;inset:0 auto 0 0;z-index:5;transform:translateX(-100%);transition:transform .2s}#side.open{transform:none}#menuBtn{display:block}.tabs button{padding:6px 9px}}
+@media(max-width:720px){#side{position:fixed;inset:0 auto 0 0;z-index:5;transform:translateX(-100%);transition:transform .2s}#side.open{transform:none}#menuBtn{display:block;position:relative;z-index:6}.doc span{white-space:normal;overflow-wrap:anywhere;min-width:0}.tabs button{padding:6px 9px}}
 </style>
 </head>
 <body>
@@ -210,6 +211,8 @@ form#form{padding:12px 16px 16px;border-top:1px solid var(--line)}
     <select id="pv"><option value="">Off — on-device only</option><option value="gemini">Google Gemini — free</option><option value="openrouter">OpenRouter — free models</option><option value="ollama">Local PC (Ollama) — free, private</option></select>
     <input type="password" id="cKey" placeholder="API key" autocomplete="off">
     <select id="cModel"></select>
+    <button type="button" id="pvTest" style="font-size:12px">🩺 Test brain</button>
+    <div class="small" id="pvTestOut" style="font-size:11px;line-height:1.45" aria-live="polite"></div>
     <label class="row small" style="cursor:pointer"><input type="checkbox" id="cFix" checked> Auto-test &amp; fix code</label>
     <div class="small" id="pvHelp" style="font-size:11px"></div>
   </div>
@@ -952,23 +955,32 @@ function fitHistory(msgs, extraChars, total = CHAR_BUDGET) { // newest first unt
   return out;
 }
 
-async function send(override, extra = {}) {
-  const input = $("#input"), text = (override ?? input.value).trim();
+let sendRun = 0;
+const unlockUI = () => { busy = false; $("#send").disabled = false; $("#stop").hidden = true; };
+async function send(override, extra = {}) { // locks at once (before any await) so two replies can never run together
+  const text = (override ?? $("#input").value).trim();
   if (!text || busy) return;
+  busy = true; $("#send").disabled = true; const run = ++sendRun;
+  try { return await sendCore(override, extra); }
+  finally { if (sendRun === run && busy) unlockUI(); } // early returns / unexpected errors never leave the app locked
+}
+async function sendCore(override, extra = {}) {
+  const input = $("#input"), text = (override ?? input.value).trim();
   if (!cur) { cur = { id: Date.now(), title: "", msgs: [], docs: [] }; chats.unshift(cur); }
-  cur.docs ??= [];
-  if (!cur.title) cur.title = text.slice(0, 40);
-  if (!cur.msgs.length) $("#wrap").innerHTML = "";
+  const chat = cur; // this reply belongs to this chat, even if you open/delete/start another one meanwhile
+  chat.docs ??= [];
+  if (!chat.title) chat.title = text.slice(0, 40);
+  if (!chat.msgs.length) $("#wrap").innerHTML = "";
   const words = text.split(/\s+/).length;
-  const prevUser = [...cur.msgs].reverse().find(m => m.role === "user");
+  const prevUser = [...chat.msgs].reverse().find(m => m.role === "user");
   if (!extra.depth) stopLoop = false; // a message you typed resets the auto-fix loop
   if (!extra.depth && !extra.plugin && activePlugin) { extra = { ...extra, plugin: activePlugin }; activePlugin = null; renderPlugBar(); }
-  cur.msgs.push({ role: "user", content: text, img: extra.img, auto: !!extra.depth || undefined }); bubble("user", text, null, null, extra.img, !!extra.depth);
+  chat.msgs.push({ role: "user", content: text, img: extra.img, auto: !!extra.depth || undefined }); bubble("user", text, null, null, extra.img, !!extra.depth);
   if (override == null) { input.value = ""; autosize(); } renderChats();
 
   // memory: answer "what do you know about me", "forget…", "remember that…" directly
   const mc = !extra.screen && memoryCommand(text);
-  if (mc) { const ob = bubble("assistant", mc); cur.msgs.push({ role: "assistant", content: mc }); save(); scroll(); return; }
+  if (mc) { const ob = bubble("assistant", mc); chat.msgs.push({ role: "assistant", content: mc }); save(); scroll(); return; }
   // dictionary: "define x", "what does x mean", "meaning of x"
   const dm = !extra.screen && text.match(/^(?:define|definition of|meaning of|what(?:'s| is) the meaning of|what does)\s+["']?([a-z][a-z'-]{1,40})["']?(?:\s+mean)?\s*\??$/i);
   if (dm) {
@@ -976,12 +988,12 @@ async function send(override, extra = {}) {
     let w = dm[1], fixed = null; await loadDict(); if (DICT && !DICT.has(w.toLowerCase())) { const sg = suggest(w.toLowerCase()); if (sg) { fixed = w; w = sg; } }
     const def = await defineWord(w);
     const reply = def ? (fixed ? `*(I read "${fixed}" as "${w}")*\n\n` : "") + def : (DICT && DICT.has(w.toLowerCase()) ? `"${w}" is a real word, but I couldn't fetch its meaning — check your internet.` : `I couldn't find "${w}" in the dictionary.`);
-    ob.classList.remove("cursor"); ob.innerHTML = md(reply); cur.msgs.push({ role: "assistant", content: reply }); save(); scroll(); status(def ? "📖 Done ✓" : "Ready"); return;
+    ob.classList.remove("cursor"); ob.innerHTML = md(reply); chat.msgs.push({ role: "assistant", content: reply }); save(); scroll(); status(def ? "📖 Done ✓" : "Ready"); return;
   }
   const newMem = extra.screen || extra.depth ? [] : learnFromText(text);
 
   // 1) read: long messages become part of this chat's grid, so every part can be found later
-  if (words > 120) cur.docs.push({ title: "Your message: " + text.slice(0, 30) + "…", text, sector: MW.guessSector(G, text) });
+  if (words > 120) chat.docs.push({ title: "Your message: " + text.slice(0, 30) + "…", text, sector: MW.guessSector(G, text) });
   save();
   const CG = chatGrid();
 
@@ -998,7 +1010,7 @@ async function send(override, extra = {}) {
   let { hits, sector } = info.type === "summary" ? { hits: [], sector: MW.guessSector(CG, text) } : MW.search(CG, own, 4);
   if (!scr && info.type !== "summary" && prevUser && MW.isFollowUp(text, info.terms) && (!hits.length || hits[0].score < .6)) {
     query = prevUser.content.slice(0, 400) + " " + text;
-    const prevSec = [...cur.msgs].reverse().find(m => m.u)?.u.sector || 0;
+    const prevSec = [...chat.msgs].reverse().find(m => m.u)?.u.sector || 0;
     const own = info.terms.length ? MW.search(CG, text, 3, prevSec).hits : [];
     const both = MW.search(CG, query, 4);
     const seen = new Set(own.map(h => h.text));
@@ -1017,7 +1029,7 @@ async function send(override, extra = {}) {
     try {
       const pages = await webSearch(query);
       if (autoLearn) { const n = learnPages(pages); if (n) { saveDocs(); rebuild(); status(`🌐 Learned ${n} new page${n > 1 ? "s" : ""} into the grid`); } }
-      else { const have = new Set(cur.docs.map(d => d.url)); for (const p of pages) if (!have.has(p.url)) cur.docs.push({ ...p, sector: MW.guessSector(G, p.text) }); save(); }
+      else { const have = new Set(chat.docs.map(d => d.url)); for (const p of pages) if (!have.has(p.url)) chat.docs.push({ ...p, sector: MW.guessSector(G, p.text) }); save(); }
       CG2 = chatGrid();
       const r2 = MW.search(CG2, query, 4);
       if (r2.hits.length) { hits = r2.hits; sector = r2.sector; u.sector = sector; }
@@ -1025,7 +1037,7 @@ async function send(override, extra = {}) {
     } catch { status("🌐 Web search failed — offline or blocked. Using the grid.", "err"); }
   }
   if (hits.length) hits = hits.filter(h => h.sector === hits[0].sector || h.score > hits[0].score * .9); // stay on one topic
-  const urlOf = new Map(cur.docs.concat(docs).filter(d => d.url).map(d => [d.title, d.url]));
+  const urlOf = new Map(chat.docs.concat(docs).filter(d => d.url).map(d => [d.title, d.url]));
   const src = [...new Map(hits.map(h => [h.title, { title: h.title, sector: h.sector, url: urlOf.get(h.title) }])).values()];
 
   if (!engine && !cloudReady()) { // grid mode: compose an answer from the best sentences
@@ -1059,15 +1071,16 @@ async function send(override, extra = {}) {
     }
     out.classList.remove("cursor"); out.innerHTML = md(reply) + srcHTML(src, u);
     if (!nudged && !/^Hi|Got it|I won't remember/.test(reply)) { nudged = true; out.insertAdjacentHTML("beforeend", SMART_CARD(true)); }
-    cur.msgs.push({ role: "assistant", content: reply, src, u }); save(); scroll(); if (scr) status("Done ✓"); return;
+    chat.msgs.push({ role: "assistant", content: reply, src, u }); save(); scroll(); if (scr) status("Done ✓"); return;
   }
 
   busy = true; $("#send").disabled = true; $("#stop").hidden = false;
+  let stopped = false, fallBack = false;
   status(hits.length ? `Understood (${u.type}) · grid found ${hits.length} fact${hits.length > 1 ? "s" : ""} — writing…` : `Understood (${u.type}) — writing…`);
   let reply = "", finishWhy = "";
   try {
     const facts = hits.length ? "\n\nRelevant facts from the user's knowledge grid. Use them if they help answer, prefer them over your own memory, and don't mention the grid:\n" + hits.map((h, i) => `[${i + 1}] ${h.text}`).join("\n") : "";
-    const guide = (cur.msgs.length > 2 ? "\n\nThis is an ongoing conversation: use everything said earlier in this chat (names, details, decisions, code) and answer in that context. Resolve words like 'it', 'that' or 'the code' from the previous messages." : "") + (ty.fixes.length ? `\n\nThe user's message has typos; they most likely meant: "${ty.text}".` : "") + `\n\nThe user's latest message is a ${u.type === "statement" ? "statement or request" : u.type + " question"}${keyTerms ? " about: " + keyTerms : ""}. Read the whole message carefully before answering, and answer every part of it.` + (info.type === "summary" ? " It is long: summarise its main points clearly, then offer to go deeper." : "")
+    const guide = (chat.msgs.length > 2 ? "\n\nThis is an ongoing conversation: use everything said earlier in this chat (names, details, decisions, code) and answer in that context. Resolve words like 'it', 'that' or 'the code' from the previous messages." : "") + (ty.fixes.length ? `\n\nThe user's message has typos; they most likely meant: "${ty.text}".` : "") + `\n\nThe user's latest message is a ${u.type === "statement" ? "statement or request" : u.type + " question"}${keyTerms ? " about: " + keyTerms : ""}. Read the whole message carefully before answering, and answer every part of it.` + (info.type === "summary" ? " It is long: summarise its main points clearly, then offer to go deeper." : "")
       + (extra.full ? " The user attached a picture (a screenshot or a camera photo). If it shows questions, solve them step by step with a clear final answer for each; otherwise describe or explain what it shows and help with what they asked." : scr ? " It was read from the user's screen with OCR, so it may contain small reading errors. Find the question(s) on it and solve them step by step, giving a clear final answer for each." + (solved.length ? " Exact results already worked out (use these): " + solved.join("; ") : "") : "");
     const coding = coderOn || CODEY.test(own);
     const tools = "\n\nCODE TOOLS: ```js blocks run in a sandbox (console.log prints). ```python blocks run real Python 3 in the browser (standard library only; no input() — set values in variables and print results). ```html blocks open as a live preview in a side panel." + (cloud.fix !== false ? " After you reply, your last runnable block is tested automatically; if it errors, you'll get the error to fix." : "")
@@ -1085,7 +1098,7 @@ When fixing: find the root cause, explain it in one line, and return the FULL co
     let t = 0; const onT = d => { reply += d; const now = performance.now(); if (now - t > 50) { out.innerHTML = md(reply); scroll(); t = now; } };
     if (cloudReady()) {
       const hist = [];
-      for (const m of fitHistory(cur.msgs, sys.length, 120000)) { // turns must alternate, starting with the user
+      for (const m of fitHistory(chat.msgs, sys.length, 120000)) { // turns must alternate, starting with the user
         if (!hist.length && m.role !== "user") continue;
         if (hist.length && hist.at(-1).role === m.role) hist.at(-1).content += "\n\n" + m.content; else hist.push({ ...m });
       }
@@ -1093,7 +1106,7 @@ When fixing: find the root cause, explain it in one line, and return the FULL co
       const us = await cloudStream(sys, hist, onT); finishWhy = us.finish || "";
       status(`Ready ✓ · ${us.model || curModel()} · ${us.in + us.out} tokens · free`);
     } else {
-      const history = fitHistory(cur.msgs, sys.length);
+      const history = fitHistory(chat.msgs, sys.length);
       const stream = await engine.chat.completions.create({
         messages: [{ role: "system", content: sys }, ...history],
         stream: true, temperature: coderOn ? 0.2 : CODEY.test(own) ? 0.3 : 0.6, max_tokens: /Coder/.test(loadedModel) ? 4096 : coderOn ? 3072 : 1536,
@@ -1104,12 +1117,17 @@ When fixing: find the root cause, explain it in one line, and return the FULL co
     }
   } catch (e) {
     console.error(e);
-    if (e.name === "AbortError") status("Stopped.");
-    else if (cloudReady()) status(/failed to fetch|network|load failed/i.test(e.message || "") ? "☁ Can't reach the AI service — check your internet, or switch ☁ off to use basic mode." : "☁ " + (e.message || e), "err");
+    if (e.name === "AbortError") { stopped = true; status("Stopped."); }
+    else if ((e.kind === "net" || e.kind === "server") && PV[cloud.pv]?.nokey && !extra.depth) { // Floof Cloud / Athena unreachable: answer from the grid for a while instead of erroring every message
+      cloudBad = true; fallBack = true; clearTimeout(cloudBadTimer); cloudBadTimer = setTimeout(() => { cloudBad = false; updateMode(); }, 300000); updateMode();
+      status(`☁ ${pvName(cloud.pv)} unreachable — answering from the grid for now.`, "err");
+    }
+    else if (e.kind || cloudReady()) { status(e.kind ? "☁ " + e.message : /failed to fetch|network|load failed/i.test(e.message || "") ? "☁ Can't reach the AI service — check your internet, or switch ☁ off to use basic mode." : "☁ " + (e.message || e), "err"); if (e.kind) finishWhy = "ERR:" + e.message.replace(/[.\s]+$/, "") + " (press 🩺 Test brain in the sidebar for details)"; }
     else if (/context|window|prompt.*(long|exceed)/i.test(e.message || "")) reply += "\n\n_(That was more than the brain can hold at once — start a new chat, or ask about one part.)_";
     else if (/fetch|network/i.test(e.message || "")) { engine = null; loadedModel = null; status("Lost the model files — press Load brain again.", "err"); updateMode(); }
     else status("Error: " + (e.message || e), "err");
   } finally {
+    unlockUI(); // first, so nothing below can leave the app locked
     out.classList.remove("cursor");
     const raw = reply;
     reply = reply.replace(/<think>[\s\S]*?<\/think>/g, "");
@@ -1118,20 +1136,25 @@ When fixing: find the root cause, explain it in one line, and return the FULL co
     for (const m of reply.matchAll(/<remember>([\s\S]{2,160}?)<\/remember>/gi)) { const f = addMemory(m[1]); if (f) newMem.push(f); }
     reply = reply.replace(/<remember>[\s\S]*?<\/remember>/gi, "").replace(/<remember>[\s\S]*$/i, "").trim();
     const empty = !reply;
-    if (empty) {
-      const why = /SAFETY|BLOCKED|PROHIBITED|content_filter/i.test(finishWhy) ? "the AI service blocked that reply for safety" : /MAX_TOKENS|length/i.test(finishWhy) ? "the answer ran out of space" : /RECITATION/i.test(finishWhy) ? "it would have copied text it isn't allowed to repeat" : "the brain sent back an empty answer";
+    if (empty && fallBack && cur === chat) { // retry this message with the grid (cloudBad is now set)
+      if (chat.msgs.at(-1)?.role === "user") chat.msgs.pop(); save(); renderLog();
+      setTimeout(() => send(text, { ...extra, retry: true }), 0); return;
+    }
+    if (empty && stopped) { reply = "⏹ Stopped."; status("Stopped."); }
+    else if (empty) {
+      const why = finishWhy.startsWith("ERR:") ? finishWhy.slice(4) : /SAFETY|BLOCKED|PROHIBITED|content_filter/i.test(finishWhy) ? "the AI service blocked that reply for safety" : /MAX_TOKENS|length/i.test(finishWhy) ? "the answer ran out of space" : /RECITATION/i.test(finishWhy) ? "it would have copied text it isn't allowed to repeat" : "the brain sent back an empty answer";
       reply = `⚠️ I didn't get an answer — ${why}. Press **↻ Try again**, or rephrase it.`;
       status("No answer came back — you can try again.", "err");
     }
     if (newMem.length) u.mem = [...new Set(newMem)];
     out.innerHTML = md(reply) + srcHTML(src, u);
     if (empty) { // don't keep failed attempts in the chat history; offer a retry instead
-      const last = cur.msgs.at(-1);
+      const last = chat.msgs.at(-1);
       out.insertAdjacentHTML("beforeend", `<div class="srcs"><button type="button" class="retry">↻ Try again</button></div>`);
-      out.querySelector(".retry").onclick = () => { if (busy) return; if (cur.msgs.at(-1) === last) cur.msgs.pop(); save(); renderLog(); send(last.content, { ...extra, retry: true }); };
+      out.querySelector(".retry").onclick = () => { if (busy || !last) return; if (chat.msgs.at(-1) === last) chat.msgs.pop(); save(); if (chats.includes(chat)) cur = chat; renderLog(); send(last.content, { ...extra, retry: true }); };
     } else decorateArtifacts(out, true);
-    if (!empty) cur.msgs.push({ role: "assistant", content: reply, src, u }); save();
-    busy = false; $("#send").disabled = false; $("#stop").hidden = true; scroll(); input.focus();
+    if (!empty) chat.msgs.push({ role: "assistant", content: reply, src, u }); save();
+    scroll(); input.focus();
   }
   // self-testing loop: run the code it just wrote (JS, Python or HTML); if it crashes, send the error back to be fixed
   if ((cloudReady() || engine) && (cloud.fix !== false || coderOn) && (extra.depth || 0) < 3 && !stopLoop) {
@@ -1144,7 +1167,7 @@ When fixing: find the root cause, explain it in one line, and return the FULL co
         status("🧪 Testing the code…");
         let res;
         if (lang === "html") res = await testHtml(code);
-        else { const box = document.createElement("div"); box.className = "runbox"; pre.after(box); res = await runCode(lang, code, box); }
+        else { const box = document.createElement("div"); box.className = "runbox"; pre.after(box); res = await runCode(lang, code, box, true); }
         const sig = res.errors[0] || "";
         if (res.errors.length && extra.lastErr && sig === extra.lastErr) status("🛠 Same bug came back twice — stopped auto-fixing. Tell me what you want changed.", "err");
         else if (res.errors.length && !stopLoop) {
@@ -1295,14 +1318,14 @@ idb.get("mwai.mem").then(v => { if (Array.isArray(v)) mems = v; renderMems(); })
 
 // ---------- Cloud brains (called straight from this browser; keys never leave it except to that provider) ----------
 const PV = {
-  gemini: { ph: "Gemini API key (AIza…)", ok: k => k.length > 20, vision: true, help: 'Free key, no card: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:var(--accent)">aistudio.google.com/apikey</a> (account holder must be 18+). Free use has daily limits — Floof AI switches model if one runs out.' },
+  gemini: { ph: "Gemini API key (AIza…)", ok: k => k.length > 20, vision: true, help: 'Free key, no card: <a href="https://aistudio.google.com/apikey" target="_blank" rel="noopener" style="color:var(--accent)">aistudio.google.com/apikey</a> (account holder must be 18+). Free use has daily limits — Floof AI picks free Flash models and switches if one runs out. School/work Google accounts may be blocked: use a personal one.' },
   openrouter: { ph: "OpenRouter key (sk-or-…)", ok: k => k.length > 20, vision: false, help: 'Free key: <a href="https://openrouter.ai/keys" target="_blank" rel="noopener" style="color:var(--accent)">openrouter.ai/keys</a>. Only free (:free) models are listed, so it costs nothing. Free models have daily limits.' },
-  ollama: { ph: "Ollama address", def: "http://localhost:11434", ok: k => /^https?:\/\//.test(k), vision: false, help: 'Runs on your own PC. Install <a href="https://ollama.com/download" target="_blank" rel="noopener" style="color:var(--accent)">Ollama</a>, run <code>ollama pull qwen3:8b</code>, and allow this page: set <code>OLLAMA_ORIGINS=*</code> then restart Ollama. Open Floof AI on that same PC; if Chrome asks to allow local network access, click Allow.' },
+  ollama: { ph: "Ollama address", def: "http://localhost:11434", ok: k => /^https?:\/\//.test(k), vision: false, help: 'Runs on your own PC. Install <a href="https://ollama.com/download" target="_blank" rel="noopener" style="color:var(--accent)">Ollama</a>, run <code>ollama pull qwen3:8b</code>, and allow this page: set <code>OLLAMA_ORIGINS=*</code> then restart Ollama. Open Floof AI on that same PC; if Chrome asks to allow local network access, click Allow. On a Chromebook with Ollama on another PC: also set <code>OLLAMA_HOST=0.0.0.0</code> and put <code>http://PC-IP:11434</code> above.' },
 };
 let cloud = ls.get("mwai.cloud", null), abortCtl = null, modelList = [];
 if (!cloud) cloud = { pv: "", keys: {}, model: {}, fix: true };
-if (!PV[cloud.pv]) cloud.pv = ""; delete cloud.keys.claude; delete cloud.model.claude; ls.del("mwai.claude"); ls.set("mwai.cloud", cloud); // paid option removed: wipe any old key
-let cloudBad = false; // set when the key/server was rejected, so Floof falls back instead of erroring
+if (cloud.pv && !PV[cloud.pv] && !["floof", "athena"].includes(cloud.pv)) cloud.pv = ""; delete cloud.keys.claude; delete cloud.model.claude; ls.del("mwai.claude"); ls.set("mwai.cloud", cloud); // paid option removed: wipe any old key
+let cloudBad = false, cloudBadTimer = 0; // set when the key/server was rejected, so Floof falls back instead of erroring
 const cloudReady = () => !cloudBad && !!PV[cloud.pv] && PV[cloud.pv].ok(cloud.keys[cloud.pv] || "");
 const curModel = () => $("#cModel").value || cloud.model[cloud.pv] || modelList[0]?.id || "";
 function saveCloud() { ls.set("mwai.cloud", cloud); updateMode(); }
@@ -1318,114 +1341,236 @@ window.Floof = {
     return true;
   }
 };
+// ---- brain health: real-world failures (retired model, not free on this key, used up) are remembered so fallbacks skip them ----
+const deadModels = new Map(); // "pv:model" -> { why, until }
+const isDead = (pv, m) => { const d = deadModels.get(pv + ":" + m); return !!d && d.until > Date.now(); };
+const markDead = (pv, m, why, ms) => deadModels.set(pv + ":" + m, { why, until: ms ? Date.now() + ms : Infinity });
+const noSysModels = new Set(); // models that refuse a system/developer instruction: we fold it into the first message instead
+const pvName = pv => ($("#pv").querySelector(`option[value="${pv}"]`)?.text || PV[pv]?.label || pv || "").split("—")[0].replace(/^[^\p{L}\p{N}]+/u, "").trim();
+const isLocalHost = u => /^https?:\/\/(localhost|127\.|\[::1\])/i.test(u);
+const lanOpts = u => /^https?:\/\/(10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|[^/:]+\.local\b)/i.test(u) ? { targetAddressSpace: "local" } : {}; // Chrome: lets an https page reach a PC on your home network (private addresses only — not tunnels)
+// Turns any provider failure into a clear error: e.kind, e.short (what happened), e.fix (what to do), e.skip (another model may work)
+function brainErr(pv, status, raw) {
+  const m = String(raw || ""), s = +status || 0, nm = pvName(pv);
+  const mk = (kind, short, fix, skip) => { const e = new Error(short + (fix ? " — " + fix : "")); Object.assign(e, { kind, short, fix: fix || "", skip: !!skip, raw: m.slice(0, 600), status: s, quota: !!skip }); return e; };
+  if (/^(TypeError: )?(Failed to fetch|Load failed|NetworkError|net::)/i.test(m) || s === -1)
+    return pv === "ollama" ? mk("net", "Ollama not reachable", "start Ollama on your PC, set OLLAMA_ORIGINS=* (and OLLAMA_HOST=0.0.0.0 if it's on another computer), restart it, and allow local network access if Chrome asks") : pv === "floof" || pv === "athena" ? mk("net", `Can't reach the ${nm} server`, "check your internet; a school network filter may be blocking it") : mk("net", `Can't reach ${nm}`, "check your internet — a school or managed Chromebook may block it; try home Wi-Fi");
+  if (pv === "floof" || pv === "athena") {
+    if (/isn't working|fix GEMINI_KEY/i.test(m)) return mk("server", "Floof Cloud's Google key was rejected", "the studio must replace GEMINI_KEY in Vercel. Until then pick Google Gemini (your own free key) or OpenRouter");
+    if (/GEMINI_KEY|isn't set up|not set up|key missing/i.test(m)) return mk("server", "Floof Cloud server has no GEMINI_KEY yet", "the studio owner must add GEMINI_KEY in Vercel → Settings → Environment Variables and redeploy. Until then pick Google Gemini (your own free key) or OpenRouter");
+    if (s === 503 && /sign-in right now/i.test(m)) return mk("busy", "The account server is slow right now", "wait a minute and try again — you don't need to sign out", true);
+    if (s === 401 || /sign in|signed out/i.test(m)) return mk("key", m || "Not signed in", pv === "floof" ? "sign out and sign back in with your MagicWinter account" : "sign out and sign back in with your Ares account");
+    if (s === 429 || s === 503 || /busy|overload/i.test(m)) return mk("busy", m || `${nm} is busy`, "wait a minute and try again", true);
+    return mk("server", m || `${nm} server error ${s}`, "try again in a minute");
+  }
+  if (/data policy|privacy setting|settings\/privacy/i.test(m)) return mk("policy", "OpenRouter blocks free models with your privacy settings", "open openrouter.ai/settings/privacy and switch ON the options that allow free models (training / publishing of free-model prompts), then test again");
+  if (/free-models-per-day/i.test(m)) return mk("daily", "You've used today's free OpenRouter messages (50 a day)", "it resets at midnight UTC — or switch to Google Gemini");
+  if (/free-models-per-min/i.test(m)) return mk("quota", "OpenRouter free limit (20 a minute) reached", "wait a minute", true);
+  if (/API key not valid|API_KEY_INVALID|API key expired|invalid api key|unregistered callers|No auth credentials|User not found|key.*(disabled|revoked)/i.test(m) || s === 401)
+    return mk("key", "Key rejected", pv === "gemini" ? "make a new key at aistudio.google.com/apikey and paste it in the sidebar" : pv === "openrouter" ? "make a new key at openrouter.ai/keys and paste it in the sidebar" : "check the key/address in the sidebar");
+  if (/reported as leaked/i.test(m)) return mk("key", "Google blocked this key because it leaked online", "make a new key at aistudio.google.com/apikey (never share it)");
+  if (/location is not supported|not available in your (country|region)|region.*not supported/i.test(m)) return mk("region", `${nm}'s free tier isn't available for this account or country`, "use Floof Cloud, OpenRouter or a downloaded brain instead");
+  if (s === 402 || /insufficient credits|negative balance|more credits/i.test(m)) return mk("credits", "OpenRouter says your balance is below zero", "top up to at least $0 at openrouter.ai/credits — free models stop working while the balance is negative");
+  if (/limit: 0\b|free tier is not available|not available (on|in) the free tier|enable billing|requires (a )?(paid|billing)|billing (is )?required|FAILED_PRECONDITION/i.test(m)) return mk("billing", "This model isn't free on your key", "Floof skips it and uses a free model", true);
+  if (/system ?instruction|developer instruction|system (role|prompt|message)s? (is |are )?not (supported|enabled|allowed)/i.test(m)) return mk("sysinst", "This model doesn't accept instructions", "", true);
+  if (s === 404 || /not found|is not supported for generateContent|no longer (available|supported)|has been (deprecated|shut down|discontinued)|No endpoints found|model .*does not exist|try pulling it/i.test(m))
+    return mk("gone", pv === "ollama" ? "That model isn't installed in Ollama" : "That model was retired or isn't available", pv === "ollama" ? "run: ollama pull qwen3:8b" : "Floof skips it and uses another", true);
+  if (/context length|too long|maximum context|exceeds the maximum|token count.*exceeds/i.test(m)) return mk("toolong", "That chat is too long for this model", "start a new chat, or pick a model with a bigger memory", true);
+  if (s === 403 && /moderation|flagged|guardrail|blocked/i.test(m)) return mk("blocked", "The service blocked that message", "rephrase it");
+  if (s === 403) return pv === "ollama" ? mk("cors", "Ollama refused this page", "set OLLAMA_ORIGINS=* and restart Ollama") : mk("key", "Access denied for this key", pv === "gemini" ? "make a new key at aistudio.google.com/apikey (school/work Google accounts may be blocked — use a personal one, account holder 18+)" : "check your key in the sidebar");
+  if (s === 429 || /quota|RESOURCE_EXHAUSTED|rate.?limit|too many requests|rate-limited/i.test(m))
+    return mk(/PerDay|per day/i.test(m) ? "dayquota" : "quota", /PerDay|per day/i.test(m) ? "This model's free daily limit is used up" : "This model's free limit is busy right now", "Floof switches to another model", true);
+  if (s >= 500 || s === 408 || /overloaded|UNAVAILABLE|try again later|Provider returned error|server_error|disconnected|timeout|timed out|internal error/i.test(m)) return mk("busy", `${nm} is overloaded right now`, "Floof tries another model; or wait a minute", true);
+  if (s === 400 && /maxOutputTokens|max_tokens|thinking/i.test(m)) return mk("badreq", "This model rejected the settings", "Floof tries another model", true);
+  return mk("other", (m || "HTTP " + s).slice(0, 200), "try another model, or press 🩺 Test brain", s >= 400);
+}
+const errText = j => { // pull the useful words out of any error body shape (Gemini object/array, OpenRouter, Ollama, Floof)
+  const o = Array.isArray(j) ? j.find(x => x && x.error) || j[0] : j; const e = o?.error;
+  if (!e) return o?.message || o?.detail || "";
+  if (typeof e === "string") return e;
+  const extra = [e.status, e.metadata?.raw, e.metadata?.provider_name, e.details ? JSON.stringify(e.details) : ""].filter(Boolean).join(" ");
+  return (e.message || "") + (extra ? " " + String(extra).slice(0, 1500) : "");
+};
+async function httpErr(r, pv) {
+  let t = ""; try { t = await r.text(); } catch {}
+  let m = t; try { m = errText(JSON.parse(t)) || t; } catch {}
+  return brainErr(pv, r.status, m.slice(0, 2000) || r.statusText);
+}
+async function getJSON(url, pv, opts = {}) { // GET JSON with clear errors and a timeout
+  const c = new AbortController(), tm = setTimeout(() => c.abort(), opts.ms || 15000);
+  let r; try { r = await fetch(url, { ...opts, signal: c.signal }); } catch (e) { throw brainErr(pv, -1, e.name === "AbortError" ? "Failed to fetch (timed out)" : "Failed to fetch: " + e.message); } finally { clearTimeout(tm); }
+  if (!r.ok) throw await httpErr(r, pv);
+  let j; try { j = await r.json(); } catch { throw brainErr(pv, r.status, "The reply wasn't JSON"); }
+  if (j && j.error) throw brainErr(pv, j.error.code || r.status, errText(j));
+  return j;
+}
 async function listModels(pv, key) {
   if (EXTRA_PV[pv]) return EXTRA_PV[pv].list(key);
   if (pv === "gemini") {
-    const j = await (await fetch("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200&key=" + encodeURIComponent(key))).json();
-    if (j.error) throw new Error(j.error.message);
-    const rank = id => { const v = parseFloat((id.match(/gemini-(\d+(?:\.\d+)?)/) || [0, 0])[1]); return v * 10 + (/-pro/.test(id) ? 3 : /flash-lite/.test(id) ? 1 : /flash/.test(id) ? 2 : 0) - (/preview|exp/.test(id) ? .5 : 0); };
-    return (j.models || []).filter(m => m.supportedGenerationMethods?.includes("generateContent") && /^models\/gemini-/.test(m.name) && !/tts|image|embed|audio|live|vision|thinking-exp|learnlm|aqa|computer/.test(m.name))
-      .map(m => ({ id: m.name.slice(7), name: m.displayName || m.name.slice(7) })).sort((a, b) => rank(b.id) - rank(a.id));
+    const j = await getJSON("https://generativelanguage.googleapis.com/v1beta/models?pageSize=1000&key=" + encodeURIComponent(key), pv);
+    // Free keys: newest STABLE Flash first (free + fast), then Flash-Lite, then previews; Pro/other models usually need billing so go last
+    const ver = id => parseFloat((id.match(/gemini-(\d+(?:\.\d+)?)/) || [0, 0])[1]);
+    const tier = id => /-pro|argon|ultra/.test(id) ? 4 : /preview|exp/.test(id) ? 3 : /flash-lite/.test(id) ? 1 : /flash/.test(id) ? 0 : 2;
+    return (j.models || []).filter(m => (m.supportedGenerationMethods || []).includes("generateContent") && /^models\/gemini-/.test(m.name) && !/tts|image|embed|audio|live|vision|thinking-exp|learnlm|aqa|computer|robotics|transcribe|translate|omni|banana|customtools|deep-research|antigravity|lyria|veo|imagen/.test(m.name))
+      .map(m => ({ id: m.name.slice(7), name: (m.displayName || m.name.slice(7)) + (/-pro|argon|ultra/.test(m.name) ? " (may need billing)" : /preview|exp/.test(m.name) ? " (preview)" : ""), ctx: m.inputTokenLimit || 0, max: m.outputTokenLimit || 0 }))
+      .filter((m, i, a) => a.findIndex(x => x.id === m.id) === i).sort((a, b) => tier(a.id) - tier(b.id) || ver(b.id) - ver(a.id) || a.id.length - b.id.length);
   }
   if (pv === "ollama") {
-    let j; try { j = await (await fetch(key.replace(/\/+$/, "") + "/api/tags")).json(); } catch { throw new Error("Can't reach Ollama at " + key + " — is it running, and is OLLAMA_ORIGINS=* set?"); }
-    if (!(j.models || []).length) throw new Error("Ollama has no models yet — run: ollama pull qwen3:8b");
-    return j.models.filter(m => !/embed/.test(m.name)).sort((a, b) => (b.size || 0) - (a.size || 0)).map(m => ({ id: m.name, name: m.name + (m.details?.parameter_size ? " · " + m.details.parameter_size : "") }));
+    const base = key.replace(/\/+$/, ""), j = await getJSON(base + "/api/tags", pv, { ...lanOpts(base), ms: 8000 });
+    if (!(j.models || []).length) { const e = new Error("Ollama has no models yet — on the PC run: ollama pull qwen3:8b"); e.kind = "gone"; throw e; }
+    return j.models.filter(m => !/embed|bert|minilm/i.test(m.name) && !(m.details?.family || "").match(/bert/)).sort((a, b) => (b.size || 0) - (a.size || 0)).map(m => ({ id: m.name, name: m.name + (m.details?.parameter_size ? " · " + m.details.parameter_size : "") }));
   }
   if (pv === "openrouter") {
-    const j = await (await fetch("https://openrouter.ai/api/v1/models")).json();
-    const pri = id => /coder|deepseek/.test(id) ? 3 : /qwen3|llama-3\.3-70b|gpt-oss|kimi|glm/.test(id) ? 2 : 1;
-    return (j.data || []).filter(m => m.id.endsWith(":free") && !/image|audio|vl-/.test(m.id))
-      .sort((a, b) => pri(b.id) - pri(a.id) || (b.context_length || 0) - (a.context_length || 0)).map(m => ({ id: m.id, name: m.name || m.id }));
+    const j = await getJSON("https://openrouter.ai/api/v1/models", pv);
+    const free = m => /:free$/.test(m.id) || (m.pricing && +m.pricing.prompt === 0 && +m.pricing.completion === 0 && String(m.pricing.prompt) !== "" && +(m.pricing.request || 0) === 0);
+    const size = id => Math.max(0, ...[...id.matchAll(/(\d+(?:\.\d+)?)b\b/gi)].map(x => +x[1]));
+    const score = m => { const id = m.id, sz = size(id); return (id === "openrouter/free" ? 2.5 : sz >= 20 ? 3 : sz >= 7 ? 2 : sz ? 1 : 2) + (/gemma|llama-3\.3|qwen3|deepseek|gpt-oss|kimi|glm|nemotron-3-super|minimax|mistral-small/.test(id) ? .5 : 0) - (/preview|nano|mini|small|lightning|xs\b|tiny/.test(id) ? .5 : 0); };
+    return (j.data || []).filter(m => m && m.id && free(m) && (m.architecture?.output_modalities || ["text"]).includes("text") && !/guard|safety|moderation|embed|tts|whisper|rerank|ocr|image|audio/i.test(m.id))
+      .sort((a, b) => score(b) - score(a) || (b.context_length || 0) - (a.context_length || 0)).map(m => ({ id: m.id, name: m.name || m.id, ctx: m.context_length || 0, max: m.top_provider?.max_completion_tokens || 0 }));
   }
   return [];
 }
+let lastListErr = null;
 async function refreshModels() {
   const pv = cloud.pv, key = cloud.keys[pv] || "", sel = $("#cModel");
-  sel.innerHTML = ""; modelList = []; cloudBad = false;
-  if (!pv || !PV[pv].ok(key)) { sel.style.display = "none"; return; }
+  sel.innerHTML = ""; modelList = []; cloudBad = false; $("#pvTestOut") && ($("#pvTestOut").innerHTML = "");
+  if (!pv || !PV[pv].ok(key)) { sel.style.display = "none"; updateMode(); return; }
   sel.style.display = ""; sel.innerHTML = "<option value=''>Loading models…</option>";
   try {
     modelList = await listModels(pv, key);
-    if (!modelList.length) throw new Error("No usable models found for this key.");
+    if (pv !== cloud.pv) return; // user switched brain while this was loading
+    if (!modelList.length) throw new Error("No free models found for this key.");
     sel.innerHTML = modelList.map((m, i) => `<option value="${esc(m.id)}">${esc(m.name)}${i === 0 ? " ★" : ""}</option>`).join("");
-    if (modelList.some(m => m.id === cloud.model[pv])) sel.value = cloud.model[pv];
-    status(`☁ ${$("#pv").selectedOptions[0].text.split("—")[0].trim()} ready — ${modelList.length} model${modelList.length > 1 ? "s" : ""}.`);
+    if (modelList.some(m => m.id === cloud.model[pv]) && !isDead(pv, cloud.model[pv])) sel.value = cloud.model[pv];
+    status(`☁ ${pvName(pv)} ready — ${modelList.length} model${modelList.length > 1 ? "s" : ""}.`);
   } catch (e) {
+    if (pv !== cloud.pv) return;
     sel.innerHTML = ""; sel.style.display = "none";
-    const m = String(e.message || e), keyBad = /key|auth|permission|denied|401|403/i.test(m);
-    if (keyBad) cloudBad = true; // wrong key: use the grid/on-device brain until it's fixed
-    status(keyBad ? "☁ That key was rejected — check it in the sidebar. Using basic mode for now." : /fetch|network/i.test(m) ? "☁ Can't reach " + ($("#pv").selectedOptions[0].text.split("—")[0].trim()) + " right now — check your internet." : "☁ Couldn't load models: " + m, "err");
+    lastListErr = e; const k = e.kind || ""; if (/key|server|policy|region|credits/.test(k) || (k === "net" && PV[pv]?.nokey)) cloudBad = true; // can't work until fixed: answer with the grid/on-device brain meanwhile
+    status(`☁ ${pvName(pv)}: ${e.message || e}${cloudBad ? " (Using basic mode for now.)" : ""}`, "err");
   }
   updateMode();
 }
 
-async function* sse(r) { // read server-sent events
-  const rd = r.body.getReader(), dec = new TextDecoder(); let buf = "";
-  for (;;) {
-    const { done, value } = await rd.read(); if (done) break;
-    buf += dec.decode(value, { stream: true }); let i;
+async function* sse(r) { // read server-sent events; copes with lines split across chunks, ": comment" keep-alives, CRLF and plain-JSON error bodies
+  const rd = r.body.getReader(), dec = new TextDecoder(); let buf = "", raw = "", saw = false;
+  for (let done = false; !done;) {
+    const c = await rd.read(); done = c.done;
+    buf += done ? dec.decode() : dec.decode(c.value, { stream: true });
+    if (done && buf && !buf.endsWith("\n")) buf += "\n";
+    let i;
     while ((i = buf.indexOf("\n")) >= 0) {
-      const line = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
-      if (!line.startsWith("data:")) continue; const d = line.slice(5).trim(); if (d === "[DONE]") return;
-      try { yield JSON.parse(d); } catch {}
+      const line = buf.slice(0, i).replace(/\r$/, ""); buf = buf.slice(i + 1);
+      if (line.startsWith("data:")) { saw = true; const d = line.slice(5).trim(); if (d === "[DONE]") return; if (!d) continue; try { yield JSON.parse(d); } catch {} }
+      else if (!saw && !line.startsWith(":") && raw.length < 50000) raw += line + "\n";
     }
   }
+  if (!saw && raw.trim()) { try { for (const ev of [].concat(JSON.parse(raw))) yield ev; } catch {} } // e.g. a JSON error sent with status 200
 }
-async function httpErr(r, pv) {
-  let m = ""; try { const j = await r.json(); m = j.error?.message || j.message || ""; } catch {}
-  const e = new Error(r.status === 401 || r.status === 403 && /key/i.test(m) ? "API key not accepted — check it in the sidebar." : r.status === 429 ? "Free limit reached for this model" + (m ? ": " + m.slice(0, 120) : "") : /credit|balance|billing/i.test(m) ? "That model isn't free on your account — pick another." : (m || "HTTP " + r.status));
-  e.quota = r.status === 429 || /quota|exhaust|rate/i.test(m); return e;
-}
-async function streamOnce(pv, model, sys, msgs, onText) {
-  abortCtl = new AbortController(); const key = cloud.keys[pv], usage = { in: 0, out: 0, model };
-  if (EXTRA_PV[pv]) return { model, ...(await EXTRA_PV[pv].stream({ model, sys, msgs, onText, signal: abortCtl.signal, key })) };
-  const b64 = u => u.split(",")[1];
-  if (pv === "gemini") {
-    const contents = msgs.map(m => ({ role: m.role === "assistant" ? "model" : "user", parts: (m.img ? [{ inline_data: { mime_type: "image/jpeg", data: b64(m.img) } }] : []).concat([{ text: m.content }]) }));
-    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse&key=${encodeURIComponent(key)}`, { method: "POST", signal: abortCtl.signal, headers: { "content-type": "application/json" }, body: JSON.stringify({ systemInstruction: { parts: [{ text: sys }] }, contents, generationConfig: { maxOutputTokens: 16384 } }) });
-    if (!r.ok) throw await httpErr(r, pv);
-    for await (const ev of sse(r)) {
-      if (ev.error) throw new Error(ev.error.message);
-      for (const p of ev.candidates?.[0]?.content?.parts || []) if (p.text && !p.thought) onText(p.text);
-      if (ev.candidates?.[0]?.finishReason) usage.finish = ev.candidates[0].finishReason;
-      if (ev.promptFeedback?.blockReason) usage.finish = "BLOCKED:" + ev.promptFeedback.blockReason;
-      if (ev.usageMetadata) { usage.in = ev.usageMetadata.promptTokenCount || 0; usage.out = ev.usageMetadata.candidatesTokenCount || 0; }
-    }
-  } else if (pv === "openrouter" || pv === "ollama") {
-    const url = pv === "ollama" ? key.replace(/\/+$/, "") + "/v1/chat/completions" : "https://openrouter.ai/api/v1/chat/completions";
-    let r; try { r = await fetch(url, { method: "POST", signal: abortCtl.signal, headers: { "content-type": "application/json", ...(pv === "openrouter" ? { authorization: "Bearer " + key, "X-Title": "Floof AI" } : {}) }, body: JSON.stringify({ model, stream: true, max_tokens: 16384, messages: [{ role: "system", content: sys }, ...msgs.map(m => ({ role: m.role, content: m.content }))] }) }); }
-    catch (e) { if (e.name === "AbortError") throw e; throw new Error(pv === "ollama" ? "Can't reach Ollama — is it running on this PC with OLLAMA_ORIGINS=*?" : "Network error — check your connection."); }
-    if (!r.ok) throw await httpErr(r, pv);
-    for await (const ev of sse(r)) {
-      if (ev.error) { const e = new Error(ev.error.message || "Provider error"); e.quota = /rate|quota|limit/i.test(e.message); throw e; }
-      const d = ev.choices?.[0]?.delta?.content; if (d) onText(d);
-      if (ev.choices?.[0]?.finish_reason) usage.finish = ev.choices[0].finish_reason;
-      if (ev.usage) { usage.in = ev.usage.prompt_tokens || 0; usage.out = ev.usage.completion_tokens || 0; }
-    }
+async function* ndjson(r) { // Ollama's native stream: one JSON object per line
+  const rd = r.body.getReader(), dec = new TextDecoder(); let buf = "";
+  for (let done = false; !done;) {
+    const c = await rd.read(); done = c.done;
+    buf += done ? dec.decode() : dec.decode(c.value, { stream: true }); if (done) buf += "\n";
+    let i; while ((i = buf.indexOf("\n")) >= 0) { const l = buf.slice(0, i).trim(); buf = buf.slice(i + 1); if (l) try { yield JSON.parse(l); } catch {} }
   }
+}
+// Gemini thinking: thought tokens count against the free quota and delay the first word, so keep it low (same as the Floof Cloud server)
+const noThinkModels = new Set();
+function thinkCfg(m) {
+  if (noThinkModels.has(m)) return null;
+  if (/^gemini-2\.5-flash/.test(m)) return { thinkingBudget: 0 };
+  if (/^gemini-2\.5-pro/.test(m)) return { thinkingBudget: 128 };
+  if (/^gemini-2\./.test(m)) return null;
+  if (/-(pro|argon)\b/.test(m) || /^gemini-3\.8-flash/.test(m)) return { thinkingLevel: "low" };
+  if (/^gemini-\d/.test(m)) return { thinkingLevel: "minimal" };
+  return null;
+}
+async function streamOnce(pv, model, sys, msgs, onText, ctl) { // ctl: the 🩺 test passes its own controller so it never touches the chat's Stop
+  if (!ctl) ctl = abortCtl = new AbortController();
+  const key = cloud.keys[pv], usage = { in: 0, out: 0, model }, info = modelList.find(m => m.id === model) || {};
+  if (EXTRA_PV[pv]) return { model, ...(await EXTRA_PV[pv].stream({ model, sys, msgs, onText, signal: ctl.signal, key })) };
+  const b64 = u => u.split(",")[1], mime = u => (u.match(/^data:([^;,]+)/) || [0, "image/jpeg"])[1];
+  const noSys = noSysModels.has(pv + ":" + model);
+  const msgsFor = () => { const ms = msgs.map(m => ({ ...m, content: String(m.content ?? "") || " " })); if (noSys && ms[0]) ms[0] = { ...ms[0], content: "INSTRUCTIONS (follow these):\n" + sys + "\n\n---\n\n" + ms[0].content }; return ms; };
+  const go = async (url, opts) => { try { return await fetch(url, { method: "POST", signal: ctl.signal, ...opts }); } catch (e) { if (e.name === "AbortError") throw e; throw brainErr(pv, -1, "Failed to fetch: " + e.message); } };
+  let thoughts = "", tc = null;
+  try {
+    if (pv === "gemini") {
+      const contents = msgsFor().map(m => ({ role: m.role === "assistant" ? "model" : "user", parts: (m.img ? [{ inline_data: { mime_type: mime(m.img), data: b64(m.img) } }] : []).concat([{ text: m.content }]) }));
+      const body = { contents, generationConfig: { maxOutputTokens: Math.min(info.max || 16384, 16384) } }; if (!noSys) body.systemInstruction = { parts: [{ text: sys }] };
+      tc = thinkCfg(model); if (tc) body.generationConfig.thinkingConfig = tc;
+      const r = await go(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:streamGenerateContent?alt=sse&key=${encodeURIComponent(key)}`, { headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
+      if (!r.ok) throw await httpErr(r, pv);
+      for await (const ev of sse(r)) {
+        if (ev.error) throw brainErr(pv, ev.error.code || 200, errText(ev));
+        const c = ev.candidates?.[0];
+        for (const p of c?.content?.parts || []) if (typeof p.text === "string") { if (p.thought) thoughts += p.text; else onText(p.text); } // "thinking" models: thought parts are not the answer
+        if (c?.finishReason) usage.finish = c.finishReason;
+        if (ev.promptFeedback?.blockReason) usage.finish = "BLOCKED:" + ev.promptFeedback.blockReason;
+        if (ev.usageMetadata) { usage.in = ev.usageMetadata.promptTokenCount || 0; usage.out = (ev.usageMetadata.candidatesTokenCount || 0) + (ev.usageMetadata.thoughtsTokenCount || 0); }
+      }
+    } else if (pv === "ollama") { // native API: lets us give the model a big enough memory (the OpenAI-style one is stuck at Ollama's small default)
+      const base = key.replace(/\/+$/, "");
+      const r = await go(base + "/api/chat", { ...lanOpts(base), headers: { "content-type": "application/json" }, body: JSON.stringify({ model, stream: true, options: { num_ctx: 16384 }, messages: [...(noSys ? [] : [{ role: "system", content: sys }]), ...msgsFor().map(m => ({ role: m.role, content: m.content, ...(m.img ? { images: [b64(m.img)] } : {}) }))] }) });
+      if (!r.ok) throw await httpErr(r, pv);
+      for await (const ev of ndjson(r)) {
+        if (ev.error) throw brainErr(pv, 200, ev.error);
+        if (ev.message?.thinking) thoughts += ev.message.thinking;
+        if (ev.message?.content) onText(ev.message.content);
+        if (ev.done) { usage.finish = ev.done_reason || "stop"; usage.in = ev.prompt_eval_count || 0; usage.out = ev.eval_count || 0; }
+      }
+    } else if (pv === "openrouter") {
+      const max = Math.max(1024, Math.min(8192, info.max || 8192, info.ctx ? Math.floor(info.ctx / 3) : 8192));
+      const r = await go("https://openrouter.ai/api/v1/chat/completions", { headers: { "content-type": "application/json", authorization: "Bearer " + key, "X-Title": "Floof AI" }, body: JSON.stringify({ model, stream: true, max_tokens: max, messages: [...(noSys ? [] : [{ role: "system", content: sys }]), ...msgsFor().map(m => ({ role: m.role, content: m.content }))] }) });
+      if (!r.ok) throw await httpErr(r, pv);
+      for await (const ev of sse(r)) {
+        if (ev.error) throw brainErr(pv, typeof ev.error.code === "number" ? ev.error.code : 502, errText(ev)); // error sent mid-stream (status was already 200)
+        const ch = ev.choices?.[0], d = ch?.delta?.content ?? ch?.message?.content;
+        if (ch?.delta?.reasoning) thoughts += ch.delta.reasoning;
+        if (d) onText(d);
+        if (ch?.finish_reason) usage.finish = ch.finish_reason;
+        if (ch?.finish_reason === "error") throw brainErr(pv, 502, "Provider returned error");
+        if (ev.usage) { usage.in = ev.usage.prompt_tokens || 0; usage.out = ev.usage.completion_tokens || 0; }
+      }
+    }
+  } catch (e) {
+    if (e.kind === "sysinst" && !noSys) { noSysModels.add(pv + ":" + model); return streamOnce(pv, model, sys, msgs, onText, ctl); } // retry once with the instructions inside the chat
+    if (tc && pv === "gemini" && /think/i.test(e.raw || e.message || "") && (e.status === 400 || e.kind === "badreq")) { noThinkModels.add(model); return streamOnce(pv, model, sys, msgs, onText, ctl); } // model rejected our thinking setting: retry once without it
+    throw e;
+  }
+  usage.thoughts = thoughts;
   return usage;
 }
 const CODEY = /\b(code|coding|program|script|function|class|bug|debug|error|exception|python|javascript|js|html|css|java|c\+\+|sql|algorithm|game|app|website|web page|compile|loop|array|variable)\b/i;
 async function cloudStream(sys, msgs, onText) {
   const pv = cloud.pv, last = msgs.at(-1)?.content || "";
+  if (!modelList.length) { lastListErr = null; await refreshModels(); if (!modelList.length) throw lastListErr || brainErr(pv, 0, "No models available yet"); } // e.g. Ollama was started after the page loaded
   let first = curModel();
-  if (pv === "gemini" && coderOn && !cloud.model.gemini) { const pro = modelList.find(m => /-pro/.test(m.id)); if (pro) first = pro.id; } // coder mode: strongest Gemini first (falls back if its free limit is used)
-  if (pv === "openrouter" && typeof last === "string" && (coderOn || CODEY.test(last)) && !cloud.model.openrouter) { const c = modelList.find(m => /coder|devstral|codestral/i.test(m.id)); if (c) first = c.id; } // coding question → coding model
-  const order = [first, ...modelList.map(m => m.id).filter(id => id !== first)].slice(0, pv === "ollama" ? 1 : 4);
-  let got = false, lastUsage = null; const wrap = t => { if (t && t.trim()) got = true; onText(t); };
+  if (pv === "openrouter" && typeof last === "string" && (coderOn || CODEY.test(last)) && !cloud.model.openrouter) { const c = modelList.find(m => /coder|devstral|codestral|-code\b|laguna/i.test(m.id) && !isDead(pv, m.id)); if (c) first = c.id; } // coding question → coding model
+  const all = [first, ...modelList.map(m => m.id).filter(id => id !== first)].filter(Boolean);
+  let order = all.filter(id => !isDead(pv, id)); if (!order.length) order = all.slice(0, 1); // everything failed earlier: give the chosen one another go
+  order = order.slice(0, pv === "ollama" ? 1 : 5);
+  let got = false, lastUsage = null, thoughts = ""; const wrap = t => { if (t && t.trim()) got = true; onText(t); };
   const tries = order.length === 1 ? [order[0], order[0]] : order; // one model? try it twice
   for (let i = 0; i < tries.length; i++) {
     try {
       lastUsage = await streamOnce(pv, tries[i], sys, msgs, wrap);
       if (got) return lastUsage;
       if (/SAFETY|BLOCKED|PROHIBITED|content_filter/i.test(lastUsage.finish || "")) return lastUsage; // blocked: don't keep retrying
-      if (i < tries.length - 1) status(`☁ ${tries[i]} sent back an empty answer — trying ${tries[i + 1] === tries[i] ? "again" : tries[i + 1]}…`);
+      if (lastUsage.thoughts) thoughts = lastUsage.thoughts;
+      if (i < tries.length - 1) status(`☁ ${tries[i]} ${lastUsage.thoughts ? "only thought and gave no answer" : "sent back an empty answer"} — trying ${tries[i + 1] === tries[i] ? "again" : tries[i + 1]}…`);
     } catch (e) {
-      if (e.name === "AbortError" || got || !e.quota || i === tries.length - 1) throw e;
-      status(`☁ ${tries[i]} hit its free limit — trying ${tries[i + 1]}…`);
+      if (e.name === "AbortError" || got) throw e;
+      const failed = tries[i];
+      if (/gone|billing|dayquota/.test(e.kind)) markDead(pv, failed, e.short); else if (/quota|busy|badreq/.test(e.kind)) markDead(pv, failed, e.short, 60000);
+      let j = i + 1; while (j < tries.length && tries[j] === failed && isDead(pv, failed)) j++;
+      if (!e.skip || j >= tries.length) throw e;
+      status(`☁ ${failed}: ${e.short.charAt(0).toLowerCase() + e.short.slice(1)} — trying ${tries[j] === failed ? "again" : tries[j]}…`);
+      i = j - 1;
     }
   }
+  if (thoughts && !got) onText("<think>" + thoughts + "</think>"); // the model only "thought": show its thinking rather than nothing
   return lastUsage || {};
 }
 // ---------- "make Floof smart": one-tap setup of a real thinking brain ----------
@@ -1734,42 +1879,101 @@ function showPv() {
   $("#cKey").placeholder = pv ? PV[pv].ph : ""; if (pv && !cloud.keys[pv] && PV[pv].def) cloud.keys[pv] = PV[pv].def; $("#cKey").value = pv ? cloud.keys[pv] || "" : ""; $("#cKey").type = pv === "ollama" ? "text" : "password"; $("#pvHelp").innerHTML = pv ? PV[pv].help : "Pick Gemini or OpenRouter for a free, much smarter brain.";
   $("#cFix").checked = cloud.fix !== false; refreshModels();
 }
-$("#pv").onchange = () => { cloud.pv = $("#pv").value; saveCloud(); showPv(); };
+$("#pv").onchange = () => { cloud.pv = $("#pv").value; cloud.pvChosen = true; saveCloud(); showPv(); };
 // ---------- server brains: no key needed ----------
 const FLOOF_API = /floofai\.vercel\.app$/.test(location.host) ? "/api/chat" : "https://floofai.vercel.app/api/chat";
 const ARES_AI = "https://ares-revision.vercel.app/api/ai";
-async function postJSON(url, body, signal) {
-  const r = await fetch(url, { method: "POST", signal, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  let j = {}; try { j = await r.json(); } catch {}
-  if (!r.ok) { const e = new Error(j.error || "Server error " + r.status); e.quota = r.status === 503 || r.status === 429; throw e; }
+async function postJSON(url, body, signal, pv) {
+  let r; try { r = await fetch(url, { method: "POST", signal, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); }
+  catch (e) { if (e.name === "AbortError") throw e; throw brainErr(pv, -1, "Failed to fetch: " + e.message); }
+  let t = "", j = {}; try { t = await r.text(); j = JSON.parse(t); } catch {}
+  if (!r.ok || j.error) throw brainErr(pv, r.ok ? 500 : r.status, errText(j) || t.slice(0, 200) || "Server error " + r.status);
   return j;
 }
 window.Floof.addProvider({ id: "floof", label: "☁ Floof Cloud — free, no key", ph: "", nokey: true, ok: () => ACCOUNT_KIND === "mw", vision: true,
   help: "The studio's own AI server — nothing to set up. Free for MagicWinter accounts; ⭐ Pro gets the strongest model first and priority when it's busy.",
-  list: async () => [{ id: "auto", name: isPro() ? "⭐ Floof Cloud Pro (auto)" : "Floof Cloud (auto)" }],
+  list: async () => { // quick health check: GET says {"ok":false} while the server has no GEMINI_KEY
+    let j = null; try { const c = new AbortController(), tm = setTimeout(() => c.abort(), 6000); const r = await fetch(FLOOF_API, { signal: c.signal, cache: "no-store" }); clearTimeout(tm); try { j = await r.json(); } catch {} }
+    catch (e) { throw brainErr("floof", -1, "Failed to fetch: " + (e.message || e)); } // unreachable (offline / school filter): fall back to the grid
+    if (j && j.ok === false) throw brainErr("floof", 500, "GEMINI_KEY missing");
+    if (!mwToken()) throw brainErr("floof", 401, "Not signed in to MagicWinter");
+    return [{ id: "auto", name: isPro() ? "⭐ Floof Cloud Pro (auto)" : "Floof Cloud (auto)" }];
+  },
   stream: async ({ sys, msgs, onText, signal }) => {
-    const j = await postJSON(FLOOF_API, { token: mwToken(), system: sys, messages: msgs, maxTokens: 8192 }, signal);
+    const j = await postJSON(FLOOF_API, { token: mwToken(), system: sys, messages: msgs, maxTokens: 8192 }, signal, "floof");
     if (j.text) onText(j.text); const u = j.usage || {};
-    return { in: u.promptTokenCount || 0, out: u.candidatesTokenCount || 0, model: "Floof Cloud · " + (j.via || "") + (j.pro ? " ⭐" : ""), finish: j.finish || "" };
+    return { in: u.promptTokenCount || 0, out: u.candidatesTokenCount || 0, model: "Floof Cloud · " + (j.backup ? "backup brain (Ares)" : (j.via || "")) + (j.pro ? " ⭐" : ""), finish: j.finish || "" };
   } });
 window.Floof.addProvider({ id: "athena", label: "🦉 Athena — Ares servers, no key", ph: "", nokey: true, ok: () => ACCOUNT_KIND === "ares", vision: false,
   help: "Athena runs on Ares Revision's own AI server — nothing to set up for Ares accounts.",
   list: async () => [{ id: "athena", name: "Athena (Ares)" }],
   stream: async ({ sys, msgs, onText, signal }) => { // Ares' server takes one prompt, so the chat is written out as a script
     const convo = msgs.slice(-16).map(m => (m.role === "user" ? "Student: " : "Athena: ") + String(m.content).slice(0, 6000)).join("\n\n");
-    const j = await postJSON(ARES_AI, { prompt: sys.slice(0, 12000) + "\n\n--- Conversation so far ---\n" + convo + "\n\nAthena:", maxTokens: 2500 }, signal);
+    const j = await postJSON(ARES_AI, { prompt: sys.slice(0, 12000) + "\n\n--- Conversation so far ---\n" + convo + "\n\nAthena:", maxTokens: 2500 }, signal, "athena");
     if (j.text) onText(j.text.replace(/^\s*Athena:\s*/i, ""));
     return { in: 0, out: 0, model: "Athena · Ares servers" };
   } });
-if (!cloud.pv || !PV[cloud.pv]) { cloud.pv = ACCOUNT_KIND === "ares" ? "athena" : ACCOUNT_KIND === "mw" ? "floof" : ""; saveCloud(); } // server brains by default
+{ // server brains by default; a choice you made (even "Off") sticks
+  const notHere = (cloud.pv === "floof" && ACCOUNT_KIND !== "mw") || (cloud.pv === "athena" && ACCOUNT_KIND !== "ares") || (ACCOUNT_KIND === "ares" && /^(gemini|openrouter)$/.test(cloud.pv)) || (cloud.pv && !PV[cloud.pv]);
+  if (notHere || (!cloud.pv && !cloud.pvChosen)) { cloud.pv = ACCOUNT_KIND === "ares" ? "athena" : ACCOUNT_KIND === "mw" ? "floof" : ""; saveCloud(); }
+}
 if (ACCOUNT_KIND !== "mw") $("#pv").querySelector('option[value="floof"]')?.remove();
 if (ACCOUNT_KIND !== "ares") $("#pv").querySelector('option[value="athena"]')?.remove();
+if (ACCOUNT_KIND === "ares") ["openrouter", "gemini"].forEach(v => $("#pv").querySelector(`option[value="${v}"]`)?.remove()); // school accounts: no 18+ Google keys, no "allow prompt publishing" providers
 showPv();
 $("#cKey").onchange = () => { cloud.keys[cloud.pv] = $("#cKey").value.trim(); saveCloud(); refreshModels(); };
 $("#cModel").onchange = () => { cloud.model[cloud.pv] = $("#cModel").value; saveCloud(); };
 $("#cFix").onchange = () => { cloud.fix = $("#cFix").checked; saveCloud(); };
+// ---------- 🩺 Test brain: one tiny real request to the selected brain, with the exact reason and a plain-English fix ----------
+async function testBrain() {
+  const out = $("#pvTestOut"), btn = $("#pvTest"), pv = cloud.pv, nm = pvName(pv), t0 = performance.now();
+  const show = (ok, msg, fix, raw) => { out.innerHTML = `<b style="color:${ok ? "var(--accent)" : "#ff7a7a"}">${ok ? "✅ Pass" : "❌ Fail"}</b> — ${esc(msg)}${fix ? `<br>🔧 <b>Fix:</b> ${esc(fix)}` : ""}${raw ? `<br><span style="opacity:.6">Details: ${esc(String(raw).slice(0, 220))}</span>` : ""}`; status(ok ? `🩺 ${nm || "Brain"} works.` : `🩺 ${nm || "Brain"} test failed — see the sidebar.`, ok ? "" : "err"); };
+  const fail = e => show(false, e.short || e.message || String(e), e.fix || (e.name === "AbortError" ? "it took over 45 s — the service may be overloaded; try again or pick another model" : ""), e.raw && e.raw !== e.short ? e.raw : "");
+  if (busy) return show(false, "Floof is busy answering", "wait for it to finish, then test");
+  busy = true; $("#send").disabled = true; // a chat can't start mid-test (they'd share the Stop/abort controller)
+  btn.disabled = true; out.textContent = "🩺 Testing " + (nm || "the brain") + "…";
+  try {
+    if (!pv) { // on-device / grid
+      if (engine) { const r = await engine.chat.completions.create({ messages: [{ role: "user", content: "Reply with just the word OK." }], max_tokens: 16, ...(String(loadedModel).startsWith("Qwen3") ? { extra_body: { enable_thinking: false } } : {}) }); const txt = r.choices?.[0]?.message?.content || ""; return txt.trim() ? show(true, `On-device brain ${loadedModel} answered in ${((performance.now() - t0) / 1000).toFixed(1)} s: "${txt.trim().slice(0, 40)}"`) : show(false, "The on-device brain gave an empty answer", "press Reset downloads, then Load brain again"); }
+      let ad = null; try { ad = navigator.gpu && await navigator.gpu.requestAdapter(); } catch {}
+      return show(false, "No brain selected — Floof is in basic grid mode", ad ? "pick a ☁ Smarter brain above, or press Load brain to download one (WebGPU works here)" : "this browser has no WebGPU, so pick a ☁ Smarter brain above (e.g. Google Gemini with a free key)");
+    }
+    const key = cloud.keys[pv] || "";
+    if (!PV[pv].ok(key)) return show(false, PV[pv].nokey ? `${nm} isn't available for this account` : `No ${pv === "ollama" ? "address" : "key"} entered`, PV[pv].nokey ? "sign in with the right account type" : pv === "gemini" ? "get a free key at aistudio.google.com/apikey and paste it in the box above" : pv === "openrouter" ? "get a free key at openrouter.ai/keys and paste it in the box above" : "type your Ollama address, e.g. http://localhost:11434");
+    if (pv === "floof") { // the server runs its own tiny test (shared + rate-limited server-side) — no chat message spent
+      let j; try { j = await getJSON(FLOOF_API + "?test=1", "floof", { ms: 20000, cache: "no-store" }); } catch (e) { return fail(e); }
+      if (j.ok === false) return fail(brainErr("floof", 500, "GEMINI_KEY missing"));
+      if (!mwToken()) return fail(brainErr("floof", 401, "Not signed in to MagicWinter"));
+      const secs = ((performance.now() - t0) / 1000).toFixed(1);
+      if (j.hasKey === false) return show(false, "Floof Cloud has no GEMINI_KEY yet" + (j.ares ? " — it's answering with its backup brain (Ares) only" : ""), "the studio owner must add GEMINI_KEY in Vercel and redeploy", j.hint);
+      if (j.test && j.test.ok) return show(true, `Floof Cloud answered in ${secs} s using ${j.test.model}${j.test.cached ? " (recent server check)" : ""}: "${String(j.test.reply || "OK").trim().slice(0, 40)}"`);
+      if (j.test) return show(false, "Floof Cloud's test failed: " + (j.test.error || j.test.kind || "no answer") + (j.ares ? " — chats will still use the backup brain" : ""), j.hint || "try again in a minute", j.lastError && j.lastError.msg);
+      // older server without ?test=1: fall through to one tiny real chat request
+    }
+    let list = modelList; if (!list.length) { try { list = modelList = await listModels(pv, key); } catch (e) { return fail(e); } if (!list.length) return show(false, "No free models found for this key", "try another brain"); }
+    const want = curModel() || list[0].id, cands = [want, ...list.map(m => m.id).filter(id => id !== want && !isDead(pv, id))].slice(0, 3);
+    let firstErr = null;
+    for (const model of cands) {
+      let txt = "", u; const testCtl = new AbortController(), tm = setTimeout(() => testCtl.abort(), 45000);
+      try { u = await streamOnce(pv, model, "You are a test. Follow the user exactly.", [{ role: "user", content: "Reply with just the word OK." }], t => txt += t, testCtl); }
+      catch (e) { clearTimeout(tm); firstErr ??= { model, e }; if (/gone|billing|dayquota/.test(e.kind)) markDead(pv, model, e.short); if (!e.skip) break; continue; }
+      clearTimeout(tm);
+      const secs = ((performance.now() - t0) / 1000).toFixed(1), shown = (u?.model && u.model !== model ? u.model : model);
+      if (!txt.trim()) { firstErr ??= { model, e: Object.assign(new Error(""), { short: u?.thoughts ? "The model only 'thought' and gave no answer" : "Empty answer" + (u?.finish ? " (" + u.finish + ")" : ""), fix: "pick another model in the list above", skip: true }) }; continue; }
+      if (firstErr && firstErr.model !== model) { cloud.model[pv] = model; saveCloud(); $("#cModel").value = model; return show(true, `${firstErr.model} failed (${firstErr.e.short}) — switched to ${model}, which works (${secs} s).`, firstErr.e.fix && !/skips it|switches/.test(firstErr.e.fix) ? firstErr.e.fix : ""); }
+      return show(true, `${nm} answered in ${secs} s using ${shown}: "${txt.trim().slice(0, 40)}"`);
+    }
+    fail(firstErr ? Object.assign(firstErr.e, { short: (cands.length > 1 ? firstErr.model + ": " : "") + firstErr.e.short }) : new Error("No answer"));
+  } catch (e) { fail(e); } finally { btn.disabled = false; busy = false; $("#send").disabled = false; }
+}
+$("#pvTest").onclick = testBrain;
 $("#newChat").onclick = () => { cur = null; renderChats(); renderLog(); showView("vChat"); $("#input").focus(); $("#side").classList.remove("open"); };
-$("#menuBtn").onclick = () => $("#side").classList.toggle("open");
+$("#menuBtn").onclick = e => { e.stopPropagation(); $("#side").classList.toggle("open"); };
+document.addEventListener("click", e => { // phones: tap outside the sidebar closes it
+  const sd = $("#side"); if (!sd.classList.contains("open") || innerWidth > 720) return;
+  if (!sd.contains(e.target) && !$("#menuBtn").contains(e.target)) sd.classList.remove("open");
+}, true);
+document.addEventListener("keydown", e => { if (e.key === "Escape") $("#side").classList.remove("open"); });
 $("#reset").onclick = async () => {
   if (!confirm("Delete downloaded brains? They'll re-download next load. (Your knowledge and chats stay.)")) return;
   try { await engine?.unload(); } catch {}
@@ -1838,7 +2042,9 @@ onmessage = async e => { const { id, code } = e.data; const out = m => postMessa
   catch (x) { const lines = String(x.message || x).trim().split("\\n"), i = lines.findIndex(l => l.includes('File "<exec>"')); err((i >= 0 ? ["Traceback:", ...lines.slice(i)] : lines.slice(-3)).join("\\n")); }
   postMessage({ id, t: "done" }); };
 postMessage({ t: "loaded" });`;
-  pyWorker = new Worker(URL.createObjectURL(new Blob([src], { type: "text/javascript" })), { type: "module" });
+  // A data: URL worker gets an opaque origin, so Python code (which can reach JS through `import js`) can't open Floof's
+  // IndexedDB/localStorage — your memories, knowledge and other accounts on this device stay out of its reach.
+  pyWorker = new Worker("data:text/javascript;charset=utf-8," + encodeURIComponent(src), { type: "module" });
   pyReady = new Promise((ok, no) => {
     pyWorker.onmessage = e => { const d = e.data; if (d.t === "loaded") return ok(); const j = pyJobs.get(d.id); if (j) j(d); };
     pyWorker.onerror = e => { no(new Error("Couldn't start Python (needs internet the first time)")); pyWorker = null; };
@@ -1858,12 +2064,14 @@ function runPython(code, box) {
     pyWorker.postMessage({ id, code });
   });
 }
+// auto-run code (self-test) may not send anything out: no fetch/XHR/beacons/images to other sites; scripts from the big CDNs still load
+const NO_NET_CSP = `<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' blob: data: https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com; style-src 'unsafe-inline' https://cdn.jsdelivr.net https://cdnjs.cloudflare.com https://unpkg.com https://fonts.googleapis.com; font-src data: https://fonts.gstatic.com; img-src data: blob:; media-src data: blob:; worker-src blob:">`;
 // test a web page/game invisibly for 3 s and collect any errors it throws
 function testHtml(code) {
   return new Promise(resolve => {
     const id = Math.random().toString(36).slice(2), errors = [], f = document.createElement("iframe");
     f.sandbox = "allow-scripts"; f.style.cssText = "position:fixed;left:-9999px;width:800px;height:600px";
-    const catcher = `<script>(()=>{const s=m=>parent.postMessage({id:${JSON.stringify(id)},m:String(m).slice(0,300)},"*");addEventListener("error",e=>s((e.message||"Error")+(e.lineno?" (line "+e.lineno+")":"")));addEventListener("unhandledrejection",e=>s("Unhandled promise: "+(e.reason&&e.reason.message||e.reason)));const ce=console.error;console.error=(...a)=>{s(a.join(" "));ce(...a)}})();<\/script>` + STORE_SHIM;
+    const catcher = NO_NET_CSP + `<script>(()=>{const s=m=>parent.postMessage({id:${JSON.stringify(id)},m:String(m).slice(0,300)},"*");addEventListener("error",e=>s((e.message||"Error")+(e.lineno?" (line "+e.lineno+")":"")));addEventListener("unhandledrejection",e=>s("Unhandled promise: "+(e.reason&&e.reason.message||e.reason)));const ce=console.error;console.error=(...a)=>{s(a.join(" "));ce(...a)}})();<\/script>` + STORE_SHIM;
     const onMsg = e => { if (e.source === f.contentWindow && e.data?.id === id && !errors.includes(e.data.m)) errors.push(e.data.m); };
     addEventListener("message", onMsg);
     f.srcdoc = /<head[^>]*>/i.test(code) ? code.replace(/<head[^>]*>/i, m => m + catcher) : catcher + code;
@@ -1873,7 +2081,7 @@ function testHtml(code) {
 }
 
 // ---------- code runner (sandboxed: no access to your page, storage or files) ----------
-function runCode(lang, code, box) {
+function runCode(lang, code, box, locked) { // locked: an automatic self-test run → no network
   if (/^(python|py)$/.test(lang)) return runPython(code, box);
   if (lang === "html") { const f = document.createElement("iframe"); f.className = "preview"; f.sandbox = "allow-scripts"; f.srcdoc = code; box.replaceChildren(f); return Promise.resolve({ errors: [] }); }
   let resolve; const p = new Promise(r => resolve = r); const errors = [];
@@ -1890,7 +2098,7 @@ function runCode(lang, code, box) {
   const finish = (msg) => { if (done) return; done = true; if (msg) add("w", msg); if (first) add("", "(finished — no output. Use console.log() to print.)"); removeEventListener("message", onMsg); f.remove(); resolve({ errors }); };
   addEventListener("message", onMsg);
   const safe = code.replace(/<\/script/gi, "<\\/script");
-  f.srcdoc = `<script>
+  f.srcdoc = (locked ? NO_NET_CSP : "") + `<script>
 const __s=(t,a)=>parent.postMessage({id:${JSON.stringify(id)},t,a:a.map(x=>{try{return typeof x==="object"?JSON.stringify(x):String(x)}catch{return String(x)}}).join(" ")},"*");
 console.log=console.info=(...a)=>__s("log",a);console.warn=(...a)=>__s("warn",a);console.error=(...a)=>__s("err",a);
 onerror=m=>{__s("err",[m]);__s("done",[]);};
@@ -2133,7 +2341,7 @@ function setCoder(on) {
 $("#coderBtn").onclick = () => {
   setCoder(!coderOn);
   if (!coderOn) return status("💻 Coder mode off.");
-  const tip = cloudReady() ? (cloud.pv === "openrouter" ? "using a coding model" : cloud.pv === "gemini" ? "using the strongest Gemini" : "using your PC's model")
+  const tip = cloudReady() ? (cloud.pv === "openrouter" ? "using a coding model" : cloud.pv === "gemini" ? "using your free Gemini model" : PV[cloud.pv]?.nokey ? "using " + pvName(cloud.pv) : "using your PC's model")
     : engine ? (/Coder/.test(loadedModel) ? "using the on-device Coder brain" : "tip: load 💻 Coder Pro in the sidebar for better on-device code")
     : "needs a brain — tap ⚡ Free Gemini on a new chat";
   status("💻 Coder mode on — planning, full programs, auto-testing & fixing; " + tip + ".", cloudReady() || engine ? "" : "err");

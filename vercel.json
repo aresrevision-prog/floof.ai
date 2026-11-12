@@ -1,4 +1,9 @@
 {
+  "functions": {
+    "api/chat.js": {
+      "maxDuration": 60
+    }
+  },
   "rewrites": [
     {
       "source": "/functions/v1/:path*",
