@@ -1322,10 +1322,9 @@ When fixing: find the root cause, explain it in one line, and return the FULL co
     console.error(e);
     if (e.name === "AbortError") { stopped = true; status("Stopped."); }
     else if (e.free) { freeBad = Date.now() + 300000; fallBack = true; status("Free backup brain busy — answering from the grid for now.", "err"); }
-    else if (e.kind && PV[cloud.pv]?.nokey && !extra.depth && !extra.retry) { // Floof Cloud / Athena busy or unreachable: retry with the free backup brain (then the grid) instead of erroring
-      const brief = /busy|quota/.test(e.kind);
-      cloudBad = true; fallBack = true; clearTimeout(cloudBadTimer); cloudBadTimer = setTimeout(() => { cloudBad = false; updateMode(); }, brief ? 60000 : 300000); updateMode();
-      status(`☁ ${pvName(cloud.pv)} ${brief ? "busy" : "unreachable"} — using the free backup brain for now.`, "err");
+    else if ((e.kind === "net" || e.kind === "server") && PV[cloud.pv]?.nokey && !extra.depth) { // Floof Cloud / Athena unreachable: answer from the grid for a while instead of erroring every message
+      cloudBad = true; fallBack = true; clearTimeout(cloudBadTimer); cloudBadTimer = setTimeout(() => { cloudBad = false; updateMode(); }, 300000); updateMode();
+      status(`☁ ${pvName(cloud.pv)} unreachable — answering from the grid for now.`, "err");
     }
     else if (e.kind || cloudReady()) { status(e.kind ? "☁ " + e.message : /failed to fetch|network|load failed/i.test(e.message || "") ? "☁ Can't reach the AI service — check your internet, or switch ☁ off to use basic mode." : "☁ " + (e.message || e), "err"); if (e.kind) finishWhy = "ERR:" + e.message.replace(/[.\s]+$/, "") + " (press 🩺 Test brain in the sidebar for details)"; }
     else if (/context|window|prompt.*(long|exceed)/i.test(e.message || "")) reply += "\n\n_(That was more than the brain can hold at once — start a new chat, or ask about one part.)_";
@@ -2373,7 +2372,7 @@ window.Floof.addProvider({ id: "floof", label: "☁ Floof AI 3.4 — free, no ke
 // 3) context areas on the grid come from your message (+ any matching notes)
 // 4) for each slot the engine picks words of that type from the context areas; a tiny transformer (2 layers, ~0.7M numbers) judges the fit
 // 5) it writes 5 drafts, the transformer picks the one that makes the most sense, and the numbers are turned back into words
-const GW_BASES = window.FLOOF_GW ? [window.FLOOF_GW] : ["https://cdn.jsdelivr.net/gh/aresrevision-prog/floof.ai@cc3ac24f384fbfab203fc65d09fbbc77696ba32b/lex/", "https://floofai.vercel.app/lex/"], GW_PARTS = 2; // download in 2 parts
+const GW_BASES = window.FLOOF_GW ? [window.FLOOF_GW] : ["https://cdn.jsdelivr.net/gh/aresrevision-prog/floof.ai@d3b1ee5d6f05917e8e8a0a5e76b4fb796f652a76/lex/", "https://floofai.vercel.app/lex/"], GW_PARTS = 2; // download in 2 parts
 let GWM = null, gwLoading = null;
 async function gwFetch(onPct) {
   let lastErr;
@@ -2381,7 +2380,7 @@ async function gwFetch(onPct) {
     try {
       const parts = []; let got = 0; const total = 3.2e6;
       for (let k = 0; k < GW_PARTS; k++) {
-        const r = await fetch(base + "gw15.gz.part" + k); if (!r.ok) throw new Error(base.split("/")[2] + " " + r.status);
+        const r = await fetch(base + "gw18.gz.part" + k); if (!r.ok) throw new Error(base.split("/")[2] + " " + r.status);
         const rd = r.body.getReader(); for (;;) { const { value, done } = await rd.read(); if (done) break; parts.push(value); got += value.length; onPct && onPct(Math.min(99, got / total * 100 | 0)); }
       }
       const buf = await new Response(new Blob(parts).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer();
@@ -2394,8 +2393,8 @@ async function gwFetch(onPct) {
 function gwLoad(onPct) {
   if (GWM) return Promise.resolve(GWM);
   return gwLoading ??= (async () => {
-    let buf = null; try { buf = await idb.getRaw("gw.v3"); } catch {}
-    if (!buf) { buf = await gwFetch(onPct); idb.setRaw("gw.v3", buf).catch(() => {}); }
+    let buf = null; try { buf = await idb.getRaw("gw.v4"); } catch {}
+    if (!buf) { buf = await gwFetch(onPct); idb.setRaw("gw.v4", buf).catch(() => {}); }
     const hl = new Uint32Array(buf.slice(4, 8))[0], H = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 8, hl)));
     const arr = (name) => { const s = H.sec[name]; return s.t === "i8" ? new Int8Array(buf, s.o, s.n) : new Float32Array(buf, s.o, s.n); };
     const M = { H, V: H.V, tags: H.tags, words: H.words, tokTag: Int16Array.from(H.tokTag), BOS: H.BOS, EOS: H.EOS, UNK0: H.UNK0 };
@@ -2801,7 +2800,7 @@ const DL_LIST = [
 let _dlF16 = null;
 async function dlSuffix() { if (_dlF16 === null) { try { const a = navigator.gpu && await navigator.gpu.requestAdapter(); _dlF16 = a ? a.features.has("shader-f16") : null; } catch { _dlF16 = null; } } return _dlF16 === null ? null : _dlF16 ? "-q4f16_1-MLC" : "-q4f32_1-MLC"; }
 async function dlHas(item) {
-  if (item.id === "avish") { try { return !!(await idb.getRaw("gw.v3")); } catch { return false; } }
+  if (item.id === "avish") { try { return !!(await idb.getRaw("gw.v4")); } catch { return false; } }
   const suf = await dlSuffix(); if (!suf) return null;
   try { webllm ??= await import("https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.88/+esm"); return await webllm.hasModelInCache(item.id + suf, { ...webllm.prebuiltAppConfig, cacheBackend: ls.get(CKEY, "cache") }); } catch { return false; }
 }
@@ -3117,11 +3116,11 @@ document.addEventListener("click", async e => { // download the picture as a fil
   catch { if (!b.dataset.u.startsWith("idb:")) window.open(b.dataset.u, "_blank"); b.textContent = "⬇ Download"; }
   b.disabled = false;
 });
-// ---------- 🏗 Construct AI 1.5 — by AdminHF: a coding team built from our AIs ----------
+// ---------- 🏗 Construct AI 1.4 — by AdminHF: a coding team built from our AIs ----------
 // 👀 Reader (Avish's typo fixer + task/language detection) → 🗺 Planner → ⌨ Coder → 🔍 Checker (syntax checks in code) → 🔧 Fixer (up to 2 rounds)
 // → then Floof's Auto-test runs the program for real (HTML / JS / Python) and sends any crash back to Construct to fix.
-// Brain: Floof Cloud first (strongest free coder); Qwen2.5-Coder on this device when offline or the cloud is busy.
-const CON_SYS = `You are Construct AI 1.5, a coding AI made by AdminHF at MagicWinter. You are a senior software engineer.
+// Brain: Qwen2.5-Coder on this device (💻 Coder from the top menu); Floof Cloud only if this device can't run it.
+const CON_SYS = `You are Construct AI 1.4, a coding AI made by AdminHF at MagicWinter. You are a senior software engineer.
 Rules:
 - Write the COMPLETE program in ONE fenced code block with its language (\`\`\`html, \`\`\`python, \`\`\`javascript …). No placeholders, no TODOs, no "rest stays the same".
 - Games/apps/websites: ONE self-contained \`\`\`html file (inline CSS + JS, works offline, keyboard + touch controls, a restart button, score/state on screen).
@@ -3132,49 +3131,6 @@ Rules:
 - JavaScript/HTML: no external files or libraries unless asked; handle errors (missing elements, bad input) gracefully.
 - Use clear names and short comments for the tricky parts; prefer simple, readable code that a student can follow.
 - When fixing: say the root cause in one line, then give the FULL corrected program.`;
-// 📚 Construct's playbook: hard-won coding lessons, picked per task and given to every member of the team
-const CON_BOOK = {
-  game: `Game checklist:
-- Use one <canvas>, size it to the window (and on resize), and draw everything each frame inside a requestAnimationFrame loop that uses delta time (dt in seconds, capped at 0.05) so speed is the same on every device.
-- Keep ALL state in one object (player, enemies, score, lives, state: "start" | "play" | "over"). Restart = rebuild that object.
-- Controls: keydown/keyup into a keys{} set (use e.key, call preventDefault for arrows/space) AND touch/pointer buttons for Chromebooks/phones.
-- Collisions: axis-aligned boxes (a.x < b.x+b.w && a.x+a.w > b.x && …) or circle distance; remove objects with filter, never splice inside forEach.
-- Show score/lives on the canvas, a start screen, a game-over screen and a restart key/button. Save the high score in localStorage inside try/catch.`,
-  web: `Web page checklist:
-- One self-contained file: <!doctype html>, <meta name="viewport" content="width=device-width,initial-scale=1">, CSS in <style>, JS in <script> at the end of <body>.
-- Get elements once with document.querySelector, check user input (trim, Number(), isNaN) and show friendly messages instead of crashing.
-- Responsive layout with flex/grid, readable font sizes, buttons at least 40px tall. Store data in localStorage inside try/catch.`,
-  python: `Python checklist:
-- Put logic in small functions with clear names; no global mutable state unless needed.
-- No input() — use example values; finish with if __name__ == "__main__": that prints clear results (this is how the program is tested).
-- Only the standard library unless asked. Guard against bad data (empty lists, division by zero, wrong types).
-- Use f-strings, list comprehensions where clear, and integer division // when an int is needed.`,
-  js: `JavaScript checklist:
-- const/let (never var), strict equality ===, template strings. Handle empty/invalid input.
-- Print results with console.log so the program can be tested. No DOM unless it's a web page.`,
-  fix: `Fixing checklist:
-- Read the error message and line number first; find the ROOT cause (undefined name, wrong type, off-by-one, wrong indentation, missing return, async not awaited).
-- Change as little as needed, keep everything else working, then give the FULL corrected program.`,
-  explain: `Explaining checklist: say what the code does overall in 1-2 sentences, then walk through the important parts in order, then mention any bugs or improvements.`
-};
-function conBook(R, text) {
-  const low = String(text).toLowerCase(), out = [];
-  if (R.kind === "fix") out.push(CON_BOOK.fix); else if (R.kind === "explain") out.push(CON_BOOK.explain);
-  if (R.lang === "html") out.push(/game|canvas|player|enemy|score|snake|pong|flappy|platform|shoot|tetris|maze/.test(low) ? CON_BOOK.game : CON_BOOK.web);
-  else if (R.lang === "python" || (!R.lang && R.kind === "build")) out.push(CON_BOOK.python);
-  else if (R.lang === "javascript") out.push(CON_BOOK.js);
-  return out.length ? "\n\n" + out.join("\n\n") : "";
-}
-// 🧪 run the program for real (silently) and return any errors — the same tests Floof's Auto-test uses
-async function conRun(answer) {
-  const b = conBlocks(answer).filter(x => /^(html|py|python|js|javascript)$/.test(x.lang)).sort((a, c) => c.code.length - a.code.length)[0];
-  if (!b || /\binput\s*\(/.test(b.code) && /^py/.test(b.lang)) return [];
-  try {
-    const box = document.createElement("div");
-    const r = b.lang === "html" ? await testHtml(b.code) : await Promise.race([runCode(b.lang === "py" ? "python" : b.lang === "js" ? "javascript" : b.lang, b.code, box, true), new Promise(ok => setTimeout(() => ok({ errors: [] }), 25000))]);
-    return r && !r.infra ? (r.errors || []).slice(0, 6) : [];
-  } catch { return []; }
-}
 function conRead(text) { // 👀 what kind of coding job is this?
   const t = String(text), low = t.toLowerCase(), hasCode = /```|[{};]\s*\n|def \w+\(|function \w*\(|<\/?\w+[^>]*>/.test(t);
   const lang = /\bpython|\.py\b|def \w+\(/.test(low) ? "python" : /\bhtml|website|web page|webpage|game|app\b|canvas/.test(low) ? "html" : /javascript|\bjs\b|node/.test(low) ? "javascript" : /\bjava\b/.test(low) ? "java" : /c\+\+|cpp/.test(low) ? "cpp" : /\bc#|csharp/.test(low) ? "csharp" : /\bsql\b/.test(low) ? "sql" : "";
@@ -3193,17 +3149,7 @@ async function conBrain1() {
 }
 let _conBrain = null;
 function conBrain() { if (window.__constructEngine) return Promise.resolve(window.__constructEngine); if (engine && /Coder/.test(String(loadedModel))) return Promise.resolve(engine); if (!_conBrain) _conBrain = conBrain1().finally(() => { _conBrain = null; }); return _conBrain; }
-async function conCloud(messages, maxTokens, signal) {
-  if (window.__constructEngine || !(ACCOUNT_KIND === "mw" && mwToken() && navigator.onLine !== false)) return null;
-  const sys = messages[0].role === "system" ? messages[0].content : "", rest = messages.filter(m => m.role !== "system");
-  try { const j = await postJSON(FLOOF_API, { token: mwToken(), system: sys, messages: rest, maxTokens: Math.max(maxTokens, 4096) }, signal, "floof");
-    if (j.text && j.text.trim()) return { text: j.text, via: "Floof Cloud" }; } catch (e) { if (signal && signal.aborted) throw e; console.warn("Construct: cloud failed", e); }
-  return null;
-}
-async function conAsk(messages, { onDelta, maxTokens = 3000, temperature = .2, signal } = {}) { // strongest free brain first (Floof Cloud), Qwen-Coder on this device when offline or the cloud is busy
-  const c = await conCloud(messages, maxTokens, signal);
-  if (c) { if (onDelta) onDelta(c.text); return c; }
-  if (signal && signal.aborted) return null;
+async function conAsk(messages, { onDelta, maxTokens = 3000, temperature = .2, signal } = {}) { // device Qwen-Coder first, Floof Cloud only as a fallback
   const eng = await conBrain().catch(() => null);
   if (eng && !(signal && signal.aborted)) {
     try {
@@ -3213,6 +3159,12 @@ async function conAsk(messages, { onDelta, maxTokens = 3000, temperature = .2, s
       else { const r = await eng.chat.completions.create({ messages, temperature, max_tokens: maxTokens, extra_body: String(loadedModel).startsWith("Qwen3") ? { enable_thinking: false } : undefined }); out = r.choices?.[0]?.message?.content || ""; }
       if (out.trim()) return { text: out, via: (loadedModel ? String(loadedModel).replace(/-q4f(16|32)_1-MLC$/, "") : "Qwen2.5-Coder") + " on this device" };
     } catch (e) { if (signal && signal.aborted) throw e; console.warn("Construct: on-device coder failed", e); }
+  }
+  if (signal && signal.aborted) return null;
+  if (ACCOUNT_KIND === "mw" && mwToken() && navigator.onLine !== false) {
+    const sys = messages[0].role === "system" ? messages[0].content : "", rest = messages.filter(m => m.role !== "system");
+    const j = await postJSON(FLOOF_API, { token: mwToken(), system: sys, messages: rest, maxTokens: Math.max(maxTokens, 4096) }, signal, "floof");
+    if (j.text && j.text.trim()) { if (onDelta) onDelta(j.text); return { text: j.text, via: "Floof Cloud (this device can't run Qwen-Coder)" }; }
   }
   return null;
 }
@@ -3240,12 +3192,12 @@ function conCheck(text, R) { // 🔍 the checker: fast checks in code, no AI
   }
   return [...new Set(errs)].slice(0, 6);
 }
-window.Floof.addProvider({ id: "construct", label: "🏗 Construct AI 1.5 — by AdminHF (coding)", ph: "", nokey: true, ok: () => true, vision: false,
-  help: "Construct AI 1.5 by AdminHF — a coding team built from our AIs: 👀 reader (fixes typos, spots the language) → 🗺 planner → ⌨ coder → 🔍 checker (syntax checks) → 🔧 fixer → 🧐 reviewer (logic bugs), then Floof's Auto-test runs the program for real and sends any crash back to be fixed (up to 3 rounds). It follows a coding playbook (games, web pages, Python, fixing) and test-runs every program itself before you see it. Brain: Floof Cloud (strongest, free); Qwen2.5-Coder on this device when you're offline.",
-  list: async () => [{ id: "construct1", name: "Construct AI 1.5" }],
+window.Floof.addProvider({ id: "construct", label: "🏗 Construct AI 1.4 — by AdminHF (coding)", ph: "", nokey: true, ok: () => true, vision: false,
+  help: "Construct AI 1.4 by AdminHF — a coding team built from our AIs: 👀 reader (fixes typos, spots the language) → 🗺 planner → ⌨ coder → 🔍 checker (syntax checks) → 🔧 fixer → 🧐 reviewer (logic bugs), then Floof's Auto-test runs the program for real and sends any crash back to be fixed (up to 3 rounds). Brain: Qwen2.5-Coder on this device (~1.2 GB, downloaded once); Floof Cloud only if this device can't run it.",
+  list: async () => [{ id: "construct1", name: "Construct AI 1.4" }],
   stream: async ({ msgs, onText, signal }) => {
     const last = [...msgs].reverse().find(m => m.role === "user"); let text = String(last && last.content || "");
-    if (/\b(which|what) (ai|model|brain)\b|\bwho (are|made|built|created) (you|u)\b|\byour name\b|\bwhat are you\b/i.test(text)) { onText("I'm **Construct AI 1.5**, a coding AI made by AdminHF at MagicWinter. A team does the work: a reader, a planner, a coder, a checker, a fixer and a reviewer — and every program I write gets run and tested before you see the final version."); return { in: 0, out: 0, model: "🏗 Construct AI 1.5", finish: "" }; }
+    if (/\b(which|what) (ai|model|brain)\b|\bwho (are|made|built|created) (you|u)\b|\byour name\b|\bwhat are you\b/i.test(text)) { onText("I'm **Construct AI 1.4**, a coding AI made by AdminHF at MagicWinter. A team does the work: a reader, a planner, a coder, a checker, a fixer and a reviewer — and every program I write gets run and tested before you see the final version."); return { in: 0, out: 0, model: "🏗 Construct AI 1.4", finish: "" }; }
     const R = conRead(text);
     if (!R.hasCode) { try { text = await avishFixTypos(text, null); } catch {} } // typos in the request (never inside pasted code)
     const hist = msgs.slice(-8).map(m => ({ role: m.role === "assistant" ? "assistant" : "user", content: String(m.content || "").slice(0, 12000) }));
@@ -3254,32 +3206,22 @@ window.Floof.addProvider({ id: "construct", label: "🏗 Construct AI 1.5 — by
     // 🗺 Planner (new builds only)
     if (R.kind === "build") {
       status("🏗 Construct: planning…");
-      const p = await conAsk([{ role: "system", content: "You are the planner in Construct AI's coding team. Write a short plan (3-6 bullet points: language, structure, data, key functions, controls, edge cases). No code." + conBook(R, text) }, { role: "user", content: text }], { maxTokens: 300, signal });
+      const p = await conAsk([{ role: "system", content: "You are the planner in Construct AI's coding team. Write a short plan (3-6 bullet points: language, structure, data, key functions, controls). No code." }, { role: "user", content: text }], { maxTokens: 300, signal });
       if (p) { plan = p.text.trim(); via = p.via; onText("**🗺 Plan**\n" + plan + "\n\n"); }
     }
-    if (signal && signal.aborted) return { in: 0, out: 0, model: "🏗 Construct AI 1.5", finish: "" };
+    if (signal && signal.aborted) return { in: 0, out: 0, model: "🏗 Construct AI 1.4", finish: "" };
     // ⌨ Coder
     status("🏗 Construct: writing the code…");
-    const book = conBook(R, text);
-    const sys = CON_SYS + book + (R.lang ? `\nLanguage: ${R.lang}.` : "") + (plan ? "\nFollow this plan:\n" + plan : "") + langPrompt().replace("reply in", "write your explanations in").replace("Reply in", "Write your explanations in");
+    const sys = CON_SYS + (R.lang ? `\nLanguage: ${R.lang}.` : "") + (plan ? "\nFollow this plan:\n" + plan : "") + langPrompt().replace("reply in", "write your explanations in").replace("Reply in", "Write your explanations in");
     const c = await conAsk([{ role: "system", content: sys }, ...hist], { onDelta: onText, maxTokens: 3500, signal });
-    if (!c) { onText("Construct AI needs a brain: this device couldn't run Qwen-Coder and Floof Cloud isn't reachable. Try Chrome on a device with WebGPU, or sign in to MagicWinter."); return { in: 0, out: 0, model: "🏗 Construct AI 1.5", finish: "" }; }
+    if (!c) { onText("Construct AI needs a brain: this device couldn't run Qwen-Coder and Floof Cloud isn't reachable. Try Chrome on a device with WebGPU, or sign in to MagicWinter."); return { in: 0, out: 0, model: "🏗 Construct AI 1.4", finish: "" }; }
     via = c.via; let answer = c.text;
     // 🔍 Checker → 🔧 Fixer (up to 2 rounds)
     for (let round = 1; round <= 2 && !(signal && signal.aborted); round++) {
       const errs = conCheck(answer, R); if (!errs.length) break;
       status(`🏗 Construct: the checker found ${errs.length} problem${errs.length > 1 ? "s" : ""} — fixing (round ${round})…`);
       onText(`\n\n**🔧 Checker found:** ${errs.join(" ")}\n\n**Fixed version:**\n\n`);
-      const f = await conAsk([{ role: "system", content: CON_SYS + book }, { role: "user", content: `Task: ${text}\n\nThis answer has problems:\n${answer.slice(0, 14000)}\n\nProblems found:\n- ${errs.join("\n- ")}\n\nFix them and give the FULL corrected program.` }], { onDelta: onText, maxTokens: 3500, signal });
-      if (!f) break; answer = f.text;
-    }
-    // 🧪 Tester: actually run it (Python / JavaScript / web page) and fix real crashes, up to 2 rounds
-    for (let round = 1; round <= 2 && R.kind !== "explain" && !(signal && signal.aborted); round++) {
-      status("🏗 Construct: test-running the program…");
-      const errs = await conRun(answer); if (!errs.length) break;
-      status(`🏗 Construct: the test run crashed — fixing (round ${round})…`);
-      onText(`\n\n**🧪 Test run crashed:** \`${errs[0].replace(/`/g, "'").slice(0, 200)}\`\n\n**Fixed version:**\n\n`);
-      const f = await conAsk([{ role: "system", content: CON_SYS + book }, { role: "user", content: `Task: ${text}\n\nProgram:\n${answer.slice(0, 14000)}\n\nWhen it was run, it failed with:\n${errs.join("\n").slice(0, 2000)}\n\nFind the root cause, fix it, and give the FULL corrected program.` }], { onDelta: onText, maxTokens: 3500, signal }).catch(() => null);
+      const f = await conAsk([{ role: "system", content: CON_SYS }, { role: "user", content: `Task: ${text}\n\nThis answer has problems:\n${answer.slice(0, 14000)}\n\nProblems found:\n- ${errs.join("\n- ")}\n\nFix them and give the FULL corrected program.` }], { onDelta: onText, maxTokens: 3500, signal });
       if (!f) break; answer = f.text;
     }
     // 🧐 Reviewer: one look for logic bugs the checker can't see (builds only); fixes them if it finds any
@@ -3289,12 +3231,12 @@ window.Floof.addProvider({ id: "construct", label: "🏗 Construct AI 1.5 — by
       const bugs = rv && rv.text.trim();
       if (bugs && !/^\W*ok\W*$/i.test(bugs) && bugs.length > 8) {
         onText(`\n\n**🧐 Reviewer found:** ${bugs.replace(/\s+/g, " ").slice(0, 400)}\n\n**Improved version:**\n\n`);
-        const f = await conAsk([{ role: "system", content: CON_SYS + book }, { role: "user", content: `Task: ${text}\n\nProgram:\n${answer.slice(0, 14000)}\n\nA reviewer found these bugs:\n${bugs}\n\nFix them and give the FULL corrected program.` }], { onDelta: onText, maxTokens: 3500, signal }).catch(() => null);
+        const f = await conAsk([{ role: "system", content: CON_SYS }, { role: "user", content: `Task: ${text}\n\nProgram:\n${answer.slice(0, 14000)}\n\nA reviewer found these bugs:\n${bugs}\n\nFix them and give the FULL corrected program.` }], { onDelta: onText, maxTokens: 3500, signal }).catch(() => null);
         if (f) answer = f.text;
       }
     }
     status("Ready");
-    return { in: 0, out: 0, model: "🏗 Construct AI 1.5 · " + via, finish: "" };
+    return { in: 0, out: 0, model: "🏗 Construct AI 1.4 · " + via, finish: "" };
   }
 });
 // ---------- 🌟 Ultima AI 1.0 — Avish + Construct + Arti in one: it reads each message and hands it to the right one ----------
@@ -3316,7 +3258,7 @@ window.Floof.addProvider({ id: "ultima", label: "🌟 Ultima AI 1.0 — Avish + 
   stream: async args => {
     const last = [...args.msgs].reverse().find(m => m.role === "user"), text = String(last && last.content || "");
     if (/\b(which|what) (ai|model|brain)\b|\bwho (are|made|built|created) (you|u)\b|\byour name\b|\bwhat are you\b/i.test(text)) {
-      args.onText("I'm **Ultima AI 1.0** 🌟 — three MagicWinter AIs in one. I send questions and chat to **Avish AI 1.8** (by AdminAT), code to **Construct AI 1.5** (by AdminHF), and pictures to **Arti** 🎨. Just ask — I pick the right one each time.");
+      args.onText("I'm **Ultima AI 1.0** 🌟 — three MagicWinter AIs in one. I send questions and chat to **Avish AI 1.8** (by AdminAT), code to **Construct AI 1.4** (by AdminHF), and pictures to **Arti** 🎨. Just ask — I pick the right one each time.");
       return { in: 0, out: 0, model: "🌟 Ultima AI 1.0", finish: "" };
     }
     const to = ultimaRoute(text, args.msgs), P = EXTRA_PV[to];
