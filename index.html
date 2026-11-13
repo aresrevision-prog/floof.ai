@@ -1134,7 +1134,9 @@ function fitHistory(msgs, extraChars, total = CHAR_BUDGET) { // newest first unt
 }
 
 let sendRun = 0;
-const unlockUI = () => { busy = false; $("#send").disabled = false; $("#stop").hidden = true; };
+let avWantMini = false;
+const unlockUI = () => { busy = false; $("#send").disabled = false; $("#stop").hidden = true;
+  if (avWantMini && !engine) { avWantMini = false; setTimeout(() => { if (busy || engine) return; $("#model").value = "Qwen2.5-0.5B-Instruct"; status("🪶 Downloading Mini in the background so Avish can work offline next time…"); loadModel().catch(() => {}); }, 1500); } };
 async function send(override, extra = {}) { // locks at once (before any await) so two replies can never run together
   const text = (override ?? $("#input").value).trim();
   if (!text || busy) return;
@@ -2603,6 +2605,9 @@ async function avishBrain1() {
   if (engine && /^Qwen/.test(String(loadedModel))) return engine; // a Qwen brain is already loaded: use it
   let ok = false; try { ok = !!(navigator.gpu && await navigator.gpu.requestAdapter()); } catch {}
   if (!ok) return null;
+  // not downloaded yet + the cloud is there → answer smartly NOW with the cloud, and fetch 🪶 Mini quietly after this reply (school Wi-Fi can take ages)
+  const has = await dlHas({ id: "Qwen2.5-0.5B-Instruct" }).catch(() => false);
+  if (!has && ACCOUNT_KIND === "mw" && mwToken() && navigator.onLine !== false && !cloudBad) { avWantMini = true; return null; }
   const was = $("#model").value; $("#model").value = "Qwen2.5-0.5B-Instruct";
   try { await loadModel(); } finally { busy = true; $("#send").disabled = true; } // the reply is still running
   if (!engine) $("#model").value = was;
