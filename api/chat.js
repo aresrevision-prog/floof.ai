@@ -405,7 +405,7 @@ export default async function handler(req, res) {
   res.setHeader("Cache-Control", "no-store");
   if (req.method === "OPTIONS") return res.status(200).end();
   const key = (process.env.GEMINI_KEY || "").trim();
-  const aresOn = aresEnabled();
+  let aresOn = aresEnabled();
   if (req.method === "GET") {
     const q = req.query || {}; const test = q.test === "1" || /[?&]test=1\b/.test(req.url || "");
     try { return res.status(200).json(await diagnostics(key, test)); } catch (e) { return res.status(200).json({ ok: !!key, hasKey: !!key, error: "diagnostics failed" }); }
@@ -416,17 +416,21 @@ export default async function handler(req, res) {
 
   const t0 = now(), left = () => T_TOTAL - (now() - t0);
   let b = {}; try { b = typeof req.body === "string" ? JSON.parse(req.body || "{}") : (req.body || {}); } catch (e) {}
-  const acc = await account(b.token);
+  // Athena (the Ares Revision study tutor) runs on Floof Cloud: no MagicWinter sign-in, limited per network, never falls back to Ares (would loop)
+  const fromAres = b.ares === true;
+  if (fromAres) aresOn = false;
+  const acc = fromAres ? { user: "athena", pro: false, ares: true } : await account(b.token);
   if (acc && acc.err) return res.status(503).json({ error: "Can't check your MagicWinter sign-in right now — try again in a minute.", busy: true });
   if (!acc) return res.status(401).json({ error: "Sign in with a MagicWinter account to use Floof Cloud." });
-  if (!acc.pro && ipTooMany(ipOf(req))) return res.status(429).json({ error: "Lots of messages are coming from your network — try again in a little while." });
-  if (tooMany(acc.user.toLowerCase(), acc.pro)) return res.status(429).json({ error: "You're sending messages very fast — wait a few seconds." });
+  if (fromAres && ipTooMany(ipOf(req))) return res.status(429).json({ error: "Lots of messages are coming from your network — try again in a little while." });
+  if (!fromAres && !acc.pro && ipTooMany(ipOf(req))) return res.status(429).json({ error: "Lots of messages are coming from your network — try again in a little while." });
+  if (!fromAres && tooMany(acc.user.toLowerCase(), acc.pro)) return res.status(429).json({ error: "You're sending messages very fast — wait a few seconds." });
 
   const sys = String(b.system || "").slice(0, 60000);
   const raw = Array.isArray(b.messages) ? b.messages.filter(m => m && typeof m === "object") : [];
   const contents = buildContents(raw);
   if (!contents.length) return res.status(400).json({ error: "No message." });
-  const want = Math.min(Math.max(parseInt(b.maxTokens) || 8192, 256), acc.pro ? 16384 : 8192);
+  const want = Math.min(Math.max(parseInt(b.maxTokens) || 8192, 256), acc.pro ? 16384 : fromAres ? 2048 : 8192);
 
   const errs = []; let stop = false, keyBad = false, gBusy = 0;
   const hasImg = raw.some(m => m && typeof m.img === "string" && m.img); // pictures need Gemini (the CPU models are text-only)
