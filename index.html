@@ -1323,8 +1323,8 @@ When fixing: find the root cause, explain it in one line, and return the FULL co
     if (e.name === "AbortError") { stopped = true; status("Stopped."); }
     else if (e.free) { freeBad = Date.now() + 300000; fallBack = true; status("Free backup brain busy — answering from the grid for now.", "err"); }
     else if ((e.kind === "net" || e.kind === "server") && PV[cloud.pv]?.nokey && !extra.depth) { // Floof Cloud / Athena unreachable: answer from the grid for a while instead of erroring every message
-      cloudBad = true; fallBack = true; clearTimeout(cloudBadTimer); cloudBadTimer = setTimeout(() => { cloudBad = false; updateMode(); }, 300000); updateMode();
-      status(`☁ ${pvName(cloud.pv)} unreachable — answering from the grid for now.`, "err");
+      cloudBad = true; fallBack = true; clearTimeout(cloudBadTimer); cloudBadTimer = setTimeout(() => { cloudBad = false; updateMode(); }, 45000); updateMode();
+      status(`☁ ${pvName(cloud.pv)} unreachable (network) — basic answer this time; trying it again in a moment.`, "err");
     }
     else if (e.kind || cloudReady()) { status(e.kind ? "☁ " + e.message : /failed to fetch|network|load failed/i.test(e.message || "") ? "☁ Can't reach the AI service — check your internet, or switch ☁ off to use basic mode." : "☁ " + (e.message || e), "err"); if (e.kind) finishWhy = "ERR:" + e.message.replace(/[.\s]+$/, "") + " (press 🩺 Test brain in the sidebar for details)"; }
     else if (/context|window|prompt.*(long|exceed)/i.test(e.message || "")) reply += "\n\n_(That was more than the brain can hold at once — start a new chat, or ask about one part.)_";
@@ -1602,6 +1602,7 @@ idb.get("mwai.mem").then(v => { if (Array.isArray(v)) mems = v; renderMems(); })
 const PV = {};
 let cloud = ls.get("mwai.cloud", null), abortCtl = null, modelList = [];
 if (!cloud) cloud = { pv: "", keys: {}, model: {}, fix: true };
+if (!cloud.pvChosen && !cloud.pv && ACCOUNT_KIND === "mw") cloud.pv = "floof"; // new device (e.g. a school Chromebook): MagicWinter accounts start on the smart brain, not basic mode
 if (cloud.pv && !PV[cloud.pv] && !["floof", "athena", "gridwriter", "construct", "arti", "ultima"].includes(cloud.pv)) cloud.pv = ""; delete cloud.keys.claude; delete cloud.model.claude; ls.del("mwai.claude"); ls.set("mwai.cloud", cloud); // paid option removed: wipe any old key
 let cloudBad = false, cloudBadTimer = 0; // set when the key/server was rejected, so Floof falls back instead of erroring
 const cloudReady = () => !cloudBad && !!PV[cloud.pv] && PV[cloud.pv].ok(cloud.keys[cloud.pv] || "");
@@ -1741,7 +1742,7 @@ async function refreshModels() {
   } catch (e) {
     if (pv !== cloud.pv) return;
     sel.innerHTML = ""; sel.style.display = "none";
-    lastListErr = e; const k = e.kind || ""; if (/key|server|policy|region|credits/.test(k) || (k === "net" && PV[pv]?.nokey)) cloudBad = true; // can't work until fixed: answer with the grid/on-device brain meanwhile
+    lastListErr = e; const k = e.kind || ""; if (/key|server|policy|region|credits/.test(k) || (k === "net" && PV[pv]?.nokey)) { cloudBad = true; if (k === "net" || k === "server") { clearTimeout(cloudBadTimer); cloudBadTimer = setTimeout(() => { cloudBad = false; refreshModels(); }, 45000); } } // can't reach it right now: basic mode, then try again soon
     status(`☁ ${pvName(pv)}: ${e.message || e}${cloudBad ? " (Using basic mode for now.)" : ""}`, "err");
   }
   updateMode();
@@ -2346,8 +2347,11 @@ setTimeout(warmUp, 2500);
 const FLOOF_API = /floofai\.vercel\.app$/.test(location.host) ? "/api/chat" : "https://floofai.vercel.app/api/chat";
 const ARES_AI = "https://ares-revision.vercel.app/api/ai";
 async function postJSON(url, body, signal, pv) {
-  let r; try { r = await fetch(url, { method: "POST", signal, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); }
-  catch (e) { if (e.name === "AbortError") throw e; throw brainErr(pv, -1, "Failed to fetch: " + e.message); }
+  let r;
+  for (let attempt = 0; ; attempt++) { // slow / patchy networks (school Wi-Fi): one quiet retry before giving up
+    try { r = await fetch(url, { method: "POST", signal, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); if ([502, 503, 504].includes(r.status) && attempt < 1) { await new Promise(z => setTimeout(z, 1500)); continue; } break; }
+    catch (e) { if (e.name === "AbortError") throw e; if (attempt < 1) { await new Promise(z => setTimeout(z, 1500)); continue; } throw brainErr(pv, -1, "Failed to fetch: " + e.message); }
+  }
   let t = "", j = {}; try { t = await r.text(); j = JSON.parse(t); } catch {}
   if (!r.ok || j.error) throw brainErr(pv, r.ok ? 500 : r.status, errText(j) || t.slice(0, 200) || "Server error " + r.status);
   return j;
@@ -2355,7 +2359,7 @@ async function postJSON(url, body, signal, pv) {
 window.Floof.addProvider({ id: "floof", label: "☁ Floof AI 3.4 — free, no key", ph: "", nokey: true, ok: () => ACCOUNT_KIND === "mw", vision: true,
   help: "The studio's own AI server — nothing to set up. Free for MagicWinter accounts; ⭐ Pro gets the strongest model first and priority when it's busy.",
   list: async () => { // quick health check: GET says {"ok":false} while the server has no GEMINI_KEY
-    let j = null; try { const c = new AbortController(), tm = setTimeout(() => c.abort(), 6000); const r = await fetch(FLOOF_API, { signal: c.signal, cache: "no-store" }); clearTimeout(tm); try { j = await r.json(); } catch {} }
+    let j = null; try { const c = new AbortController(), tm = setTimeout(() => c.abort(), 15000); const r = await fetch(FLOOF_API, { signal: c.signal, cache: "no-store" }); clearTimeout(tm); try { j = await r.json(); } catch {} }
     catch (e) { throw brainErr("floof", -1, "Failed to fetch: " + (e.message || e)); } // unreachable (offline / school filter): fall back to the grid
     if (j && j.ok === false) throw brainErr("floof", 500, "GEMINI_KEY missing");
     if (!mwToken()) throw brainErr("floof", 401, "Not signed in to MagicWinter");
@@ -2372,7 +2376,7 @@ window.Floof.addProvider({ id: "floof", label: "☁ Floof AI 3.4 — free, no ke
 // 3) context areas on the grid come from your message (+ any matching notes)
 // 4) for each slot the engine picks words of that type from the context areas; a tiny transformer (2 layers, ~0.7M numbers) judges the fit
 // 5) it writes 5 drafts, the transformer picks the one that makes the most sense, and the numbers are turned back into words
-const GW_BASES = window.FLOOF_GW ? [window.FLOOF_GW] : ["https://cdn.jsdelivr.net/gh/aresrevision-prog/floof.ai@d3b1ee5d6f05917e8e8a0a5e76b4fb796f652a76/lex/", "https://floofai.vercel.app/lex/"], GW_PARTS = 2; // download in 2 parts
+const GW_BASES = window.FLOOF_GW ? [window.FLOOF_GW] : ["https://cdn.jsdelivr.net/gh/aresrevision-prog/floof.ai@88544df20209376bd43b884e5d335390afcfacf5/lex/", "https://floofai.vercel.app/lex/"], GW_PARTS = 2; // download in 2 parts
 let GWM = null, gwLoading = null;
 async function gwFetch(onPct) {
   let lastErr;
@@ -2380,7 +2384,7 @@ async function gwFetch(onPct) {
     try {
       const parts = []; let got = 0; const total = 3.2e6;
       for (let k = 0; k < GW_PARTS; k++) {
-        const r = await fetch(base + "gw18.gz.part" + k); if (!r.ok) throw new Error(base.split("/")[2] + " " + r.status);
+        const r = await fetch(base + "gw19.gz.part" + k); if (!r.ok) throw new Error(base.split("/")[2] + " " + r.status);
         const rd = r.body.getReader(); for (;;) { const { value, done } = await rd.read(); if (done) break; parts.push(value); got += value.length; onPct && onPct(Math.min(99, got / total * 100 | 0)); }
       }
       const buf = await new Response(new Blob(parts).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer();
@@ -2393,8 +2397,8 @@ async function gwFetch(onPct) {
 function gwLoad(onPct) {
   if (GWM) return Promise.resolve(GWM);
   return gwLoading ??= (async () => {
-    let buf = null; try { buf = await idb.getRaw("gw.v4"); } catch {}
-    if (!buf) { buf = await gwFetch(onPct); idb.setRaw("gw.v4", buf).catch(() => {}); }
+    let buf = null; try { buf = await idb.getRaw("gw.v5"); } catch {}
+    if (!buf) { buf = await gwFetch(onPct); idb.setRaw("gw.v5", buf).catch(() => {}); }
     const hl = new Uint32Array(buf.slice(4, 8))[0], H = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 8, hl)));
     const arr = (name) => { const s = H.sec[name]; return s.t === "i8" ? new Int8Array(buf, s.o, s.n) : new Float32Array(buf, s.o, s.n); };
     const M = { H, V: H.V, tags: H.tags, words: H.words, tokTag: Int16Array.from(H.tokTag), BOS: H.BOS, EOS: H.EOS, UNK0: H.UNK0 };
@@ -2800,7 +2804,7 @@ const DL_LIST = [
 let _dlF16 = null;
 async function dlSuffix() { if (_dlF16 === null) { try { const a = navigator.gpu && await navigator.gpu.requestAdapter(); _dlF16 = a ? a.features.has("shader-f16") : null; } catch { _dlF16 = null; } } return _dlF16 === null ? null : _dlF16 ? "-q4f16_1-MLC" : "-q4f32_1-MLC"; }
 async function dlHas(item) {
-  if (item.id === "avish") { try { return !!(await idb.getRaw("gw.v4")); } catch { return false; } }
+  if (item.id === "avish") { try { return !!(await idb.getRaw("gw.v5")); } catch { return false; } }
   const suf = await dlSuffix(); if (!suf) return null;
   try { webllm ??= await import("https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.88/+esm"); return await webllm.hasModelInCache(item.id + suf, { ...webllm.prebuiltAppConfig, cacheBackend: ls.get(CKEY, "cache") }); } catch { return false; }
 }
