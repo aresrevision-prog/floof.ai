@@ -1822,9 +1822,11 @@ if (saved) loadModel();
 <script>
 (()=>{const status=document.getElementById("status"),bar=document.getElementById("barFill");if(!status)return;const logos=[...document.querySelectorAll(".logo")];const sync=()=>{const message=(status.textContent||"").toLowerCase();const busy=/thinking|working|searching|generating|processing|connecting|loading|running|sending|creating|building|analy[sz]ing|looking up/.test(message);const progress=bar&&bar.style.width&&bar.style.width!=="0%"&&bar.style.width!=="0px";logos.forEach(el=>el.classList.toggle("is-working",busy||!!progress));};new MutationObserver(sync).observe(status,{childList:true,subtree:true,characterData:true,attributes:true});if(bar)new MutationObserver(sync).observe(bar,{attributes:true,attributeFilter:["style","class"]});sync();})();
 </script>
-\n<script type="module" src="./floof-upgrade.js?v=7"></script>
+
+<script type="module" src="./floof-upgrade.js?v=7"></script>
 <script type="module" src="./floof-creative.js?v=1"></script>
 <script src="./arti-ai.js?v=2"></script>
 <script src="./arti-code.js?v=1"></script>
+<script src="./floof-pixel.js?v=1"></script>
 </body>
 </html>
