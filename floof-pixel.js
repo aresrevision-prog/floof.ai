@@ -62,7 +62,7 @@ function enhanceImageStudio(){
  prompt.insertAdjacentElement("afterend",label);
  generate.addEventListener("click",()=>{
   const mode=$("#flPixelStyleMode")?.value;
-  prompt.value=prompt.value.replace(/^micro-pixel art, ultra-crisp tiny square pixels,[\\s\\S]*?polished game sprite illustration\\. /,"");
+  prompt.value=prompt.value.replace(/^micro-pixel art, ultra-crisp tiny square pixels,[\s\S]*?polished game sprite illustration\\. /,"");
   if(mode==="micro")prompt.value="micro-pixel art, ultra-crisp tiny square pixels, deliberate pixel clusters, detailed pixel shading and tasteful dithering, limited cohesive retro video-game palette, hard pixel edges, no anti-aliasing, no blur, no smooth gradients, polished game sprite illustration. "+prompt.value;
  },true);
 }
