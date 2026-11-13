@@ -2378,7 +2378,7 @@ window.Floof.addProvider({ id: "floof", label: "☁ Floof AI 3.4 — free, no ke
 // 3) context areas on the grid come from your message (+ any matching notes)
 // 4) for each slot the engine picks words of that type from the context areas; a tiny transformer (2 layers, ~0.7M numbers) judges the fit
 // 5) it writes 5 drafts, the transformer picks the one that makes the most sense, and the numbers are turned back into words
-const GW_BASES = window.FLOOF_GW ? [window.FLOOF_GW] : ["https://cdn.jsdelivr.net/gh/aresrevision-prog/floof.ai@88544df20209376bd43b884e5d335390afcfacf5/lex/", "https://floofai.vercel.app/lex/"], GW_PARTS = 2; // download in 2 parts
+const GW_BASES = window.FLOOF_GW ? [window.FLOOF_GW] : ["https://cdn.jsdelivr.net/gh/aresrevision-prog/floof.ai@91fdcc06352eef7c1b6a4a771fbe00dff50500af/lex/", "https://floofai.vercel.app/lex/"], GW_PARTS = 2; // download in 2 parts
 let GWM = null, gwLoading = null;
 async function gwFetch(onPct) {
   let lastErr;
@@ -2386,7 +2386,7 @@ async function gwFetch(onPct) {
     try {
       const parts = []; let got = 0; const total = 3.2e6;
       for (let k = 0; k < GW_PARTS; k++) {
-        const r = await fetch(base + "gw19.gz.part" + k); if (!r.ok) throw new Error(base.split("/")[2] + " " + r.status);
+        const r = await fetch(base + "gw20.gz.part" + k); if (!r.ok) throw new Error(base.split("/")[2] + " " + r.status);
         const rd = r.body.getReader(); for (;;) { const { value, done } = await rd.read(); if (done) break; parts.push(value); got += value.length; onPct && onPct(Math.min(99, got / total * 100 | 0)); }
       }
       const buf = await new Response(new Blob(parts).stream().pipeThrough(new DecompressionStream("gzip"))).arrayBuffer();
@@ -2399,8 +2399,8 @@ async function gwFetch(onPct) {
 function gwLoad(onPct) {
   if (GWM) return Promise.resolve(GWM);
   return gwLoading ??= (async () => {
-    let buf = null; try { buf = await idb.getRaw("gw.v5"); } catch {}
-    if (!buf) { buf = await gwFetch(onPct); idb.setRaw("gw.v5", buf).catch(() => {}); }
+    let buf = null; try { buf = await idb.getRaw("gw.v6"); } catch {}
+    if (!buf) { buf = await gwFetch(onPct); idb.setRaw("gw.v6", buf).catch(() => {}); }
     const hl = new Uint32Array(buf.slice(4, 8))[0], H = JSON.parse(new TextDecoder().decode(new Uint8Array(buf, 8, hl)));
     const arr = (name) => { const s = H.sec[name]; return s.t === "i8" ? new Int8Array(buf, s.o, s.n) : new Float32Array(buf, s.o, s.n); };
     const M = { H, V: H.V, tags: H.tags, words: H.words, tokTag: Int16Array.from(H.tokTag), BOS: H.BOS, EOS: H.EOS, UNK0: H.UNK0 };
@@ -2809,7 +2809,7 @@ const DL_LIST = [
 let _dlF16 = null;
 async function dlSuffix() { if (_dlF16 === null) { try { const a = navigator.gpu && await navigator.gpu.requestAdapter(); _dlF16 = a ? a.features.has("shader-f16") : null; } catch { _dlF16 = null; } } return _dlF16 === null ? null : _dlF16 ? "-q4f16_1-MLC" : "-q4f32_1-MLC"; }
 async function dlHas(item) {
-  if (item.id === "avish") { try { return !!(await idb.getRaw("gw.v5")); } catch { return false; } }
+  if (item.id === "avish") { try { return !!(await idb.getRaw("gw.v6")); } catch { return false; } }
   const suf = await dlSuffix(); if (!suf) return null;
   try { webllm ??= await import("https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm@0.2.88/+esm"); return await webllm.hasModelInCache(item.id + suf, { ...webllm.prebuiltAppConfig, cacheBackend: ls.get(CKEY, "cache") }); } catch { return false; }
 }
