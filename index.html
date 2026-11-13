@@ -1221,7 +1221,7 @@ async function sendCore(override, extra = {}) {
   let researched = [];
   const factual = /\?\s*$|^(who|what|when|where|why|how|which|explain|tell me about|describe|define|compare|is|are|does|did|can)\b/i.test(text.trim()) && text.length > 8;
   if ((webOn || (autoResearch && factual)) && !calc && !solved.length && info.type !== "summary" && (!hits.length || hits[0].score < .75 || /\b(latest|current|today|now|news|recent)\b/i.test(text))) {
-    status("🔎 3 researchers are looking it up…");
+    status("🔎 Researching: Wikipedia, Simple Wikipedia, DuckDuckGo and more…");
     try {
       const pages = await deepResearch(query, text); researched = pages;
       if (autoLearn) { const n = learnPages(pages); if (n) { saveDocs(); rebuild(); status(`🌐 Learned ${n} new page${n > 1 ? "s" : ""} into the grid`); } }
@@ -3891,22 +3891,47 @@ async function deepResearch(query, question) {
     })(),
     core !== query ? webSearch(core).catch(() => []) : Promise.resolve([]), // 🔎 3: a second search with just the key words
   ]);
-  const all = [...(r1 || []), ...(r2 || []), ...(r3 || [])];
+  const all = [...(r1 || []), ...(r2 || []), ...(r3 || []), ...(await moreSources(question || query, core))];
   // ✅ 1: on topic (shares the question's key words) · ✅ 2: safe · ✅ 3: useful (not a "may refer to" list, not a repeat)
   const seen = new Set(), unsafe = /\b(porn|xxx|nude|naked|sexual|erotic|suicide method|how to kill)\b/i;
   const out = all.filter(p => { const t = (p.title + " " + p.text).toLowerCase(), k = qWords.filter(w => t.includes(w)).length;
-    if (k < Math.min(2, qWords.length) || unsafe.test(t) || /may refer to|disambiguation/i.test(t.slice(0, 300)) || p.text.length < 80) return false;
+    if (k < (/^📰/u.test(p.title) ? 1 : Math.min(2, qWords.length)) || unsafe.test(t) || /may refer to|disambiguation/i.test(t.slice(0, 300)) || p.text.length < (/^📰/u.test(p.title) ? 20 : 80)) return false;
     const key = p.url + "|" + p.text.slice(0, 60); if (seen.has(key)) return false; seen.add(key); return true; });
-  return out.slice(0, 5);
+  return out.slice(0, 7);
 }
-async function webSearch(q) {
+// more researchers, not just Wikipedia — all free and keyless; each one only runs when it suits the question
+const FLOOF_SEARCH = FLOOF_API.replace(/chat$/, "search");
+async function moreSources(question, core) {
+  const q = String(question), low = q.toLowerCase(), jobs = [];
+  const withTimeout = (p, ms = 8000) => Promise.race([p, new Promise(r => setTimeout(() => r([]), ms))]).catch(() => []);
+  // 🔎 Simple English Wikipedia — clearer explanations (great for school)
+  jobs.push(webSearch(core, "simple").then(r => (r || []).slice(0, 1)).catch(() => []));
+  // 🔎 DuckDuckGo instant answers — summaries from many different websites
+  jobs.push(fetch(FLOOF_SEARCH + "?src=ddg&q=" + encodeURIComponent(core)).then(r => r.json()).then(j => (j.results || []).slice(0, 3).map(x => ({ title: `🦆 ${x.title} (${x.source})`, text: x.text, url: x.url }))).catch(() => []));
+  // 🔎 world news (GDELT, many news sites) — for anything recent
+  if (/\b(news|latest|today|yesterday|this (week|month|year)|current(ly)?|recent(ly)?|right now|20(2[5-9]|3\d))\b/.test(low))
+    jobs.push(fetch(FLOOF_SEARCH + "?src=news&q=" + encodeURIComponent(core.replace(/\b(latest|news|today|recent|current|now)\b/gi, " ").replace(/\s+/g, " ").trim() || core)).then(r => r.json()).then(j => (j.results || []).slice(0, 5).map(x => ({ title: `📰 ${x.title}`, text: x.text, url: x.url }))).catch(() => []));
+  // 🔎 Stack Overflow — real programmers' accepted answers, for code questions
+  if (/\b(code|coding|python|javascript|js|html|css|java|c\+\+|c#|sql|error|bug|function|loop|array|api|compile|syntax|exception|traceback)\b/.test(low))
+    jobs.push((async () => {
+      const se = "https://api.stackexchange.com/2.3/", qs = await (await fetch(se + "search/advanced?order=desc&sort=relevance&accepted=True&site=stackoverflow&pagesize=2&q=" + encodeURIComponent(core))).json();
+      const ids = (qs.items || []).map(i => i.question_id).slice(0, 2); if (!ids.length) return [];
+      const an = await (await fetch(se + "questions/" + ids.join(";") + "/answers?order=desc&sort=votes&site=stackoverflow&filter=withbody&pagesize=4")).json();
+      return (an.items || []).filter(a => a.is_accepted || a.score > 5).slice(0, 2).map(a => { const qi = (qs.items || []).find(i => i.question_id === a.question_id) || {}; return { title: "💬 " + String(qi.title || "Stack Overflow").replace(/&#39;/g, "'").replace(/&quot;/g, '"'), text: a.body.replace(/<pre[\s\S]*?<\/pre>/g, m => " CODE: " + m.replace(/<[^>]+>/g, "").slice(0, 400) + " ").replace(/<[^>]+>/g, " ").replace(/&[a-z#0-9]+;/g, " ").replace(/\s+/g, " ").slice(0, 1200), url: qi.link || "https://stackoverflow.com" }; });
+    })());
+  // 🔎 dictionary — for "what does X mean" / definitions
+  const dm = low.match(/\b(?:define|definition of|meaning of|what does (\w+) mean|what is the meaning of)\s*(\w+)?/);
+  const dw = dm && (dm[1] || dm[2]); if (dw) jobs.push(fetch("https://api.dictionaryapi.dev/api/v2/entries/en/" + encodeURIComponent(dw)).then(r => r.ok ? r.json() : []).then(j => j && j[0] ? [{ title: "📖 " + dw + " (dictionary)", text: (j[0].meanings || []).flatMap(m => (m.definitions || []).slice(0, 2).map(d => `(${m.partOfSpeech}) ${d.definition}${d.example ? " e.g. " + d.example : ""}`)).slice(0, 4).join(" "), url: "https://en.wiktionary.org/wiki/" + encodeURIComponent(dw) }] : []).catch(() => []));
+  return (await Promise.all(jobs.map(j => withTimeout(j)))).flat();
+}
+async function webSearch(q, host = "en") {
   const terms = MW.tokens(q).map(t => t.w).slice(0, 8).join(" ") || q;
-  const u = "https://en.wikipedia.org/w/api.php?action=query&format=json&origin=*&generator=search&gsrlimit=3&prop=extracts|info&inprop=url&exintro=1&explaintext=1&exsentences=10&gsrsearch=" + encodeURIComponent(terms);
+  const u = "https://" + host + ".wikipedia.org/w/api.php?action=query&format=json&origin=*&generator=search&gsrlimit=3&prop=extracts|info&inprop=url&exintro=1&explaintext=1&exsentences=10&gsrsearch=" + encodeURIComponent(terms);
   const ctl = new AbortController(); const to = setTimeout(() => ctl.abort(), 8000);
   try {
     const j = await (await fetch(u, { signal: ctl.signal })).json();
     return Object.values(j.query?.pages || {}).sort((a, b) => a.index - b.index).filter(p => p.extract && p.extract.length > 80)
-      .map(p => ({ title: "🌐 " + p.title, text: p.extract, url: p.fullurl }));
+      .map(p => ({ title: "🌐 " + p.title + (host === "simple" ? " (Simple Wikipedia)" : ""), text: p.extract, url: p.fullurl }));
   } finally { clearTimeout(to); }
 }
 
