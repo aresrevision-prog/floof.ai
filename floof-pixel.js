@@ -52,5 +52,21 @@ $("#fpGenerate").onclick=()=>{const p=fullPrompt();if(!$("#flImageButton")){stat
 $("#fpSend").onclick=()=>{const p=fullPrompt();if(!$("#flImageButton")){status.textContent="Floof Image Studio has not loaded yet.";return}$("#input").value="Create a micro-pixel art image: "+p;$("#flImageButton").click();status.textContent="Prompt sent to Floof Image Studio."};
 function addButton(){const anchor=$("#artiCodeOpen")||$("#artiImage");if(!anchor||$("#floofPixelOpen"))return false;const b=document.createElement("button");b.id="floofPixelOpen";b.type="button";b.textContent="🧩 Micro-Pixel Studio";b.onclick=open;anchor.insertAdjacentElement("afterend",b);return true}
 if(!addButton()){const obs=new MutationObserver(()=>{if(addButton())obs.disconnect()});obs.observe(document.body,{childList:true,subtree:true})}
+
+/* Add a native style selector to Floof Image Studio so micro-pixel mode also works there. */
+function enhanceImageStudio(){
+ const prompt=$("#flImagePrompt"),generate=$("#flImageGenerate");
+ if(!prompt||!generate||$("#flPixelStyle"))return;
+ const label=document.createElement("label");label.id="flPixelStyle";label.className="small";label.style.cssText="display:block;margin:4px 0";
+ label.innerHTML='Floof art style <select id="flPixelStyleMode" style="display:block;min-width:190px"><option value="standard">Standard Floof art</option><option value="micro">Micro-pixel / retro game art</option></select>';
+ prompt.insertAdjacentElement("afterend",label);
+ generate.addEventListener("click",()=>{
+  const mode=$("#flPixelStyleMode")?.value;
+  if(mode==="micro"&&!prompt.dataset.microApplied){prompt.value="micro-pixel art, ultra-crisp tiny square pixels, deliberate pixel clusters, detailed pixel shading and tasteful dithering, limited cohesive retro video-game palette, hard pixel edges, no anti-aliasing, no blur, no smooth gradients, polished game sprite illustration. "+prompt.value;prompt.dataset.microApplied="1";}
+  if(mode!=="micro"&&prompt.dataset.microApplied){prompt.value=prompt.value.replace(/^micro-pixel art,[\\s\\S]*?polished game sprite illustration\\. /,"");delete prompt.dataset.microApplied;}
+ },true);
+}
+const studioObserver=new MutationObserver(enhanceImageStudio);studioObserver.observe(document.body,{childList:true,subtree:true});enhanceImageStudio();
+
 reset(32);
 })();
