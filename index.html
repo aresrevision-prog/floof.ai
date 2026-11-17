@@ -1442,6 +1442,7 @@ function fixTypos(text) { // returns { text, fixes:[[from,to]] }
     if (DICT.has(lw)) { const sw = lw.length >= 3 && swapFix(lw); if (sw) { fixes.push([w, sw]); return sw; } return w; }
     if (/^[A-Z]/.test(w) && w !== text.trim().split(/\s/)[0]) return w; // probably a name
     if (/z/.test(lw) && DICT.has(lw.replace(/z/g, "s"))) { const z2 = lw.replace(/z/g, "s"); fixes.push([w, z2]); return z2; } // lazers → lasers
+    if (lw.length >= 5) for (let i = 1; i < lw.length; i++) if (lw[i] === lw[i - 1] && DICT.has(lw.slice(0, i) + lw.slice(i + 1))) { const d2 = lw.slice(0, i) + lw.slice(i + 1); fixes.push([w, d2]); return d2; } // bannana → banana
     const s = suggest(lw); if (!s || s === lw) return w; fixes.push([w, s]); return s;
   });
   return { text: out, fixes };
@@ -2660,6 +2661,7 @@ async function avishFixTypos(text, M) { // "wat causd wolrd war 1" → "what cau
     const lw = w.toLowerCase(); if (lw.length < 2 || /'/.test(lw) || M.idx.has(lw) || (typeof COMMON !== "undefined" && COMMON.has(lw))) return w;
     if (DICT && DICT.has(lw) && lw.length >= 4) return w; // a real word (e.g. "meme") is never "corrected"
     if (DICT && /z/.test(lw) && DICT.has(lw.replace(/z/g, "s"))) { const b2 = lw.replace(/z/g, "s"); fixes.push(w + "→" + b2); return b2; } // lazers → lasers
+    if (DICT && !DICT.has(lw) && lw.length >= 5) { for (let i = 0; i < lw.length; i++) { const c = lw.slice(0, i) + lw.slice(i + 1); if (lw[i] === lw[i - 1] || lw[i] === lw[i + 1] ? DICT.has(c) && (M.idx.has(c) || c.length > 4) : false) { fixes.push(w + "→" + c); return c; } } } // an extra doubled letter: bannana → banana
     const max = lw.length <= 4 ? 1 : 2; let best = null, bs = 1e9;
     for (let L = lw.length - max; L <= lw.length + max; L++) for (const [c, rank] of M.typoIdx.get(L) || []) {
       if (c[0] !== lw[0] && c[1] !== lw[1]) continue;
@@ -2916,8 +2918,10 @@ async function amPaint(A, text, n, label) { // one subject → n pictures (32×3
         { if (b2 > .75) { const v = new Float32Array(64); let nn = 0; for (let k = 0; k < 64; k++) { v[k] = Cs.w[bi * 64 + k]; nn += v[k] ** 2; } nn = Math.sqrt(nn) || 1; for (let k = 0; k < 64; k++) v[k] /= nn; c1 = v; } } } } }
   if (!c1) return null;
   { const Cs = A.W.Cs; let best = -1, bs = -2; for (let i = 0; i < Cs.r; i++) { let d = 0, nn = 0; for (let k = 0; k < 64; k++) { const v = Cs.w[i * 64 + k]; d += v * c1[k]; nn += v * v; } d /= Math.sqrt(nn) || 1; if (d > bs) { bs = d; best = i; } }
-    if (bs > .5) { let nn = 0; for (let k = 0; k < 64; k++) nn += Cs.w[best * 64 + k] ** 2; nn = Math.sqrt(nn) || 1; const v = new Float32Array(64); let m = 0; for (let k = 0; k < 64; k++) { v[k] = c1[k] + 1.5 * Cs.w[best * 64 + k] / nn; m += v[k] ** 2; } m = Math.sqrt(m); for (let k = 0; k < 64; k++) v[k] /= m; c1 = v; } } // lean towards the closest thing it has learned
-  const K = A.K, steps = 50, guide = 3, c = new Float32Array(n * 64); for (let i = 0; i < n; i++) c.set(c1, i * 64); const c0 = new Float32Array(n * 64);
+    if (bs < .5) return null; // it doesn't know this thing → don't paint a stain; the main Arti painter takes over
+    if (bs < .85) { let nn = 0; for (let k = 0; k < 64; k++) nn += Cs.w[best * 64 + k] ** 2; nn = Math.sqrt(nn) || 1; const v = new Float32Array(64); for (let k = 0; k < 64; k++) v[k] = Cs.w[best * 64 + k] / nn; c1 = v; } // not an exact match → draw the closest thing it really knows (crisp, never a blur)
+    else if (bs > .5) { let nn = 0; for (let k = 0; k < 64; k++) nn += Cs.w[best * 64 + k] ** 2; nn = Math.sqrt(nn) || 1; const v = new Float32Array(64); let m = 0; for (let k = 0; k < 64; k++) { v[k] = c1[k] + 1.5 * Cs.w[best * 64 + k] / nn; m += v[k] ** 2; } m = Math.sqrt(m); for (let k = 0; k < 64; k++) v[k] /= m; c1 = v; } } // lean towards the closest thing it has learned
+  const K = A.K, steps = 50, guide = A.fmt === "ycc128" ? 4.5 : 3, c = new Float32Array(n * 64); for (let i = 0; i < n; i++) c.set(c1, i * 64); const c0 = new Float32Array(n * 64);
   let seed = Date.now() & 0xffffff; const rnd = () => { seed = (seed * 1664525 + 1013904223) >>> 0; return seed / 4294967296; }, gauss = () => Math.sqrt(-2 * Math.log(rnd() + 1e-12)) * Math.cos(6.2832 * rnd());
   let z = new Float32Array(n * K).map(gauss);
   for (let s = 0; s < steps; s++) {
@@ -2960,11 +2964,20 @@ function amClean(pix) { // ✨ tidy the picture: clean white background, then sn
   for (const q of fg) { const r = out[q * 3], g = out[q * 3 + 1], b = out[q * 3 + 2], l = (r + g + b) / 3; for (let ch = 0; ch < 3; ch++) out[q * 3 + ch] = Math.max(0, Math.min(255, l + (out[q * 3 + ch] - l) * 1.15)); }
   return out;
 }
-function amCanvas(pix) { const R = Math.round(Math.sqrt(pix.length / 3)), c = document.createElement("canvas"); c.width = c.height = R; const x = c.getContext("2d"), im = x.createImageData(R, R); for (let q = 0; q < R * R; q++) { for (let ch = 0; ch < 3; ch++) im.data[q * 4 + ch] = pix[q * 3 + ch]; const w = Math.min(pix[q * 3], pix[q * 3 + 1], pix[q * 3 + 2]); im.data[q * 4 + 3] = w > 240 ? 0 : w > 220 ? 140 : 255; } x.putImageData(im, 0, 0); return c; } // white → see-through
+function amCanvas(pix) { const R = Math.round(Math.sqrt(pix.length / 3)), c = document.createElement("canvas"); c.width = c.height = R; const x = c.getContext("2d"), im = x.createImageData(R, R); for (let q = 0; q < R * R; q++) { for (let ch = 0; ch < 3; ch++) im.data[q * 4 + ch] = pix[q * 3 + ch]; const w = Math.min(pix[q * 3], pix[q * 3 + 1], pix[q * 3 + 2]); im.data[q * 4 + 3] = w > 240 ? 0 : w > 220 ? 140 : 255; }
+  if (R >= 64) { // tidy the cut-out: drop lonely specks so outlines stay clean
+    const A0 = new Uint8Array(R * R); for (let q = 0; q < R * R; q++) A0[q] = im.data[q * 4 + 3] > 100 ? 1 : 0;
+    for (let y = 1; y < R - 1; y++) for (let xx = 1; xx < R - 1; xx++) { const q = y * R + xx; if (!A0[q]) continue; let n = 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) n += A0[q + dy * R + dx]; if (n <= 3) im.data[q * 4 + 3] = 0; } }
+  x.putImageData(im, 0, 0); return c; } // white → see-through // white → see-through
 async function artiMini(text) { // one big, polished picture (paints 8 versions, keeps the best)
   const A = await amLoad(p => status(`🎨 Downloading Arti's own model (one time)… ${p}%`)); await loadLex(p => status(`🎨 Getting word meanings… ${p}%`));
-  const low = String(text).toLowerCase(), jm = low.match(/\s+(with|wearing|and|holding|on top of|on|inside|in|plus|&)\s+|\s*\+\s*/), joiner = jm ? (jm[1] || "+") : "";
-  const parts = low.split(/\s+(?:with|wearing|and|holding|on top of|on|inside|in|plus|&)\s+|\s*\+\s*/).map(x => x.replace(/^(a|an|the|some)\s+/, "").trim()).filter(Boolean).slice(0, 2);
+  // 🧩 understand how the things are arranged: "a cat in a box next to a dog", "a dog under a tree", "a ball in front of a house"…
+  const REL = /\s+(on top of|in front of|next to|inside|beside|behind|under|underneath|below|beneath|above|over|wearing|holding|with|and|on|in|plus|&)\s+|\s*\+\s*/;
+  const low = String(text).toLowerCase().replace(/\b(make|draw|paint|create|show|me|picture|image|pic)\b/g, " ").replace(/\s+/g, " ").trim(), parts = [], rels = [];
+  { let rest = low; for (let k = 0; k < 3; k++) { const m = rest.match(REL); if (!m || k === 2) { parts.push(rest); break; } parts.push(rest.slice(0, m.index)); rels.push((m[1] || "+").trim()); rest = rest.slice(m.index + m[0].length); } }
+  for (let k = 0; k < parts.length; k++) parts[k] = parts[k].replace(/^(a|an|the|some|two|one)\s+/, "").trim();
+  while (parts.length && !parts.at(-1)) { parts.pop(); rels.pop(); }
+  const joiner = rels[0] || "";
   const layers = [];
   for (let pi = 0; pi < parts.length; pi++) {
     let words = parts[pi].split(/\s+/), colour = null; words = words.filter(w => { if (AM_COLOURS[w] && !colour && words.length > 1) { colour = AM_COLOURS[w]; return false; } return true; });
@@ -2981,14 +2994,44 @@ async function artiMini(text) { // one big, polished picture (paints 8 versions,
   const S = 512, big = document.createElement("canvas"); big.width = big.height = S; const bx = big.getContext("2d");
   const bg = bx.createRadialGradient(S / 2, S * .45, S * .1, S / 2, S / 2, S * .75); bg.addColorStop(0, "#ffffff"); bg.addColorStop(1, "#eef2f0"); bx.fillStyle = bg; bx.fillRect(0, 0, S, S); // soft studio background
   const up = pix => { let c = amCanvas(pix); while (c.width < S) { const n = document.createElement("canvas"); n.width = n.height = c.width * 2; const x = n.getContext("2d"); x.imageSmoothingEnabled = true; x.imageSmoothingQuality = "high"; x.drawImage(c, 0, 0, n.width, n.height); c = n; } return c; }; // enlarge in smooth steps (64→128→256→512)
-  const put = (pix, x, y, w, h) => { bx.save(); bx.shadowColor = "rgba(0,0,0,.18)"; bx.shadowBlur = S * .04; bx.shadowOffsetY = S * .02; bx.drawImage(up(pix), x, y, w, h); bx.restore(); }; // with a soft shadow
-  const L0 = layers[0].pics[0], L1 = layers[1] && layers[1].pics[0], u = S / 128;
-  if (L1 && /^(in|inside)$/.test(joiner)) { put(L0, 30 * u, -4 * u, 68 * u, 68 * u); put(L1, 6 * u, 26 * u, 116 * u, 102 * u); } // "cat in a bag": peeking out of the top
-  else if (L1 && /^(on|on top of)$/.test(joiner) && !AM_WEAR.test(layers[1].subj)) { put(L1, 8 * u, 44 * u, 112 * u, 84 * u); put(L0, 32 * u, 2 * u, 64 * u, 64 * u); } // "cat on a car": sitting on it
-  else { put(L0, 6 * u, 6 * u, 116 * u, 116 * u);
-    if (L1) { if (AM_WEAR.test(layers[1].subj)) { const g = /glass|mask/.test(layers[1].subj); g ? put(L1, 34 * u, 30 * u, 60 * u, 60 * u) : put(L1, 40 * u, -10 * u, 48 * u, 48 * u); } else put(L1, 62 * u, 62 * u, 64 * u, 64 * u); } }
+  const sticker = (pix, w, h) => { // ✨ clean "sticker" graphics: dark outline, a soft shine on top, then a drop shadow when placed
+    const src = up(pix), W = Math.round(w), H = Math.round(h), pad = Math.round(S * .012), c = document.createElement("canvas"); c.width = W + pad * 2; c.height = H + pad * 2; const x = c.getContext("2d");
+    const sil = document.createElement("canvas"); sil.width = W; sil.height = H; const sx = sil.getContext("2d"); sx.drawImage(src, 0, 0, W, H); sx.globalCompositeOperation = "source-in"; sx.fillStyle = "rgba(30,34,40,.55)"; sx.fillRect(0, 0, W, H);
+    const r = Math.max(2, Math.round(S * .006)); for (let a = 0; a < 16; a++) x.drawImage(sil, pad + Math.cos(a * Math.PI / 8) * r, pad + Math.sin(a * Math.PI / 8) * r); // outline
+    x.drawImage(src, pad, pad, W, H);
+    x.globalCompositeOperation = "source-atop"; const g = x.createLinearGradient(0, pad, 0, pad + H); g.addColorStop(0, "rgba(255,255,255,.22)"); g.addColorStop(.45, "rgba(255,255,255,0)"); g.addColorStop(1, "rgba(0,0,0,.08)"); x.fillStyle = g; x.fillRect(0, 0, c.width, c.height); // shine + soft shading
+    return { c, pad };
+  };
+  const put = (pix, x, y, w, h) => { const { c, pad } = sticker(pix, w, h); bx.save(); bx.shadowColor = "rgba(0,0,0,.2)"; bx.shadowBlur = S * .035; bx.shadowOffsetY = S * .018; bx.drawImage(c, x - pad, y - pad); bx.restore(); };
+  const u = S / 128, P = layers.map(l => l.pics[0]), sub = k => layers[k] && layers[k].subj || "";
+  // where each thing goes, and in which order (back first, front last) — in a 128×128 plan
+  const plan = (rel, A, B) => {
+    if (AM_WEAR.test(sub(1)) && /^(wearing|with|in|on)$/.test(rel)) { const g = /glass|mask/.test(sub(1)); return [[A, 6, 6, 116, 116], [B].concat(g ? [34, 30, 60, 60] : [40, -10, 48, 48])]; } // worn on the head / face
+    switch (rel) {
+      case "in": case "inside": return [[A, 30, -4, 68, 68], [B, 6, 26, 116, 102]];            // cat in a bag: peeking out of the top
+      case "on": case "on top of": case "above": case "over": return [[B, 8, 44, 112, 84], [A, 32, 2, 64, 64]]; // cat on a car: sitting on it
+      case "under": case "underneath": case "below": case "beneath": return [[B, 14, 0, 100, 70], [A, 34, 62, 60, 60]]; // dog under a tree: tree above, dog below in front
+      case "behind": return [[A, 30, 0, 78, 78], [B, 10, 40, 92, 88]];                        // A peeks out behind B
+      case "in front of": return [[B, 30, 0, 82, 82], [A, 10, 40, 90, 86]];                    // A stands in front of B
+      case "holding": case "with": return [[A, 6, 6, 104, 104], [B, 68, 60, 56, 56]];         // held / beside it, in front
+      default: return [[A, 2, 30, 64, 64], [B, 62, 30, 64, 64]];                              // and / next to / beside: side by side
+    }
+  };
+  let draws;
+  if (P.length === 1) draws = [[P[0], 6, 6, 116, 116]];
+  else if (P.length === 2) draws = plan(rels[0], P[0], P[1]);
+  else { // three things: first pair as planned on the left/top, the third beside it
+    const first = plan(rels[0], P[0], P[1]).map(d => [d[0], d[1] * .7, d[2] * .7 + 18, d[3] * .7, d[4] * .7]);
+    const pair = plan(rels[0], P[0], P[1]), sc = (d, k, dx, dy) => [d[0], d[1] * k + dx, d[2] * k + dy, d[3] * k, d[4] * k];
+    if (/^(on|on top of|above|over)$/.test(rels[1])) draws = [[P[2], 8, 60, 112, 66], ...pair.map(d => sc(d, .6, 26, -6))];           // "penguin wearing a crown on a car": the pair sits on the car
+    else if (/^(in|inside)$/.test(rels[1])) draws = [...pair.map(d => sc(d, .62, 24, -6)), [P[2], 6, 40, 116, 88]];                    // …in a box: box in front
+    else if (/^(under|underneath|below|beneath)$/.test(rels[1])) draws = [[P[2], 14, 0, 100, 66], ...pair.map(d => sc(d, .6, 26, 52))]; // …under a tree
+    else if (rels[1] === "behind") draws = [[P[2], 20, 0, 88, 88], ...pair.map(d => sc(d, .62, 24, 44))];
+    else draws = [...first, [P[2], 84, 50, 42, 42]];
+  }
+  for (const [pix, x, y, w, h] of draws) put(pix, x * u, y * u, w * u, h * u);
   // sharpen (unsharp mask) so edges look crisp after enlarging
-  const sharp = A.fmt === "ycc128" ? .12 : .35, im = bx.getImageData(0, 0, S, S), d = im.data, src = new Uint8ClampedArray(d);
+  const sharp = A.fmt === "ycc128" ? .08 : .3, im = bx.getImageData(0, 0, S, S), d = im.data, src = new Uint8ClampedArray(d);
   for (let y = 1; y < S - 1; y++) for (let x = 1; x < S - 1; x++) { const o = (y * S + x) * 4; for (let ch = 0; ch < 3; ch++) { const b = (src[o - 4 + ch] + src[o + 4 + ch] + src[o - S * 4 + ch] + src[o + S * 4 + ch]) / 4; d[o + ch] = src[o + ch] + sharp * (src[o + ch] - b); } }
   bx.putImageData(im, 0, 0);
   status("Ready"); return big.toDataURL("image/jpeg", .9);
@@ -3083,10 +3126,12 @@ window.Floof.addProvider({ id: "arti", label: "🎨 Arti — free image maker (2
     if (/\b(who|what) (are|is) (you|u|arti)\b|\byour name\b/i.test(text)) return done("I'm **Arti** 🎨, Floof AI's image maker. Describe a picture — the subject, the style (photo, cartoon, anime, pixel art, watercolour, 3D) and the shape (wide or tall) — and I'll paint it. I can make 25 images per person per day, for free.");
     if (/\b(video|animation|animate|movie|clip|gif)\b/i.test(text) && !/\b(picture|image|poster|thumbnail|cover)\b/i.test(text)) return done("I can only make **pictures**, not videos — free video AI isn't available without paying. I can make a still image of the scene instead: just describe it.");
     if (ARTI_BAD.test(text) || (ARTI_KID.test(text) && /\b(hot|sexy|kiss|date|dating|romantic|love|bed|bath|swim)\w*/i.test(text))) return done("I can't make that picture. Try something else — a scene, a character, a poster, a landscape or a cool object.");
+    let miniNote = "";
     if (model === "artimini") { // Arti's own model: on this device, no limit
       try { text = await avishFixTypos(text, null); } catch {}
-      const url = await artiMini(text); if (!url) return done("Arti Mini doesn't know those words yet — try simple things like *red apple*, *happy cat*, *rocket* or *pizza*.");
-      return done(`![${text.replace(/[\[\]()]/g, "")}](${url})\n\n🎨 *Arti Mini · Arti's own model, trained by us — painted 8 versions and kept the best one. For big, detailed pictures switch to "Arti · FLUX" in the model menu.*`);
+      const url = await artiMini(text);
+      if (url) return done(`![${text.replace(/[\[\]()]/g, "")}](${url})\n\n🎨 *Arti Mini · Arti's own model, trained by us — painted 8 versions and kept the best one. For big, detailed pictures switch to "Arti · FLUX" in the model menu.*`);
+      miniNote = "\n\n*(Arti Mini hasn't learned how to draw that yet, so the main Arti painter made it instead.)*"; // fall through to the big painter
     }
     const used = artiUsed(); if (used >= ARTI_MAX) return done(`You've used all **${ARTI_MAX}** of today's images. Arti refills at midnight — see you tomorrow! 🎨`);
     try { text = await avishFixTypos(text, null); } catch {} // "a dragn in spcae" → "a dragon in space"
@@ -3106,7 +3151,7 @@ window.Floof.addProvider({ id: "arti", label: "🎨 Arti — free image maker (2
     const cost = grid ? 3 : 1; if (used + cost > ARTI_MAX) return done(`That needs ${cost} of your daily images and you have ${ARTI_MAX - used} left — try a single picture instead.`);
     const rs = R && R.n ? `\n🔎 *Researched first:* ${R.url ? `[${R.title}](${R.url})` : R.title}${R.details ? " — used its description of how it looks" : ""}` : "";
     const tagFor = g => (g ? "arti9" : meme ? "meme" : "") + (g || meme ? ":" + cap : prompt.replace(/[\[\]()]/g, ""));
-    const note = (g, via) => `\n\n🎨 *Arti · ${g ? "9 bots painted 9 versions — tap the best one to make it big" : meme ? "meme — the words are written on by Floof, so they're always spelled right" : "picture"}${via ? " · made with " + via : ""} · ${used + cost} of ${ARTI_MAX} used today*`;
+    const note = (g, via) => miniNote + `\n\n🎨 *Arti · ${g ? "9 bots painted 9 versions — tap the best one to make it big" : meme ? "meme — the words are written on by Floof, so they're always spelled right" : "picture"}${via ? " · made with " + via : ""} · ${used + cost} of ${ARTI_MAX} used today*`;
     // 1) Floof's picture server: big, detailed pictures (Google Gemini image / Cloudflare FLUX, free tiers)
     status(grid ? "🎨 9 Arti bots are painting one square each…" : "🎨 Arti is painting… (about 10-20 seconds)");
     if (grid) {
