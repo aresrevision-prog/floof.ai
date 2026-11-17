@@ -2858,8 +2858,8 @@ $("#dlX").onclick = () => $("#dlm").classList.remove("on");
 // ---------- 🎨 Arti Mini — Arti's OWN image model (trained by us; runs on this device) ----------
 // A tiny diffusion model: your words → a 64-D meaning vector from the dictionary grid → 30 denoising steps in a
 // 256-number picture space → a 32×32 picture (smoothly enlarged). Trained on ~1,600 Twemoji pictures (CC-BY 4.0, Twitter).
-const AM_BASES = window.FLOOF_ARTI ? [window.FLOOF_ARTI] : ["https://cdn.jsdelivr.net/gh/aresrevision-prog/floof.ai@8932fd4feaa0d283d4cf5387051c6032eeb9ea18/lex/", "https://floofai.vercel.app/lex/"];
-const AM_FILE = { name: "arti2", parts: 4, size: 9093286 }; // 64×64 model
+const AM_BASES = window.FLOOF_ARTI ? [window.FLOOF_ARTI] : ["https://cdn.jsdelivr.net/gh/aresrevision-prog/floof.ai@a05b05fd5261a7852d80d16e9cb3f657ed5fc138/lex/", "https://floofai.vercel.app/lex/"];
+const AM_FILE = { name: "arti3", parts: 6, size: 16164445 }; // 128×128 model
 let AM = null, amLoading = null;
 function amLoad(onPct) {
   if (AM) return Promise.resolve(AM);
@@ -2879,7 +2879,7 @@ function amLoad(onPct) {
       else W[k] = new Float32Array(buf.slice(o, o + v.shape[0] * 4));
     }
     const T = H.T, ab = new Float64Array(T); for (let i = 0; i < T; i++) { const f = t => Math.cos((t / T + .008) / 1.008 * Math.PI / 2) ** 2; ab[i] = Math.min(1, Math.max(1e-5, f(i + 1) / f(0))); }
-    AM = { W, K: H.K, Hd: H.H, T, ab }; return AM;
+    AM = { W, K: H.K, Hd: H.H, T, ab, fmt: H.fmt || "rgb" }; return AM;
   })().catch(e => { amLoading = null; throw e; });
 }
 function amMM(X, n, M, add) { const { w, r, c } = M, Y = new Float32Array(n * c); if (add) for (let i = 0; i < n; i++) Y.set(add, i * c); for (let i = 0; i < n; i++) for (let k = 0; k < r; k++) { const x = X[i * r + k]; if (!x) continue; const ro = k * c, yo = i * c; for (let j = 0; j < c; j++) Y[yo + j] += x * w[ro + j]; } return Y; }
@@ -2895,6 +2895,17 @@ function amCond(text) { // words → one 64-D meaning vector from the dictionary
   const v = new Float32Array(64); let n = 0;
   for (const w of ws) { const i = LEX.idx.get(w); if (i === undefined) continue; let m = 0; for (let d = 0; d < 64; d++) m += LEX.vec[i * 64 + d] ** 2; m = Math.sqrt(m) || 1; for (let d = 0; d < 64; d++) v[d] += LEX.vec[i * 64 + d] / m; n++; }
   let m = 0; for (let d = 0; d < 64; d++) m += v[d] ** 2; m = Math.sqrt(m) || 1; for (let d = 0; d < 64; d++) v[d] /= m; return n ? v : null;
+}
+function amYCC(v) { // 128-model: brightness at 128×128 + colour at 64×64 → RGB 128×128 (smoothly blended colour)
+  const R = 128, h = 64, out = new Float32Array(R * R * 3), cb = v.subarray(R * R, R * R + h * h), cr = v.subarray(R * R + h * h);
+  const at = (a, x, y) => { x = Math.max(0, Math.min(h - 1, x)); y = Math.max(0, Math.min(h - 1, y)); const x0 = Math.floor(x), y0 = Math.floor(y), x1 = Math.min(h - 1, x0 + 1), y1 = Math.min(h - 1, y0 + 1), fx = x - x0, fy = y - y0;
+    return (a[y0 * h + x0] * (1 - fx) + a[y0 * h + x1] * fx) * (1 - fy) + (a[y1 * h + x0] * (1 - fx) + a[y1 * h + x1] * fx) * fy; };
+  for (let y = 0; y < R; y++) for (let x = 0; x < R; x++) {
+    const Y = (v[y * R + x] + 1) / 2, sx = (x + .5) / 2 - .5, sy = (y + .5) / 2 - .5, Cb = at(cb, sx, sy) / 2, Cr = at(cr, sx, sy) / 2;
+    const B = Y + Cb / .564, Rr = Y + Cr / .713, G = (Y - .299 * Rr - .114 * B) / .587, o = (y * R + x) * 3;
+    out[o] = Math.max(0, Math.min(255, Rr * 255)); out[o + 1] = Math.max(0, Math.min(255, G * 255)); out[o + 2] = Math.max(0, Math.min(255, B * 255));
+  }
+  return out;
 }
 async function amPaint(A, text, n, label) { // one subject → n pictures (32×32 RGB, 0..255)
   let c1 = amCond(text);
@@ -2916,7 +2927,7 @@ async function amPaint(A, text, n, label) { // one subject → n pictures (32×3
     if (s % 6 === 0) { status(`🎨 Arti Mini is painting${label || ""}… ${Math.round(s * 100 / steps)}%`); await new Promise(r => setTimeout(r)); }
   }
   const P = A.W.P, mu = A.W.mu, sd = A.W.sd, out = [];
-  for (let k = 0; k < n; k++) { const pix = Float32Array.from(mu); for (let j = 0; j < K; j++) { const zz = z[k * K + j] * sd[j], ro = j * mu.length; for (let q = 0; q < mu.length; q++) pix[q] += zz * P.w[ro + q]; } for (let q = 0; q < mu.length; q++) pix[q] = Math.max(0, Math.min(255, (pix[q] + 1) * 127.5)); out.push(pix); }
+  for (let k = 0; k < n; k++) { const pix = Float32Array.from(mu); for (let j = 0; j < K; j++) { const zz = z[k * K + j] * sd[j], ro = j * mu.length; for (let q = 0; q < mu.length; q++) pix[q] += zz * P.w[ro + q]; } out.push(A.fmt === "ycc128" ? amYCC(pix) : pix.map(v => Math.max(0, Math.min(255, (v + 1) * 127.5)))); }
   return out;
 }
 // 🧩 combining: Arti Mini only learned single things, so mixes are built in steps — paint each thing, recolour, then put them together
@@ -2930,15 +2941,21 @@ function amRecolour(pix, rgb) { // move the main colours to the new colour, keep
   return out;
 }
 function amClean(pix) { // ✨ tidy the picture: clean white background, then snap to a small set of flat colours (emoji style) with soft edges
+  if (pix.length >= 128 * 128 * 3) { // big pictures: 3×3 median first — removes the speckle, keeps edges sharp
+    const R = Math.round(Math.sqrt(pix.length / 3)), m = Float32Array.from(pix), w = new Float32Array(9);
+    for (let y = 1; y < R - 1; y++) for (let x = 1; x < R - 1; x++) for (let ch = 0; ch < 3; ch++) { let k = 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) w[k++] = pix[((y + dy) * R + x + dx) * 3 + ch]; w.sort(); m[(y * R + x) * 3 + ch] = w[4]; }
+    pix = m;
+  }
   const N = pix.length / 3, out = Float32Array.from(pix), fg = [];
   for (let q = 0; q < N; q++) { const r = pix[q * 3], g = pix[q * 3 + 1], b = pix[q * 3 + 2]; if (Math.min(r, g, b) > 218) { out[q * 3] = out[q * 3 + 1] = out[q * 3 + 2] = 255; } else fg.push(q); }
   if (fg.length < 8) return out;
-  const Kc = Math.min(12, fg.length), cen = []; for (let k = 0; k < Kc; k++) { const q = fg[Math.floor((k + .5) * fg.length / Kc)]; cen.push([pix[q * 3], pix[q * 3 + 1], pix[q * 3 + 2]]); }
+  const keep = N >= 128 * 128 ? .08 : .25; // big pictures: almost fully flat (no mottling)
+  const Kc = Math.min(N >= 128 * 128 ? 8 : 12, fg.length), cen = []; for (let k = 0; k < Kc; k++) { const q = fg[Math.floor((k + .5) * fg.length / Kc)]; cen.push([pix[q * 3], pix[q * 3 + 1], pix[q * 3 + 2]]); }
   const lab = new Int16Array(N).fill(-1);
   for (let it = 0; it < 8; it++) { const sum = cen.map(() => [0, 0, 0, 0]);
     for (const q of fg) { let bi = 0, bd = 1e9; for (let k = 0; k < Kc; k++) { const d = (pix[q * 3] - cen[k][0]) ** 2 + (pix[q * 3 + 1] - cen[k][1]) ** 2 + (pix[q * 3 + 2] - cen[k][2]) ** 2; if (d < bd) { bd = d; bi = k; } } lab[q] = bi; const sm = sum[bi]; sm[0] += pix[q * 3]; sm[1] += pix[q * 3 + 1]; sm[2] += pix[q * 3 + 2]; sm[3]++; }
     sum.forEach((sm, k) => { if (sm[3]) cen[k] = [sm[0] / sm[3], sm[1] / sm[3], sm[2] / sm[3]]; }); }
-  for (const q of fg) { const c = cen[lab[q]]; for (let ch = 0; ch < 3; ch++) out[q * 3 + ch] = pix[q * 3 + ch] * .25 + c[ch] * .75; } // flat, clean colours (less speckle), a little shading
+  for (const q of fg) { const c = cen[lab[q]]; for (let ch = 0; ch < 3; ch++) out[q * 3 + ch] = pix[q * 3 + ch] * keep + c[ch] * (1 - keep); } // flat, clean colours (less speckle), a little shading
   // colour pop: a touch more saturation and contrast
   for (const q of fg) { const r = out[q * 3], g = out[q * 3 + 1], b = out[q * 3 + 2], l = (r + g + b) / 3; for (let ch = 0; ch < 3; ch++) out[q * 3 + ch] = Math.max(0, Math.min(255, l + (out[q * 3 + ch] - l) * 1.15)); }
   return out;
@@ -2971,8 +2988,8 @@ async function artiMini(text) { // one big, polished picture (paints 8 versions,
   else { put(L0, 6 * u, 6 * u, 116 * u, 116 * u);
     if (L1) { if (AM_WEAR.test(layers[1].subj)) { const g = /glass|mask/.test(layers[1].subj); g ? put(L1, 34 * u, 30 * u, 60 * u, 60 * u) : put(L1, 40 * u, -10 * u, 48 * u, 48 * u); } else put(L1, 62 * u, 62 * u, 64 * u, 64 * u); } }
   // sharpen (unsharp mask) so edges look crisp after enlarging
-  const im = bx.getImageData(0, 0, S, S), d = im.data, src = new Uint8ClampedArray(d);
-  for (let y = 1; y < S - 1; y++) for (let x = 1; x < S - 1; x++) { const o = (y * S + x) * 4; for (let ch = 0; ch < 3; ch++) { const b = (src[o - 4 + ch] + src[o + 4 + ch] + src[o - S * 4 + ch] + src[o + S * 4 + ch]) / 4; d[o + ch] = src[o + ch] + .35 * (src[o + ch] - b); } }
+  const sharp = A.fmt === "ycc128" ? .12 : .35, im = bx.getImageData(0, 0, S, S), d = im.data, src = new Uint8ClampedArray(d);
+  for (let y = 1; y < S - 1; y++) for (let x = 1; x < S - 1; x++) { const o = (y * S + x) * 4; for (let ch = 0; ch < 3; ch++) { const b = (src[o - 4 + ch] + src[o + 4 + ch] + src[o - S * 4 + ch] + src[o + S * 4 + ch]) / 4; d[o + ch] = src[o + ch] + sharp * (src[o + ch] - b); } }
   bx.putImageData(im, 0, 0);
   status("Ready"); return big.toDataURL("image/jpeg", .9);
 }
