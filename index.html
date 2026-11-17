@@ -2860,8 +2860,8 @@ $("#dlX").onclick = () => $("#dlm").classList.remove("on");
 // ---------- 🎨 Arti Mini — Arti's OWN image model (trained by us; runs on this device) ----------
 // A tiny diffusion model: your words → a 64-D meaning vector from the dictionary grid → 30 denoising steps in a
 // 256-number picture space → a 32×32 picture (smoothly enlarged). Trained on ~1,600 Twemoji pictures (CC-BY 4.0, Twitter).
-const AM_BASES = window.FLOOF_ARTI ? [window.FLOOF_ARTI] : ["https://cdn.jsdelivr.net/gh/aresrevision-prog/floof.ai@a05b05fd5261a7852d80d16e9cb3f657ed5fc138/lex/", "https://floofai.vercel.app/lex/"];
-const AM_FILE = { name: "arti3", parts: 6, size: 16164445 }; // 128×128 model
+const AM_BASES = window.FLOOF_ARTI ? [window.FLOOF_ARTI] : ["https://cdn.jsdelivr.net/gh/aresrevision-prog/floof.ai@c888140fd11c4d081c7918b20bb8e4d9406e5bfa/lex/", "https://floofai.vercel.app/lex/"];
+const AM_FILE = { name: "arti4", parts: 6, size: 16161083 }; // 128×128 model (v4: +1h training)
 let AM = null, amLoading = null;
 function amLoad(onPct) {
   if (AM) return Promise.resolve(AM);
