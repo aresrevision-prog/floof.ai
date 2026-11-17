@@ -2984,6 +2984,9 @@ function amClean(pix) { // ✨ tidy the picture: clean white background, then sn
     lab.set(l2); for (const q of fg) { const c = cen[lab[q]]; for (let ch = 0; ch < 3; ch++) out[q * 3 + ch] = pix[q * 3 + ch] * keep * .5 + c[ch] * (1 - keep * .5); } }
   for (const q of fg) { const r = out[q * 3], g = out[q * 3 + 1], b = out[q * 3 + 2], l = (r + g + b) / 3; for (let ch = 0; ch < 3; ch++) out[q * 3 + ch] = Math.max(0, Math.min(255, l + (out[q * 3 + ch] - l) * 1.15)); }
   for (const q of fg) { const mn = Math.min(out[q * 3], out[q * 3 + 1], out[q * 3 + 2]); if (mn > 228) for (let ch = 0; ch < 3; ch++) out[q * 3 + ch] -= mn - 228; } // white parts inside stay solid (never see-through)
+  { const acc = cen.map(() => [0, 0, 0, 0]); for (const q of fg) { const a = acc[lab[q]]; a[0] += out[q * 3]; a[1] += out[q * 3 + 1]; a[2] += out[q * 3 + 2]; a[3]++; } let pal = acc.filter(a => a[3]).map(a => [a[0] / a[3], a[1] / a[3], a[2] / a[3], a[3]]);
+    for (let merged = true; merged;) { merged = false; for (let i = 0; i < pal.length && !merged; i++) for (let j = i + 1; j < pal.length; j++) { const a = pal[i], b = pal[j]; if ((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2 + (a[2] - b[2]) ** 2 < 2000) { const n = a[3] + b[3]; pal[i] = [(a[0] * a[3] + b[0] * b[3]) / n, (a[1] * a[3] + b[1] * b[3]) / n, (a[2] * a[3] + b[2] * b[3]) / n, n]; pal.splice(j, 1); merged = true; break; } } } // near-same shades → one colour (no blotches)
+    out.pal = pal; } // its colours, used to paint crisp at 256
   return out;
 }
 function amCanvas(pix) { const R = Math.round(Math.sqrt(pix.length / 3)), c = document.createElement("canvas"); c.width = c.height = R; const x = c.getContext("2d"), im = x.createImageData(R, R); for (let q = 0; q < R * R; q++) { for (let ch = 0; ch < 3; ch++) im.data[q * 4 + ch] = pix[q * 3 + ch]; const w = Math.min(pix[q * 3], pix[q * 3 + 1], pix[q * 3 + 2]); im.data[q * 4 + 3] = w > 240 ? 0 : w > 220 ? 140 : 255; }
@@ -2991,12 +2994,75 @@ function amCanvas(pix) { const R = Math.round(Math.sqrt(pix.length / 3)), c = do
     const A0 = new Uint8Array(R * R); for (let q = 0; q < R * R; q++) A0[q] = im.data[q * 4 + 3] > 100 ? 1 : 0;
     for (let y = 1; y < R - 1; y++) for (let xx = 1; xx < R - 1; xx++) { const q = y * R + xx; if (!A0[q]) continue; let n = 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) n += A0[q + dy * R + dx]; if (n <= 3) im.data[q * 4 + 3] = 0; } }
   x.putImageData(im, 0, 0); return c; } // white → see-through // white → see-through
+// 🏞 Arti Mini scene builder: "a cat on the beach at sunset", "a car in the city at night", "a penguin in the snow" — painted places, sky, time of day and weather
+const AM_PLACES = [["underwater", /\b(underwater|under (?:the )?(?:sea|water|ocean)|seabed|coral reef|reef)\b/], ["space", /\b(space|outer space|galaxy|planets?|stars?|moon|cosmos)\b/], ["beach", /\b(beach|seaside|sand|shore|coast|sea|ocean)\b/], ["snow", /\b(snow|snowy|snowing|winter|arctic|north pole|ice(?! ?cream| ?cube| ?lolly)|icy)\b/], ["forest", /\b(forest|woods?|jungle|trees)\b/], ["city", /\b(city|town|street|road|downtown|skyline)\b/], ["desert", /\b(desert|dunes?|sahara)\b/], ["mountains", /\b(mountains?|hills?|valley)\b/], ["park", /\b(park|garden|field|meadow|grass|farm|countryside|outside)\b/]];
+const AM_TIMES = [["night", /\b(night|nighttime|midnight|dark)\b/], ["sunset", /\b(sunset|sunrise|dusk|dawn|evening)\b/], ["day", /\b(day|daytime|morning|afternoon|noon)\b/]];
+const AM_WEATHER = [["storm", /\b(storm|stormy|thunder\w*|lightning)\b/], ["rain", /\b(rain|rainy|raining)\b/], ["snowing", /\b(snowing|snowfall|snowflakes?|blizzard)\b/], ["cloudy", /\b(cloudy|clouds?|overcast)\b/], ["sunny", /\b(sunny|sunshine)\b/]];
+function amSceneParse(low) {
+  let rest = " " + low + " ", place = "", time = "", weather = "";
+  const grab = (list, cur) => { for (const [k, re] of list) { const m = rest.match(new RegExp("\\s(?:(?:on|at|in|by|near|into|during|under|with|through)\\s+)?(?:(?:the|a|an|some)\\s+)?(?:(?:sunny|rainy|snowy|stormy|cloudy|nice|big|busy)\\s+)?" + re.source.replace(/^\\b/, "").replace(/\\b$/, "") + "(?:\\s+(?:day|time|night))?(?=\\s)")); if (m) { rest = rest.replace(m[0], " "); return k; } } return cur; };
+  weather = grab(AM_WEATHER, ""); time = grab(AM_TIMES, ""); place = grab(AM_PLACES, "");
+  if (place === "snow" && !weather && /snowing|falling/.test(low)) weather = "snowing";
+  rest = rest.replace(/\s+(on|at|in|by|near|with|and|during)\s*$/, " ").replace(/\s+/g, " ").trim().replace(/^(a|an|the|some|picture of|scene|view)$/, "");
+  let h = 7; for (const ch of low) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return { on: !!(place || time || weather), place, time: time || (place === "space" ? "night" : "day"), weather, rest, seed: h };
+}
+function amRand(seed) { let t = seed >>> 0; return () => { t = (t + 0x6D2B79F5) >>> 0; let r = Math.imul(t ^ (t >>> 15), 1 | t); r ^= r + Math.imul(r ^ (r >>> 7), 61 | r); return ((r ^ (r >>> 14)) >>> 0) / 4294967296; }; }
+function amScenePaint(x, S, sc, n) {
+  const rnd = amRand(sc.seed), P = sc.place, T = sc.time, W = sc.weather, gy = S * (P === "space" || P === "underwater" ? 1 : .7);
+  const lin = (y0, y1, stops) => { const g = x.createLinearGradient(0, y0, 0, y1); stops.forEach((c, i) => g.addColorStop(i / (stops.length - 1), c)); return g; };
+  const circle = (cx, cy, r, f) => { x.beginPath(); x.arc(cx, cy, r, 0, 7); x.fillStyle = f; x.fill(); };
+  // sky
+  let sky = T === "night" ? ["#0a1330", "#1b2a5a", "#33467a"] : T === "sunset" ? ["#5b3b8c", "#e2677a", "#ffb36b", "#ffe1a1"] : ["#3b9be8", "#7cc4f5", "#cdeefe"];
+  if (W === "storm") sky = ["#2a2f3a", "#4a5363", "#6c7685"]; else if (W === "rain" || W === "cloudy") sky = T === "night" ? ["#151b2b", "#2a3448"] : ["#7f8ea3", "#b4c0cf", "#d9e0e8"];
+  if (P === "space") sky = ["#03040c", "#0b0f2a", "#140c2e"];
+  if (P === "underwater") sky = ["#0e7fb0", "#0a5d8a", "#06324f"];
+  x.fillStyle = lin(0, S, sky); x.fillRect(0, 0, S, S);
+  if (P === "space") { for (let i = 0; i < 220; i++) circle(rnd() * S, rnd() * S, rnd() * 1.6 + .3, `rgba(255,255,255,${.4 + rnd() * .6})`);
+    const neb = x.createRadialGradient(S * .7, S * .3, 0, S * .7, S * .3, S * .45); neb.addColorStop(0, "rgba(160,80,220,.35)"); neb.addColorStop(1, "rgba(160,80,220,0)"); x.fillStyle = neb; x.fillRect(0, 0, S, S);
+    const pg = x.createRadialGradient(S * .14, S * .14, 4, S * .2, S * .2, S * .14); pg.addColorStop(0, "#ffd29a"); pg.addColorStop(1, "#c4622d"); circle(S * .2, S * .2, S * .12, pg);
+    x.strokeStyle = "rgba(255,225,180,.7)"; x.lineWidth = 4; x.beginPath(); x.ellipse(S * .2, S * .2, S * .2, S * .045, -.3, 0, 7); x.stroke();
+    circle(S * .86, S * .82, S * .05, "#9fb4d8"); return; }
+  if (P === "underwater") { x.save(); x.globalAlpha = .12; x.fillStyle = "#fff"; for (let i = 0; i < 5; i++) { const xx = rnd() * S; x.beginPath(); x.moveTo(xx, 0); x.lineTo(xx + 40, 0); x.lineTo(xx + 140, S); x.lineTo(xx + 60, S); x.fill(); } x.restore();
+    x.fillStyle = lin(S * .82, S, ["#d9c48a", "#b89a5c"]); x.beginPath(); x.moveTo(0, S * .86); for (let i = 0; i <= 8; i++) x.quadraticCurveTo(i * S / 8 - S / 16, S * (.82 + rnd() * .04), i * S / 8, S * .86); x.lineTo(S, S); x.lineTo(0, S); x.fill();
+    for (let i = 0; i < 6; i++) { const cx = rnd() * S, hh = S * (.08 + rnd() * .12); x.strokeStyle = ["#2e8b57", "#3cb371", "#ff7f7f", "#ff9f5a"][i % 4]; x.lineWidth = 7; x.lineCap = "round"; x.beginPath(); x.moveTo(cx, S * .9); x.quadraticCurveTo(cx + 20, S * .9 - hh / 2, cx - 6, S * .9 - hh); x.stroke(); }
+    for (let i = 0; i < 26; i++) { x.strokeStyle = "rgba(255,255,255,.55)"; x.lineWidth = 1.5; x.beginPath(); x.arc(rnd() * S, rnd() * S * .8, 2 + rnd() * 6, 0, 7); x.stroke(); } return; }
+  if (T === "night") { for (let i = 0; i < 120; i++) circle(rnd() * S, rnd() * gy * .9, rnd() * 1.4 + .3, `rgba(255,255,255,${.3 + rnd() * .7})`); if (!/rain|storm|cloudy/.test(W)) { const m = document.createElement("canvas"); m.width = m.height = S; const mx = m.getContext("2d"); mx.shadowColor = "rgba(255,250,210,.8)"; mx.shadowBlur = 24; mx.beginPath(); mx.arc(S * .8, S * .17, S * .07, 0, 7); mx.fillStyle = "#f4f1d6"; mx.fill(); mx.shadowBlur = 0; mx.globalCompositeOperation = "destination-out"; mx.beginPath(); mx.arc(S * .835, S * .15, S * .065, 0, 7); mx.fill(); x.drawImage(m, 0, 0); } }
+  else if (!/rain|storm|cloudy/.test(W)) { const sx = T === "sunset" ? S * .5 : S * .82, sy = T === "sunset" ? gy - S * .02 : S * .16, gl = x.createRadialGradient(sx, sy, 0, sx, sy, S * .22); gl.addColorStop(0, T === "sunset" ? "rgba(255,230,150,.9)" : "rgba(255,250,200,.9)"); gl.addColorStop(1, "rgba(255,240,180,0)"); x.fillStyle = gl; x.fillRect(0, 0, S, S); circle(sx, sy, S * .07, T === "sunset" ? "#ffd166" : "#fff3a8"); }
+  const cloud = (cx, cy, k, c) => { for (const [dx, dy, r] of [[0, 0, 1], [.9, .15, .8], [-.9, .2, .75], [.4, -.45, .8], [-.4, -.35, .7]]) circle(cx + dx * k * 26, cy + dy * k * 26, r * k * 26, c); };
+  const nc = /cloudy|rain|storm/.test(W) ? 7 : T === "night" ? 0 : 3; for (let i = 0; i < nc; i++) cloud(rnd() * S, S * (.07 + rnd() * .25), .7 + rnd() * .9, W === "storm" ? "rgba(70,76,90,.95)" : /rain|cloudy/.test(W) ? "rgba(225,230,238,.92)" : T === "sunset" ? "rgba(255,214,200,.85)" : "rgba(255,255,255,.92)");
+  const dim = T === "night" ? .45 : T === "sunset" ? .8 : 1, shade = (hex) => { const v = parseInt(hex.slice(1), 16); return `rgb(${(v >> 16) * dim | 0},${(v >> 8 & 255) * dim | 0},${(v & 255) * dim | 0})`; };
+  const tree = (tx, ty, k) => { x.fillStyle = shade("#6b4423"); x.fillRect(tx - 5 * k, ty - 30 * k, 10 * k, 30 * k); circle(tx, ty - 46 * k, 26 * k, shade("#2f8f3a")); circle(tx - 16 * k, ty - 34 * k, 18 * k, shade("#3aa047")); circle(tx + 16 * k, ty - 36 * k, 18 * k, shade("#36994a")); };
+  const pine = (tx, ty, k, col) => { x.fillStyle = shade("#5a3a1e"); x.fillRect(tx - 4 * k, ty - 14 * k, 8 * k, 14 * k); x.fillStyle = col; for (let j = 0; j < 3; j++) { x.beginPath(); x.moveTo(tx, ty - (70 - j * 16) * k); x.lineTo(tx - (26 + j * 6) * k, ty - (14 + j * 12) * k); x.lineTo(tx + (26 + j * 6) * k, ty - (14 + j * 12) * k); x.fill(); } };
+  if (P === "mountains" || P === "snow") { for (let i = 0; i < 4; i++) { const mx = (i - .3 + rnd() * .5) * S * .34, mh = S * (.28 + rnd() * .18); x.fillStyle = shade(P === "snow" ? "#9fb3c8" : "#6f7f96"); x.beginPath(); x.moveTo(mx - S * .26, gy); x.lineTo(mx, gy - mh); x.lineTo(mx + S * .26, gy); x.fill(); x.fillStyle = shade("#f4f8fc"); x.beginPath(); x.moveTo(mx - S * .07, gy - mh * .73); x.lineTo(mx, gy - mh); x.lineTo(mx + S * .07, gy - mh * .73); x.fill(); } }
+  if (P === "city") { for (let i = 0; i < 9; i++) { const bw = S * (.08 + rnd() * .07), bh = S * (.18 + rnd() * .32), bxp = i * S / 8.5 - 10 + rnd() * 8; x.fillStyle = shade(["#5c6b80", "#6e7c91", "#4f5d72", "#7d8aa0"][i % 4]); x.fillRect(bxp, gy - bh, bw, bh);
+      for (let wy = gy - bh + 8; wy < gy - 10; wy += 14) for (let wx = bxp + 6; wx < bxp + bw - 8; wx += 12) { x.fillStyle = T === "night" ? (rnd() < .6 ? "#ffd86b" : "#2b3448") : "rgba(200,230,255,.8)"; x.fillRect(wx, wy, 6, 8); } } }
+  // ground
+  const G = { beach: ["#f6dc9a", "#e7c27a"], snow: ["#ffffff", "#dfe9f3"], forest: ["#5cb85c", "#3c8d40"], city: ["#8a8f99", "#6b707a"], desert: ["#f0c97a", "#d9a65a"], mountains: ["#7cc36b", "#4f9a4a"], park: ["#7ccf5a", "#4fa03e"] }[P] || ["#8fd16a", "#5aa646"];
+  if (P === "beach") { x.fillStyle = lin(gy - S * .1, gy, [shade("#3fa9d6"), shade("#1f7fb8")]); x.fillRect(0, gy - S * .1, S, S * .1); x.strokeStyle = "rgba(255,255,255,.6)"; x.lineWidth = 2; for (let i = 0; i < 10; i++) { const wy = gy - S * .08 + rnd() * S * .07, wx = rnd() * S; x.beginPath(); x.moveTo(wx, wy); x.quadraticCurveTo(wx + 12, wy - 5, wx + 24, wy); x.stroke(); } }
+  x.fillStyle = lin(gy, S, G.map(shade)); x.beginPath(); x.moveTo(0, gy); if (P === "desert" || P === "snow" || P === "park" || P === "mountains") { for (let i = 0; i <= 4; i++) x.quadraticCurveTo(i * S / 4 - S / 8, gy - S * (.02 + rnd() * .05), i * S / 4, gy); } else x.lineTo(S, gy); x.lineTo(S, S); x.lineTo(0, S); x.fill();
+  if (P === "beach") { x.fillStyle = "rgba(255,255,255,.7)"; x.beginPath(); x.ellipse(S * .5, gy, S * .6, S * .012, 0, 0, 7); x.fill(); }
+  if (P === "city") { x.fillStyle = shade("#3d424c"); x.fillRect(0, gy + S * .08, S, S * .14); x.fillStyle = "#f5d76e"; for (let i = 0; i < 6; i++) x.fillRect(i * S / 6 + 14, gy + S * .145, S * .07, 5); }
+  if (P === "forest") { for (let i = 0; i < 9; i++) (rnd() < .5 ? pine : tree)(i * S / 8 - 10 + rnd() * 20, gy + 4, .9 + rnd() * .6, shade("#2c7a35")); }
+  if (P === "park") { tree(S * .1, gy + 4, 1.3); tree(S * .9, gy + 6, 1.1); for (let i = 0; i < 26; i++) circle(rnd() * S, gy + 12 + rnd() * (S - gy - 16), 3, ["#ff6b8a", "#ffd23f", "#ffffff", "#b07cff"][i % 4]); }
+  if (P === "snow") { pine(S * .1, gy + 6, 1.2, shade("#2f6e4a")); pine(S * .9, gy + 4, 1.0, shade("#2f6e4a")); x.fillStyle = "#fff"; for (const tx of [S * .1, S * .9]) { x.beginPath(); x.ellipse(tx, gy - 50, 16, 5, 0, 0, 7); x.fill(); } }
+  if (P === "desert") { const cac = (cx, k) => { x.fillStyle = shade("#3f9b4f"); const r = (a, b, w, h) => { x.beginPath(); x.roundRect(a, b, w, h, w / 2); x.fill(); }; r(cx - 8 * k, gy - 70 * k, 16 * k, 72 * k); r(cx - 26 * k, gy - 50 * k, 12 * k, 28 * k); r(cx - 26 * k, gy - 30 * k, 22 * k, 10 * k); r(cx + 14 * k, gy - 58 * k, 12 * k, 26 * k); r(cx + 4 * k, gy - 38 * k, 22 * k, 10 * k); }; cac(S * .1, 1.1); cac(S * .9, .8); }
+  if (P === "beach") { const px = S * .9, py = gy + 6; x.strokeStyle = shade("#8b5a2b"); x.lineWidth = 10; x.beginPath(); x.moveTo(px, py); x.quadraticCurveTo(px - 10, py - 70, px - 30, py - 120); x.stroke(); x.fillStyle = shade("#2e9e4f"); for (let a = 0; a < 6; a++) { x.beginPath(); x.ellipse(px - 30 + Math.cos(a) * 26, py - 122 + Math.sin(a) * 8, 34, 9, a, 0, 7); x.fill(); } }
+  if (!n) { /* only a place was asked for: nothing in front */ }
+}
+function amSceneWeather(x, S, sc) {
+  const rnd = amRand(sc.seed + 99), W = sc.weather;
+  if (W === "rain" || W === "storm") { x.strokeStyle = "rgba(200,220,255,.55)"; x.lineWidth = 1.6; for (let i = 0; i < 160; i++) { const a = rnd() * S, b = rnd() * S; x.beginPath(); x.moveTo(a, b); x.lineTo(a - 6, b + 18); x.stroke(); } }
+  if (W === "storm") { x.strokeStyle = "#fff6a8"; x.lineWidth = 4; x.shadowColor = "#fff"; x.shadowBlur = 14; x.beginPath(); let a = S * (.25 + rnd() * .5), b = S * .12; x.moveTo(a, b); for (let i = 0; i < 6; i++) { a += (rnd() - .5) * 50; b += S * .06; x.lineTo(a, b); } x.stroke(); x.shadowBlur = 0; }
+  if (W === "snowing" || (sc.place === "snow" && !W)) { x.fillStyle = "rgba(255,255,255,.9)"; for (let i = 0; i < (W ? 140 : 50); i++) { x.beginPath(); x.arc(rnd() * S, rnd() * S, 1 + rnd() * 2.6, 0, 7); x.fill(); } }
+}
 async function artiMini(text) { // one big, polished picture (paints 8 versions, keeps the best)
   const A = await amLoad(p => status(`🎨 Downloading Arti's own model (one time)… ${p}%`)); await loadLex(p => status(`🎨 Getting word meanings… ${p}%`));
   // 🧩 understand how the things are arranged: "a cat in a box next to a dog", "a dog under a tree", "a ball in front of a house"…
   const REL = /\s+(on top of|in front of|next to|inside|beside|behind|under|underneath|below|beneath|above|over|wearing|holding|with|and|on|in|plus|&)\s+|\s*\+\s*/;
   const low = String(text).toLowerCase().replace(/\b(make|draw|paint|create|show|me|picture|image|pic)\b/g, " ").replace(/\s+/g, " ").trim(), parts = [], rels = [];
-  { let rest = low; for (let k = 0; k < 3; k++) { const m = rest.match(REL); if (!m || k === 2) { parts.push(rest); break; } parts.push(rest.slice(0, m.index)); rels.push((m[1] || "+").trim()); rest = rest.slice(m.index + m[0].length); } }
+  const SC = amSceneParse(low);
+  { let rest = SC.rest; for (let k = 0; k < 3; k++) { const m = rest.match(REL); if (!m || k === 2) { parts.push(rest); break; } parts.push(rest.slice(0, m.index)); rels.push((m[1] || "+").trim()); rest = rest.slice(m.index + m[0].length); } }
   for (let k = 0; k < parts.length; k++) parts[k] = parts[k].replace(/^(a|an|the|some|two|one)\s+/, "").trim();
   while (parts.length && !parts.at(-1)) { parts.pop(); rels.pop(); }
   const joiner = rels[0] || "";
@@ -3011,11 +3077,15 @@ async function artiMini(text) { // one big, polished picture (paints 8 versions,
     if (colour) pics = pics.map(p => amRecolour(p, colour));
     layers.push({ pics, subj });
   }
-  if (!layers.length) return null;
+  if (!layers.length && !SC.on) return null;
   status("🎨 Arti Mini is finishing the picture…");
   const S = 512, big = document.createElement("canvas"); big.width = big.height = S; const bx = big.getContext("2d");
   const bg = bx.createRadialGradient(S / 2, S * .45, S * .1, S / 2, S / 2, S * .75); bg.addColorStop(0, "#ffffff"); bg.addColorStop(1, "#eef2f0"); bx.fillStyle = bg; bx.fillRect(0, 0, S, S); // soft studio background
-  const up = pix => { let c = amCanvas(pix); while (c.width < S) { const n = document.createElement("canvas"); n.width = n.height = c.width * 2; const x = n.getContext("2d"); x.imageSmoothingEnabled = true; x.imageSmoothingQuality = "high"; x.drawImage(c, 0, 0, n.width, n.height); c = n; } return c; }; // enlarge in smooth steps (64→128→256→512)
+  const up = pix => { let c = amCanvas(pix); while (c.width < S) { const n = document.createElement("canvas"); n.width = n.height = c.width * 2; const x = n.getContext("2d"); x.imageSmoothingEnabled = true; x.imageSmoothingQuality = "high"; x.drawImage(c, 0, 0, n.width, n.height); c = n;
+      if (c.width === 256 && pix.pal && pix.pal.length) { // 🖌 re-paint at 256×256: crisp edges and clean flat colours instead of a blurry enlargement
+        const im = x.getImageData(0, 0, 256, 256), d = im.data, pal = pix.pal;
+        for (let o = 0; o < d.length; o += 4) { const a = d[o + 3]; d[o + 3] = a < 70 ? 0 : a > 150 ? 255 : (a - 70) * 3.2; if (!d[o + 3]) continue; let bi = 0, bd = 1e9; for (let k = 0; k < pal.length; k++) { const e = (d[o] - pal[k][0]) ** 2 + (d[o + 1] - pal[k][1]) ** 2 + (d[o + 2] - pal[k][2]) ** 2; if (e < bd) { bd = e; bi = k; } } const t = bd < 3600 ? .92 : .55; for (let ch = 0; ch < 3; ch++) d[o + ch] = d[o + ch] * (1 - t) + pal[bi][ch] * t; }
+        x.putImageData(im, 0, 0); } } return c; }; // enlarge in smooth steps (64→128→256→512)
   const sticker = (pix, w, h) => { // ✨ clean "sticker" graphics: dark outline, a soft shine on top, then a drop shadow when placed
     const src = up(pix), W = Math.round(w), H = Math.round(h), pad = Math.round(S * .012), c = document.createElement("canvas"); c.width = W + pad * 2; c.height = H + pad * 2; const x = c.getContext("2d");
     const sil = document.createElement("canvas"); sil.width = W; sil.height = H; const sx = sil.getContext("2d"); sx.drawImage(src, 0, 0, W, H); sx.globalCompositeOperation = "source-in"; sx.fillStyle = "rgba(30,34,40,.55)"; sx.fillRect(0, 0, W, H);
@@ -3039,8 +3109,9 @@ async function artiMini(text) { // one big, polished picture (paints 8 versions,
       default: return [[A, 2, 30, 64, 64], [B, 62, 30, 64, 64]];                              // and / next to / beside: side by side
     }
   };
-  let draws;
-  if (P.length === 1) draws = [[P[0], 6, 6, 116, 116]];
+  let draws = [];
+  if (!P.length) {}
+  else if (P.length === 1) draws = [[P[0], 6, 6, 116, 116]];
   else if (P.length === 2) draws = plan(rels[0], P[0], P[1]);
   else { // three things: first pair as planned on the left/top, the third beside it
     const first = plan(rels[0], P[0], P[1]).map(d => [d[0], d[1] * .7, d[2] * .7 + 18, d[3] * .7, d[4] * .7]);
@@ -3051,7 +3122,14 @@ async function artiMini(text) { // one big, polished picture (paints 8 versions,
     else if (rels[1] === "behind") draws = [[P[2], 20, 0, 88, 88], ...pair.map(d => sc(d, .62, 24, 44))];
     else draws = [...first, [P[2], 84, 50, 42, 42]];
   }
+  if (SC.on) { // 🏞 scene: paint the place, sky and weather, then stand the things in it
+    amScenePaint(bx, S, SC, layers.length);
+    const k = layers.length ? .62 : 1, float = /space|underwater/.test(SC.place);
+    draws = (draws || []).map(([pix, x, y, w, h]) => [pix, 64 + (x - 64) * k, float ? 64 + (y - 64) * k : 121 - (128 - y) * k, w * k, h * k]);
+  }
+  if (!layers.length) draws = [];
   for (const [pix, x, y, w, h] of draws) put(pix, x * u, y * u, w * u, h * u);
+  if (SC.on) amSceneWeather(bx, S, SC);
   // sharpen (unsharp mask) so edges look crisp after enlarging
   const sharp = A.fmt === "ycc128" ? .08 : .3, im = bx.getImageData(0, 0, S, S), d = im.data, src = new Uint8ClampedArray(d);
   for (let y = 1; y < S - 1; y++) for (let x = 1; x < S - 1; x++) { const o = (y * S + x) * 4; for (let ch = 0; ch < 3; ch++) { const b = (src[o - 4 + ch] + src[o + 4 + ch] + src[o - S * 4 + ch] + src[o + S * 4 + ch]) / 4; d[o + ch] = src[o + ch] + sharp * (src[o + ch] - b); } }
