@@ -2950,9 +2950,26 @@ function amClean(pix) { // ✨ tidy the picture: clean white background, then sn
     for (let y = 1; y < R - 1; y++) for (let x = 1; x < R - 1; x++) for (let ch = 0; ch < 3; ch++) { let k = 0; for (let dy = -1; dy <= 1; dy++) for (let dx = -1; dx <= 1; dx++) w[k++] = pix[((y + dy) * R + x + dx) * 3 + ch]; w.sort(); m[(y * R + x) * 3 + ch] = w[4]; }
     pix = m;
   }
-  const N = pix.length / 3, out = Float32Array.from(pix), fg = [];
-  for (let q = 0; q < N; q++) { const r = pix[q * 3], g = pix[q * 3 + 1], b = pix[q * 3 + 2]; if (Math.min(r, g, b) > 218) { out[q * 3] = out[q * 3 + 1] = out[q * 3 + 2] = 255; } else fg.push(q); }
-  if (fg.length < 8) return out;
+  const N = pix.length / 3, R0 = Math.round(Math.sqrt(N)), fg = [];
+  // 1) find the real background colour from the picture's edges (it's sometimes tinted, e.g. pale blue) → make it pure white
+  const edge = []; for (let i = 0; i < R0; i++) for (const q of [i, (R0 - 1) * R0 + i, i * R0, i * R0 + R0 - 1]) edge.push(q);
+  const med = ch => { const v = edge.map(q => pix[q * 3 + ch]).sort((a, b) => a - b); return v[v.length >> 1]; }, bgc = [med(0), med(1), med(2)];
+  const isBg = q => { const r = pix[q * 3], g = pix[q * 3 + 1], b = pix[q * 3 + 2]; return Math.min(r, g, b) > 218 || (Math.abs(r - bgc[0]) + Math.abs(g - bgc[1]) + Math.abs(b - bgc[2]) < 46 && Math.min(...bgc) > 150); };
+  // background = only light areas joined to the picture's edge (flood fill) → light parts INSIDE the thing (windows, eyes) stay solid, no holes
+  const bgM = new Uint8Array(N), st = []; for (const q of edge) if (!bgM[q] && isBg(q)) { bgM[q] = 1; st.push(q); }
+  while (st.length) { const q = st.pop(), y = (q / R0) | 0, x = q % R0; for (const n of [x > 0 ? q - 1 : -1, x < R0 - 1 ? q + 1 : -1, y > 0 ? q - R0 : -1, y < R0 - 1 ? q + R0 : -1]) if (n >= 0 && !bgM[n] && isBg(n)) { bgM[n] = 1; st.push(n); } }
+  for (let it = 0; it < 3; it++) { const add = []; for (let q = 0; q < N; q++) { if (bgM[q] || Math.min(pix[q * 3], pix[q * 3 + 1], pix[q * 3 + 2]) < 175) continue; const y = (q / R0) | 0, x = q % R0; if ((x > 0 && bgM[q - 1]) || (x < R0 - 1 && bgM[q + 1]) || (y > 0 && bgM[q - R0]) || (y < R0 - 1 && bgM[q + R0])) add.push(q); } for (const q of add) bgM[q] = 1; } // peel off the pale fuzzy halo round the edge
+  { // keep the main shape(s) only: tiny floating blobs/specks are dropped
+    const cid = new Int32Array(N).fill(-1), sz = []; for (let q0 = 0; q0 < N; q0++) { if (bgM[q0] || cid[q0] >= 0) continue; const id = sz.length; let n = 0; cid[q0] = id; st.push(q0);
+      while (st.length) { const q = st.pop(), y = (q / R0) | 0, x = q % R0; n++; for (const m of [x > 0 ? q - 1 : -1, x < R0 - 1 ? q + 1 : -1, y > 0 ? q - R0 : -1, y < R0 - 1 ? q + R0 : -1]) if (m >= 0 && !bgM[m] && cid[m] < 0) { cid[m] = id; st.push(m); } } sz.push(n); }
+    const big = Math.max(0, ...sz); for (let q = 0; q < N; q++) if (!bgM[q] && sz[cid[q]] < big * .06) bgM[q] = 1; }
+  for (let q = 0; q < N; q++) if (!bgM[q]) fg.push(q);
+  if (fg.length < 8) return Float32Array.from(pix);
+  // 2) un-wash the colours: stretch light/dark to the full range and make colours richer (fixes pale, faded pictures)
+  const lum = fg.map(q => (pix[q * 3] + pix[q * 3 + 1] + pix[q * 3 + 2]) / 3).sort((a, b) => a - b), lo = lum[Math.floor(lum.length * .02)], hi = lum[Math.floor(lum.length * .98)], span = Math.max(40, hi - lo);
+  pix = Float32Array.from(pix);
+  for (const q of fg) { const l = (pix[q * 3] + pix[q * 3 + 1] + pix[q * 3 + 2]) / 3, nl = Math.max(0, Math.min(235, (l - lo) / span * 225 + 10)); for (let ch = 0; ch < 3; ch++) pix[q * 3 + ch] = Math.max(0, Math.min(255, nl + (pix[q * 3 + ch] - l) * 1.35)); }
+  const out = Float32Array.from(pix); { const fgs = new Set(fg); for (let q = 0; q < N; q++) if (!fgs.has(q)) out[q * 3] = out[q * 3 + 1] = out[q * 3 + 2] = 255; }
   const keep = N >= 128 * 128 ? .08 : .25; // big pictures: almost fully flat (no mottling)
   const Kc = Math.min(N >= 128 * 128 ? 8 : 12, fg.length), cen = []; for (let k = 0; k < Kc; k++) { const q = fg[Math.floor((k + .5) * fg.length / Kc)]; cen.push([pix[q * 3], pix[q * 3 + 1], pix[q * 3 + 2]]); }
   const lab = new Int16Array(N).fill(-1);
@@ -2961,7 +2978,12 @@ function amClean(pix) { // ✨ tidy the picture: clean white background, then sn
     sum.forEach((sm, k) => { if (sm[3]) cen[k] = [sm[0] / sm[3], sm[1] / sm[3], sm[2] / sm[3]]; }); }
   for (const q of fg) { const c = cen[lab[q]]; for (let ch = 0; ch < 3; ch++) out[q * 3 + ch] = pix[q * 3 + ch] * keep + c[ch] * (1 - keep); } // flat, clean colours (less speckle), a little shading
   // colour pop: a touch more saturation and contrast
+  if (R0 >= 64) for (let pass = 0; pass < 2; pass++) { // smooth the blotches: each spot takes the most common colour around it (5×5)
+    const l2 = Int16Array.from(lab), cnt = new Int16Array(Kc);
+    for (const q of fg) { const y = (q / R0) | 0, x = q % R0; cnt.fill(0); for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) { const yy = y + dy, xx = x + dx; if (yy < 0 || xx < 0 || yy >= R0 || xx >= R0) continue; const k = lab[yy * R0 + xx]; if (k >= 0) cnt[k]++; } let bk = lab[q]; for (let k = 0; k < Kc; k++) if (cnt[k] > cnt[bk]) bk = k; l2[q] = bk; }
+    lab.set(l2); for (const q of fg) { const c = cen[lab[q]]; for (let ch = 0; ch < 3; ch++) out[q * 3 + ch] = pix[q * 3 + ch] * keep * .5 + c[ch] * (1 - keep * .5); } }
   for (const q of fg) { const r = out[q * 3], g = out[q * 3 + 1], b = out[q * 3 + 2], l = (r + g + b) / 3; for (let ch = 0; ch < 3; ch++) out[q * 3 + ch] = Math.max(0, Math.min(255, l + (out[q * 3 + ch] - l) * 1.15)); }
+  for (const q of fg) { const mn = Math.min(out[q * 3], out[q * 3 + 1], out[q * 3 + 2]); if (mn > 228) for (let ch = 0; ch < 3; ch++) out[q * 3 + ch] -= mn - 228; } // white parts inside stay solid (never see-through)
   return out;
 }
 function amCanvas(pix) { const R = Math.round(Math.sqrt(pix.length / 3)), c = document.createElement("canvas"); c.width = c.height = R; const x = c.getContext("2d"), im = x.createImageData(R, R); for (let q = 0; q < R * R; q++) { for (let ch = 0; ch < 3; ch++) im.data[q * 4 + ch] = pix[q * 3 + ch]; const w = Math.min(pix[q * 3], pix[q * 3 + 1], pix[q * 3 + 2]); im.data[q * 4 + 3] = w > 240 ? 0 : w > 220 ? 140 : 255; }
