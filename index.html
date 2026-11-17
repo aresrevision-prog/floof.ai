@@ -2938,42 +2938,43 @@ function amClean(pix) { // ✨ tidy the picture: clean white background, then sn
   for (let it = 0; it < 8; it++) { const sum = cen.map(() => [0, 0, 0, 0]);
     for (const q of fg) { let bi = 0, bd = 1e9; for (let k = 0; k < Kc; k++) { const d = (pix[q * 3] - cen[k][0]) ** 2 + (pix[q * 3 + 1] - cen[k][1]) ** 2 + (pix[q * 3 + 2] - cen[k][2]) ** 2; if (d < bd) { bd = d; bi = k; } } lab[q] = bi; const sm = sum[bi]; sm[0] += pix[q * 3]; sm[1] += pix[q * 3 + 1]; sm[2] += pix[q * 3 + 2]; sm[3]++; }
     sum.forEach((sm, k) => { if (sm[3]) cen[k] = [sm[0] / sm[3], sm[1] / sm[3], sm[2] / sm[3]]; }); }
-  for (const q of fg) { const c = cen[lab[q]]; for (let ch = 0; ch < 3; ch++) out[q * 3 + ch] = pix[q * 3 + ch] * .45 + c[ch] * .55; } // flatter colours, keeping some shading
+  for (const q of fg) { const c = cen[lab[q]]; for (let ch = 0; ch < 3; ch++) out[q * 3 + ch] = pix[q * 3 + ch] * .25 + c[ch] * .75; } // flat, clean colours (less speckle), a little shading
   // colour pop: a touch more saturation and contrast
   for (const q of fg) { const r = out[q * 3], g = out[q * 3 + 1], b = out[q * 3 + 2], l = (r + g + b) / 3; for (let ch = 0; ch < 3; ch++) out[q * 3 + ch] = Math.max(0, Math.min(255, l + (out[q * 3 + ch] - l) * 1.15)); }
   return out;
 }
 function amCanvas(pix) { const R = Math.round(Math.sqrt(pix.length / 3)), c = document.createElement("canvas"); c.width = c.height = R; const x = c.getContext("2d"), im = x.createImageData(R, R); for (let q = 0; q < R * R; q++) { for (let ch = 0; ch < 3; ch++) im.data[q * 4 + ch] = pix[q * 3 + ch]; const w = Math.min(pix[q * 3], pix[q * 3 + 1], pix[q * 3 + 2]); im.data[q * 4 + 3] = w > 240 ? 0 : w > 220 ? 140 : 255; } x.putImageData(im, 0, 0); return c; } // white → see-through
-async function artiMini(text, n = 4) {
+async function artiMini(text) { // one big, polished picture (paints 8 versions, keeps the best)
   const A = await amLoad(p => status(`🎨 Downloading Arti's own model (one time)… ${p}%`)); await loadLex(p => status(`🎨 Getting word meanings… ${p}%`));
   const low = String(text).toLowerCase(), jm = low.match(/\s+(with|wearing|and|holding|on top of|on|inside|in|plus|&)\s+|\s*\+\s*/), joiner = jm ? (jm[1] || "+") : "";
   const parts = low.split(/\s+(?:with|wearing|and|holding|on top of|on|inside|in|plus|&)\s+|\s*\+\s*/).map(x => x.replace(/^(a|an|the|some)\s+/, "").trim()).filter(Boolean).slice(0, 2);
   const layers = [];
   for (let pi = 0; pi < parts.length; pi++) {
     let words = parts[pi].split(/\s+/), colour = null; words = words.filter(w => { if (AM_COLOURS[w] && !colour && words.length > 1) { colour = AM_COLOURS[w]; return false; } return true; });
-    const subj0 = words.join(" "), subj = { hat: "top hat", hats: "top hat", cap: "billed cap", glasses: "eyeglasses", sunglasses: "sunglasses", crown: "crown", bag: "shopping bags", box: "package", basket: "basket" }[subj0] || subj0; let pics = await amPaint(A, subj, n + 2, parts.length > 1 ? ` (${pi + 1}/${parts.length}: ${subj})` : "");
+    const subj0 = words.join(" "), subj = { hat: "top hat", hats: "top hat", cap: "billed cap", glasses: "eyeglasses", sunglasses: "sunglasses", crown: "crown", bag: "shopping bags", box: "package", basket: "basket" }[subj0] || subj0; let pics = await amPaint(A, subj, 8, parts.length > 1 ? ` (${pi + 1}/${parts.length}: ${subj})` : "");
     if (pics) { const score = p => { let sat = 0, fg = 0; for (let q = 0; q < p.length; q += 3) { const mx = Math.max(p[q], p[q + 1], p[q + 2]), mn = Math.min(p[q], p[q + 1], p[q + 2]); if (mn < 218) { fg++; sat += mx - mn; } } return (fg ? sat / fg : 0) * Math.min(1, fg * 3 / (p.length / 3)); };
-      pics = pics.map(p => [score(p), p]).sort((a, b) => b[0] - a[0]).slice(0, n).map(x => x[1]); } // keep the 4 clearest of 6 if (!pics) { if (pi === 0) return null; continue; }
+      pics = pics.map(p => [score(p), p]).sort((a, b) => b[0] - a[0]).slice(0, 1).map(x => x[1]); } /* paint 8, keep the single clearest */
+    if (!pics) { if (pi === 0) return null; continue; }
     pics = pics.map(amClean);
     if (colour) pics = pics.map(p => amRecolour(p, colour));
     layers.push({ pics, subj });
   }
   if (!layers.length) return null;
-  const big = document.createElement("canvas"); big.width = big.height = 256; const bx = big.getContext("2d"); bx.imageSmoothingEnabled = true; bx.imageSmoothingQuality = "high"; bx.fillStyle = "#fff"; bx.fillRect(0, 0, 256, 256);
-  for (let k = 0; k < n; k++) {
-    const ox = (k % 2) * 128, oy = Math.floor(k / 2) * 128;
-    bx.drawImage(amCanvas(layers[0].pics[k]), ox, oy, 128, 128);
-    if (layers[1] && /^(in|inside)$/.test(joiner)) { // "cat in a bag": the bag in front, the cat peeking out of the top
-      bx.fillStyle = "#fff"; bx.fillRect(ox, oy, 128, 128); bx.drawImage(amCanvas(layers[0].pics[k]), ox + 30, oy - 4, 68, 68); bx.drawImage(amCanvas(layers[1].pics[k]), ox + 6, oy + 26, 116, 102); continue;
-    }
-    if (layers[1] && /^(on|on top of)$/.test(joiner) && !AM_WEAR.test(layers[1].subj)) { // "cat on a car": the car below, the cat sitting on it
-      bx.fillStyle = "#fff"; bx.fillRect(ox, oy, 128, 128); bx.drawImage(amCanvas(layers[1].pics[k]), ox + 8, oy + 44, 112, 84); bx.drawImage(amCanvas(layers[0].pics[k]), ox + 32, oy + 2, 64, 64); continue;
-    }
-    if (layers[1]) { const top = layers[1], c = amCanvas(top.pics[k]);
-      if (AM_WEAR.test(top.subj)) { const glasses = /glass|mask/.test(top.subj); bx.drawImage(c, ox + 32, oy + (glasses ? 34 : -6), 64, 64); } // worn on the head / face
-      else bx.drawImage(c, ox + 62, oy + 62, 64, 64); } // held / beside it
-  }
-  status("Ready"); return big.toDataURL("image/jpeg", .88); // small enough to keep in the chat
+  status("🎨 Arti Mini is finishing the picture…");
+  const S = 512, big = document.createElement("canvas"); big.width = big.height = S; const bx = big.getContext("2d");
+  const bg = bx.createRadialGradient(S / 2, S * .45, S * .1, S / 2, S / 2, S * .75); bg.addColorStop(0, "#ffffff"); bg.addColorStop(1, "#eef2f0"); bx.fillStyle = bg; bx.fillRect(0, 0, S, S); // soft studio background
+  const up = pix => { let c = amCanvas(pix); while (c.width < S) { const n = document.createElement("canvas"); n.width = n.height = c.width * 2; const x = n.getContext("2d"); x.imageSmoothingEnabled = true; x.imageSmoothingQuality = "high"; x.drawImage(c, 0, 0, n.width, n.height); c = n; } return c; }; // enlarge in smooth steps (64→128→256→512)
+  const put = (pix, x, y, w, h) => { bx.save(); bx.shadowColor = "rgba(0,0,0,.18)"; bx.shadowBlur = S * .04; bx.shadowOffsetY = S * .02; bx.drawImage(up(pix), x, y, w, h); bx.restore(); }; // with a soft shadow
+  const L0 = layers[0].pics[0], L1 = layers[1] && layers[1].pics[0], u = S / 128;
+  if (L1 && /^(in|inside)$/.test(joiner)) { put(L0, 30 * u, -4 * u, 68 * u, 68 * u); put(L1, 6 * u, 26 * u, 116 * u, 102 * u); } // "cat in a bag": peeking out of the top
+  else if (L1 && /^(on|on top of)$/.test(joiner) && !AM_WEAR.test(layers[1].subj)) { put(L1, 8 * u, 44 * u, 112 * u, 84 * u); put(L0, 32 * u, 2 * u, 64 * u, 64 * u); } // "cat on a car": sitting on it
+  else { put(L0, 6 * u, 6 * u, 116 * u, 116 * u);
+    if (L1) { if (AM_WEAR.test(layers[1].subj)) { const g = /glass|mask/.test(layers[1].subj); g ? put(L1, 34 * u, 30 * u, 60 * u, 60 * u) : put(L1, 40 * u, -10 * u, 48 * u, 48 * u); } else put(L1, 62 * u, 62 * u, 64 * u, 64 * u); } }
+  // sharpen (unsharp mask) so edges look crisp after enlarging
+  const im = bx.getImageData(0, 0, S, S), d = im.data, src = new Uint8ClampedArray(d);
+  for (let y = 1; y < S - 1; y++) for (let x = 1; x < S - 1; x++) { const o = (y * S + x) * 4; for (let ch = 0; ch < 3; ch++) { const b = (src[o - 4 + ch] + src[o + 4 + ch] + src[o - S * 4 + ch] + src[o + S * 4 + ch]) / 4; d[o + ch] = src[o + ch] + .35 * (src[o + ch] - b); } }
+  bx.putImageData(im, 0, 0);
+  status("Ready"); return big.toDataURL("image/jpeg", .9);
 }
 // 🖼 Floof's own picture server (Gemini image / Cloudflare FLUX on the free tiers) → pictures kept in this device's storage
 const FLOOF_IMG = FLOOF_API.replace(/chat$/, "image");
@@ -3058,7 +3059,7 @@ function artiDayKey() { const d = new Date(); return "arti." + d.getFullYear() +
 function artiUsed() { return ls.get(artiDayKey(), 0); }
 window.Floof.addProvider({ id: "arti", label: "🎨 Arti — free image maker (25 a day)", ph: "", nokey: true, ok: () => true, vision: false,
   help: "Arti makes pictures from your description — free, no key (FLUX model via Pollinations), or with Arti Mini, our own tiny model trained on emoji (Twemoji graphics © Twitter, CC-BY 4.0) that runs on this device. Say the style (photo, cartoon, anime, pixel art, watercolour, 3D…) and the shape (wide / tall). 25 images per person per day on this device. Pictures only — no videos.",
-  list: async () => [{ id: "arti1", name: `Arti · FLUX, best quality · ${Math.max(0, ARTI_MAX - artiUsed())} of ${ARTI_MAX} left today` }, { id: "artimini", name: "Arti Mini · Arti's own model (on-device, unlimited, 32×32)" }],
+  list: async () => [{ id: "arti1", name: `Arti · FLUX, best quality · ${Math.max(0, ARTI_MAX - artiUsed())} of ${ARTI_MAX} left today` }, { id: "artimini", name: "Arti Mini · Arti's own model (on-device, unlimited)" }],
   stream: async ({ model, msgs, onText }) => {
     const last = [...msgs].reverse().find(m => m.role === "user"); let text = String(last && last.content || "").trim();
     const done = t => { onText(t); return { in: 0, out: 0, model: model === "artimini" ? "🎨 Arti Mini" : "🎨 Arti", finish: "" }; };
@@ -3068,7 +3069,7 @@ window.Floof.addProvider({ id: "arti", label: "🎨 Arti — free image maker (2
     if (model === "artimini") { // Arti's own model: on this device, no limit
       try { text = await avishFixTypos(text, null); } catch {}
       const url = await artiMini(text); if (!url) return done("Arti Mini doesn't know those words yet — try simple things like *red apple*, *happy cat*, *rocket* or *pizza*.");
-      return done(`![${text.replace(/[\[\]()]/g, "")}](${url})\n\n🎨 *Arti Mini · Arti's own model, trained by us — 4 tiny 32×32 pictures. For big, detailed pictures switch to "Arti · FLUX" in the model menu.*`);
+      return done(`![${text.replace(/[\[\]()]/g, "")}](${url})\n\n🎨 *Arti Mini · Arti's own model, trained by us — painted 8 versions and kept the best one. For big, detailed pictures switch to "Arti · FLUX" in the model menu.*`);
     }
     const used = artiUsed(); if (used >= ARTI_MAX) return done(`You've used all **${ARTI_MAX}** of today's images. Arti refills at midnight — see you tomorrow! 🎨`);
     try { text = await avishFixTypos(text, null); } catch {} // "a dragn in spcae" → "a dragon in space"
