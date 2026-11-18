@@ -73,8 +73,11 @@ function plan(all, pro) {
   return order.slice(0, pro ? 6 : 4);
 }
 // Thinking: answers must not be empty or slow. maxOutputTokens INCLUDES thought tokens.
-function thinkCfg(m) {
+function thinkCfg(m, deep) { // deep = the app asked it to think properly first (maths, logic, "why", code, tricky questions)
   if (_noThink[m]) return null;
+  if (deep && /^gemini-2\.5-flash-lite/.test(m)) return { thinkingBudget: 1024 };
+  if (deep && /^gemini-2\.5-flash/.test(m)) return { thinkingBudget: 2048 };
+  if (deep && /^gemini-\d/.test(m) && !/^gemini-2\./.test(m)) return { thinkingLevel: "low" };
   if (/^gemini-2\.5-flash/.test(m)) return { thinkingBudget: 0 };          // 2.5 Flash / Flash-Lite: 0 = off
   if (/^gemini-2\.5-pro/.test(m)) return { thinkingBudget: 128 };          // 2.5 Pro can't turn thinking off; 128 is the minimum
   if (/^gemini-2\./.test(m)) return null;                                  // 2.0 etc: no thinking
@@ -114,7 +117,7 @@ function ipTooMany(ip) { // per network (catches lots of throwaway accounts from
 // ----- one Gemini call -----
 class GErr extends Error { constructor(msg, code, status, kind) { super(msg); this.code = code; this.status = status; this.kind = kind; } }
 async function gemini(m, key, body, ms) { // streams, so a long answer that runs out of time returns what it has instead of failing as "busy"
-  const tc = thinkCfg(m);
+  const { _deep, ...gbody } = body; body = gbody; const tc = thinkCfg(m, _deep);
   const gen = { ...body.generationConfig };
   if (tc) { gen.thinkingConfig = tc; if (!(tc.thinkingBudget === 0)) gen.maxOutputTokens = Math.min(gen.maxOutputTokens + 4096, 65536); }
   const ctl = new AbortController(), t0 = now();
@@ -450,7 +453,7 @@ export default async function handler(req, res) {
   }
   if (key) {
     const order = plan(await models(key), acc.pro);
-    const body = { contents, generationConfig: { maxOutputTokens: want } };
+    const body = { contents, generationConfig: { maxOutputTokens: want }, _deep: b.think === "deep" };
     if (sys.trim()) body.systemInstruction = { parts: [{ text: sys }] };
     for (const m of order) {
       if (stop) break;

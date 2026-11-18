@@ -784,6 +784,10 @@ const FLOOF34 = `You are Floof AI 3.4 by MagicWinter Studio — a careful, exper
 4. For school/GCSE work: explain the method, use correct terminology, and show working like an examiner wants.
 5. Never invent sources, quotes, numbers or links.
 6. When notes or web research are provided, base your facts on them first (they are fresher than your memory); if they disagree with what you know, say so briefly.`;
+function floofHard(text) { // 🧠 questions worth thinking properly about first (a bit slower, much more accurate)
+  const t = String(text || ""), low = t.toLowerCase();
+  return t.length > 260 || /```|\d\s*[-+*/^×÷=<>]\s*\d|\b\d+(\.\d+)?\s*(%|cm|mm|km|kg|g|m\/s|mph|°)|\b(solve|calculate|work out|prove|derive|simplify|factori[sz]e|expand|differentiate|integrate|equation|probability|percentage|ratio|algebra|riddle|puzzle|logic|compare|evaluate|analy[sz]e|essay|explain why|why does|why do|why is|why are|how does|how do|step by step|debug|code|program|function|algorithm|translate)\b/.test(low);
+}
 const SYSTEM = "You are Floof AI, the friendly, sharp assistant made by MagicWinter Studio. Be clear, concise and helpful. Use markdown code blocks for code. If you are unsure, say so instead of guessing.";
 const KEY = "mwai.chats.v1", MKEY = "mwai.model", CKEY = "mwai.cache", DKEY = "mwai.docs.v1", SKEY = "mwai.starter";
 const LOGO = document.querySelector(".brand .logo").innerHTML;
@@ -2369,7 +2373,7 @@ window.Floof.addProvider({ id: "floof", label: "☁ Floof AI 3.4 — free, no ke
     return [{ id: "auto", name: isPro() ? "⭐ Floof AI 3.4 Pro (auto)" : "Floof AI 3.4 (auto)" }];
   },
   stream: async ({ sys, msgs, onText, signal }) => {
-    const j = await postJSON(FLOOF_API, { token: mwToken(), system: FLOOF34 + "\n\n" + sys, messages: msgs, maxTokens: 8192 }, signal, "floof");
+    const j = await postJSON(FLOOF_API, { token: mwToken(), system: FLOOF34 + "\n\n" + sys, messages: msgs, maxTokens: 8192, think: floofHard((msgs.filter(m => m.role === "user").pop() || {}).content) ? "deep" : "" }, signal, "floof");
     if (j.text) onText(j.text); const u = j.usage || {};
     return { in: u.promptTokenCount || 0, out: u.candidatesTokenCount || 0, model: "Floof AI 3.4 · " + (j.backup ? "backup brain" + (j.via && !/^ares/i.test(j.via) ? " · " + j.via : " (Ares)") : (j.via || "")) + (j.pro ? " ⭐" : ""), finish: j.finish || "" };
   } });
@@ -2710,7 +2714,7 @@ async function avishDecide(n, R, lists, signal) { // ⚖ two deciders: pick the 
 ${n ? "Choose by which drafts best give the user what they want." : "Choose by which drafts make the most sense and are most likely true."}
 For each sentence slot, pick ONE numbered draft, then fix only its grammar: you may change word order, word endings and small words (the, a, of, is, and, to…) and remove words that don't fit. Do NOT add new facts, ideas or content words.
 Reply with ONLY JSON: {"picks":[one number per sentence slot],"fixed":[one corrected sentence per slot]}`;
-  const user = `Question: ${R.text}\n` + lists.map((l, k) => `Sentence ${k + 1} drafts:\n` + l.map((d, i) => `${i + 1}) ${d}`).join("\n")).join("\n");
+  const user = `Question: ${R.text}\n` + (R.facts ? `FACTS (true — prefer drafts that agree, reject ones that contradict): ${R.facts}\n` : "") + lists.map((l, k) => `Sentence ${k + 1} drafts:\n` + l.map((d, i) => `${i + 1}) ${d}`).join("\n")).join("\n");
   const r = await avishAsk(sys, user, signal, 300); const m = r && r.text.match(/\{[\s\S]*\}/); if (!m) return null;
   let j; try { j = JSON.parse(m[0]); } catch { return null; }
   const out = lists.map((l, k) => { const p = Math.min(l.length, Math.max(1, parseInt((j.picks || [])[k]) || 1)) - 1, f = String((j.fixed || [])[k] || "").trim(), ok = f && avishKept(f, l[p]) >= .75 && f.length < l[p].length * 1.6 + 20; return { pick: p, text: ok ? f : l[p], fixed: !!ok }; });
@@ -2723,7 +2727,7 @@ async function avishJudge(R, a, b, signal) { // 👩‍⚖️ the judge: only ca
 async function avishTeam(M, text, facts, hist, onText, signal) {
   const log = [];
   // 👀 Reader
-  const R = avishRead(text, hist); log.push(`👀 Reader: ${R.kind}${R.followUp ? " (follow-up)" : ""}`);
+  const R = avishRead(text, hist); R.facts = facts ? String(facts).replace(/\s+/g, " ").slice(0, 900) : ""; log.push(`👀 Reader: ${R.kind}${R.followUp ? " (follow-up)" : ""}`);
   // 🧠🧠 Interpreters (in parallel)
   status("🧪 Avish team: interpreting…");
   const I = (await Promise.all([0, 1].map(n => avishInterpret(n, R, signal, facts).catch(e => { if (e.name === "AbortError") throw e; return null; })))); if (signal && signal.aborted) return true;
@@ -2756,12 +2760,12 @@ async function avishTeam(M, text, facts, hist, onText, signal) {
   let nC = 0;
   try {
     const stem = w => w.toLowerCase().replace(/(ies|es|s|ed|ing|ly|er|est)$/, "");
-    const allowed = new Set([...areaWords, ...topics, ...(R.text.toLowerCase().match(/[a-z']+/g) || []), ..."because start started began begin cause caused make made get got take took give gave come came go went see saw know knew think use used find found want need call called many much more most some other others such only also often usually very well each every all both lot lots kind way thing things people time part one two first new old good bad big small long little right same different help helps keep kept become became led lead happen happened".split(" ")].map(stem)); // + everyday words any sentence needs
+    const allowed = new Set([...areaWords, ...topics, ...(R.text.toLowerCase().match(/[a-z']+/g) || []), ...(String(facts || "").toLowerCase().match(/[a-z']+/g) || []).slice(0, 400), ..."because start started began begin cause caused make made get got take took give gave come came go went see saw know knew think use used find found want need call called many much more most some other others such only also often usually very well each every all both lot lots kind way thing things people time part one two first new old good bad big small long little right same different help helps keep kept become became led lead happen happened".split(" ")].map(stem)); // + everyday words any sentence needs
     const r = await avishAsk(`You are Drafter C in Avish AI's team (made by AdminAT). Write clear, simple, fluent English.
 For the question, write 5 different versions of sentence 1 (a direct answer), 5 versions of sentence 2 (one extra useful detail)${NS > 2 ? " and 5 versions of sentence 3 (an example or reason)" : ""}. Each sentence 6-16 words.
-RULE: every noun, verb, adjective and adverb MUST come from the WORD LIST (any form, e.g. plural or past tense is fine) or be a very common everyday word (start, cause, make, many, people…); words earlier in the list are closer to the topic's centre, so prefer them. Small words (the, a, of, is, was, and, to, in, it, they, can, by…) are free. Be as correct as the words allow.
+RULE: every noun, verb, adjective and adverb MUST come from the WORD LIST (any form, e.g. plural or past tense is fine) or be a very common everyday word (start, cause, make, many, people…); words earlier in the list are closer to the topic's centre, so prefer them. Words in the FACTS are also allowed. Small words (the, a, of, is, was, and, to, in, it, they, can, by…) are free. Every sentence must be TRUE: when FACTS are given, take the facts from them; never guess numbers, dates or names.
 Reply with ONLY JSON: {"s1":["…5 sentences"],"s2":["…5 sentences"]${NS > 2 ? ',"s3":["…5 sentences"]' : ""}}`,
-      `Question: ${R.text}${I1 && I1.opener ? `\nSuggested starts: "${I1.opener}…" and "${I1.opener2}…"` : ""}\nWORD LIST: ${areaWords.join(", ")}`, signal, 700);
+      `Question: ${R.text}${I1 && I1.opener ? `\nSuggested starts: "${I1.opener}…" and "${I1.opener2}…"` : ""}${facts ? "\nFACTS (from research — true): " + String(facts).replace(/\s+/g, " ").slice(0, 1200) : ""}\nWORD LIST: ${areaWords.join(", ")}`, signal, 700);
     const m = r && r.text.match(/\{[\s\S]*\}/); const j = m ? JSON.parse(m[0]) : {};
     [j.s1, j.s2, j.s3].slice(0, NS).forEach((arr, k) => {
       const good = (Array.isArray(arr) ? arr : []).map(x => String(x).replace(/\s+/g, " ").trim()).filter(x => {
@@ -3062,20 +3066,25 @@ async function artiMini(text) { // one big, polished picture (paints 8 versions,
   const REL = /\s+(on top of|in front of|next to|inside|beside|behind|under|underneath|below|beneath|above|over|wearing|holding|with|and|on|in|plus|&)\s+|\s*\+\s*/;
   const low = String(text).toLowerCase().replace(/\b(make|draw|paint|create|show|me|picture|image|pic)\b/g, " ").replace(/\s+/g, " ").trim(), parts = [], rels = [];
   const SC = amSceneParse(low);
+  { const one = w => w.replace(/ies$/, "y").replace(/(ch|sh|x|ss)es$/, "$1").replace(/([^s])s$/, "$1"); // 🔢 counts: "three cats" → cat and cat and cat
+    SC.rest = SC.rest.replace(/\b(two|2|a pair of|pair of|a couple of|couple of|three|3|several|lots of|many|a few|few)\s+((?:(?:big|small|tiny|little|huge|giant|large|baby)\s+)?(?:[a-z]+\s+)?[a-z]+?s)\b/, (_, n, w) => { const k = /two|2|pair|couple/.test(n) ? 2 : 3, ws = w.split(" "); ws[ws.length - 1] = one(ws[ws.length - 1]); return Array(k).fill(ws.join(" ")).join(" and "); }); }
   { let rest = SC.rest; for (let k = 0; k < 3; k++) { const m = rest.match(REL); if (!m || k === 2) { parts.push(rest); break; } parts.push(rest.slice(0, m.index)); rels.push((m[1] || "+").trim()); rest = rest.slice(m.index + m[0].length); } }
   for (let k = 0; k < parts.length; k++) parts[k] = parts[k].replace(/^(a|an|the|some|two|one)\s+/, "").trim();
   while (parts.length && !parts.at(-1)) { parts.pop(); rels.pop(); }
   const joiner = rels[0] || "";
   const layers = [];
   for (let pi = 0; pi < parts.length; pi++) {
-    let words = parts[pi].split(/\s+/), colour = null; words = words.filter(w => { if (AM_COLOURS[w] && !colour && words.length > 1) { colour = AM_COLOURS[w]; return false; } return true; });
+    let words = parts[pi].split(/\s+/), colour = null, size = 1; words = words.filter(w => { if (AM_COLOURS[w] && !colour && words.length > 1) { colour = AM_COLOURS[w]; return false; } const z = { big: 1.25, large: 1.25, huge: 1.4, giant: 1.4, massive: 1.4, small: .7, little: .7, tiny: .55, baby: .65, mini: .6 }[w]; if (z && words.length > 1) { size = z; return false; } return true; });
+    const twin = layers.find(L => L.key === words.join(" ") + "|" + colour); // same thing again (from a count) → reuse it, mirrored, instead of painting it again
+    if (twin) { const src = twin.pics[0], R0 = Math.round(Math.sqrt(src.length / 3)), m = new Float32Array(src.length); for (let y = 0; y < R0; y++) for (let x = 0; x < R0; x++) for (let ch = 0; ch < 3; ch++) m[(y * R0 + x) * 3 + ch] = src[(y * R0 + (R0 - 1 - x)) * 3 + ch]; m.pal = src.pal; m.size = size; layers.push({ pics: [layers.length % 2 ? m : src], subj: twin.subj, key: twin.key }); continue; }
     const subj0 = words.join(" "), subj = { hat: "top hat", hats: "top hat", cap: "billed cap", glasses: "eyeglasses", sunglasses: "sunglasses", crown: "crown", bag: "shopping bags", box: "package", basket: "basket" }[subj0] || subj0; let pics = await amPaint(A, subj, 8, parts.length > 1 ? ` (${pi + 1}/${parts.length}: ${subj})` : "");
     if (pics) { const score = p => { let sat = 0, fg = 0; for (let q = 0; q < p.length; q += 3) { const mx = Math.max(p[q], p[q + 1], p[q + 2]), mn = Math.min(p[q], p[q + 1], p[q + 2]); if (mn < 218) { fg++; sat += mx - mn; } } return (fg ? sat / fg : 0) * Math.min(1, fg * 3 / (p.length / 3)); };
       pics = pics.map(p => [score(p), p]).sort((a, b) => b[0] - a[0]).slice(0, 1).map(x => x[1]); } /* paint 8, keep the single clearest */
     if (!pics) { if (pi === 0) return null; continue; }
     pics = pics.map(amClean);
     if (colour) pics = pics.map(p => amRecolour(p, colour));
-    layers.push({ pics, subj });
+    pics.forEach(p => p.size = size);
+    layers.push({ pics, subj, key: words.join(" ") + "|" + colour });
   }
   if (!layers.length && !SC.on) return null;
   status("🎨 Arti Mini is finishing the picture…");
@@ -3128,6 +3137,7 @@ async function artiMini(text) { // one big, polished picture (paints 8 versions,
     draws = (draws || []).map(([pix, x, y, w, h]) => [pix, 64 + (x - 64) * k, float ? 64 + (y - 64) * k : 121 - (128 - y) * k, w * k, h * k]);
   }
   if (!layers.length) draws = [];
+  draws = draws.map(([pix, x, y, w, h]) => { const z = pix.size || 1; if (z === 1) return [pix, x, y, w, h]; let X = x + w * (1 - z) / 2, Y = y + h * (1 - z), Wd = Math.min(w * z, 124), Hd = Math.min(h * z, 124); X = Math.max(2, Math.min(126 - Wd, X)); Y = Math.max(2, Math.min(126 - Hd, Y)); return [pix, X, Y, Wd, Hd]; }); // kept inside the picture // big/small: grow or shrink from the feet
   for (const [pix, x, y, w, h] of draws) put(pix, x * u, y * u, w * u, h * u);
   if (SC.on) amSceneWeather(bx, S, SC);
   // sharpen (unsharp mask) so edges look crisp after enlarging
@@ -3321,7 +3331,14 @@ async function conBrain1() {
 }
 let _conBrain = null;
 function conBrain() { if (window.__constructEngine) return Promise.resolve(window.__constructEngine); if (engine && /Coder/.test(String(loadedModel))) return Promise.resolve(engine); if (!_conBrain) _conBrain = conBrain1().finally(() => { _conBrain = null; }); return _conBrain; }
-async function conAsk(messages, { onDelta, maxTokens = 3000, temperature = .2, signal } = {}) { // device Qwen-Coder first, Floof Cloud only as a fallback
+async function conAsk(messages, { onDelta, maxTokens = 3000, temperature = .2, signal } = {}) { // Floof Cloud first (a far bigger brain that thinks first), Qwen-Coder on this device when offline / cloud busy
+  if (!window.__constructEngine && ACCOUNT_KIND === "mw" && mwToken() && navigator.onLine !== false && !cloudBad) {
+    try {
+      const sys = messages[0].role === "system" ? messages[0].content : "", rest = messages.filter(m => m.role !== "system");
+      const j = await postJSON(FLOOF_API, { token: mwToken(), system: sys, messages: rest, maxTokens: Math.max(maxTokens, 4096), think: "deep" }, signal, "floof");
+      if (j.text && j.text.trim()) { if (onDelta) onDelta(j.text); return { text: j.text, via: "Floof Cloud" }; }
+    } catch (e) { if (signal && signal.aborted) throw e; console.warn("Construct: cloud busy, using this device", e); }
+  }
   const eng = await conBrain().catch(() => null);
   if (eng && !(signal && signal.aborted)) {
     try {
@@ -3335,8 +3352,8 @@ async function conAsk(messages, { onDelta, maxTokens = 3000, temperature = .2, s
   if (signal && signal.aborted) return null;
   if (ACCOUNT_KIND === "mw" && mwToken() && navigator.onLine !== false) {
     const sys = messages[0].role === "system" ? messages[0].content : "", rest = messages.filter(m => m.role !== "system");
-    const j = await postJSON(FLOOF_API, { token: mwToken(), system: sys, messages: rest, maxTokens: Math.max(maxTokens, 4096) }, signal, "floof");
-    if (j.text && j.text.trim()) { if (onDelta) onDelta(j.text); return { text: j.text, via: "Floof Cloud (this device can't run Qwen-Coder)" }; }
+    const j = await postJSON(FLOOF_API, { token: mwToken(), system: sys, messages: rest, maxTokens: Math.max(maxTokens, 4096), think: "deep" }, signal, "floof");
+    if (j.text && j.text.trim()) { if (onDelta) onDelta(j.text); return { text: j.text, via: "Floof Cloud" }; }
   }
   return null;
 }
@@ -3365,7 +3382,7 @@ function conCheck(text, R) { // 🔍 the checker: fast checks in code, no AI
   return [...new Set(errs)].slice(0, 6);
 }
 window.Floof.addProvider({ id: "construct", label: "🏗 Construct AI 1.4 — by AdminHF (coding)", ph: "", nokey: true, ok: () => true, vision: false,
-  help: "Construct AI 1.4 by AdminHF — a coding team built from our AIs: 👀 reader (fixes typos, spots the language) → 🗺 planner → ⌨ coder → 🔍 checker (syntax checks) → 🔧 fixer → 🧐 reviewer (logic bugs), then Floof's Auto-test runs the program for real and sends any crash back to be fixed (up to 3 rounds). Brain: Qwen2.5-Coder on this device (~1.2 GB, downloaded once); Floof Cloud only if this device can't run it.",
+  help: "Construct AI 1.4 by AdminHF — a coding team built from our AIs: 👀 reader (fixes typos, spots the language) → 🗺 planner → ⌨ coder → 🔍 checker (syntax checks) → 🔧 fixer → 🧐 reviewer (logic bugs), then Floof's Auto-test runs the program for real and sends any crash back to be fixed (up to 3 rounds). Brain: Floof Cloud (thinks before coding); Qwen2.5-Coder on this device when offline.",
   list: async () => [{ id: "construct1", name: "Construct AI 1.4" }],
   stream: async ({ msgs, onText, signal }) => {
     const last = [...msgs].reverse().find(m => m.role === "user"); let text = String(last && last.content || "");
