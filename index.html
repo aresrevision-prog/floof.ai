@@ -3225,6 +3225,24 @@ async function artiBakeMeme(url, cap) { // draws the words onto the picture for 
 const ARTI_MAX = 25;
 const ARTI_BAD = /\b(nude|naked|nsfw|porn|sex|sexy|sexual|explicit|erotic|hentai|lingerie|underwear|bikini|topless|breasts?|genitals?|gore|gory|beheaded|dismember|corpse|blood ?bath|suicide|self[- ]harm|swastika|nazi|terroris|bomb making|weapon blueprint)\w*/i;
 const ARTI_KID = /\b(child|children|kid|kids|boy|girl|teen|teenager|minor|baby|toddler|schoolgirl|schoolboy|young)\b/i;
+// 🧠 Arti's art director: Floof Cloud reads the whole request (and earlier pictures in this chat, so "now make it blue" works),
+// then writes (1) a rich, exact prompt for the big painter and (2) a short plain version Arti Mini's word parser understands. Falls back silently.
+async function artiPlan(text, msgs) {
+  if (ACCOUNT_KIND !== "mw" || !mwToken() || navigator.onLine === false || cloudBad) return null;
+  const prev = msgs.slice(0, -1).slice(-6).map(m => m.role === "user" ? "USER: " + String(m.content).slice(0, 300) : (String(m.content).match(/!\[([^\]]{0,300})\]/) ? "PICTURE MADE: " + String(m.content).match(/!\[([^\]]{0,300})\]/)[1].replace(/^(arti9|meme):/, "") : "")).filter(Boolean).join("\n");
+  const sys = `You are the art director for an image generator. Turn the user's request into JSON only: {"prompt": "...", "mini": "...", "edit": true|false}.
+"prompt": one rich English description for a top image model (max 70 words): the exact subject(s) with the exact COUNT of each, colours, sizes, what each thing is doing and WHERE it is (left/right/front/behind/on/under), the setting, time of day, weather, lighting, camera angle and art style. Keep every detail the user gave; add only sensible details that fit. If the user names a style (photo, cartoon, anime, pixel art, watercolour, 3D…) keep it; otherwise choose one that suits.
+"mini": the same picture in very plain words for a tiny emoji-sticker model, using only simple common nouns, this pattern: "[count] [size] [colour] thing [relation] [size] [colour] thing [relation] thing in the [place] at [time] in the [weather]". Relations: on, in, under, behind, in front of, next to, holding, wearing. Places: beach, space, underwater, snow, forest, city, desert, mountains, park. Times: day, sunset, night. Weather: rain, storm, snowing, cloudy, sunny. Max 3 things. Swap unusual things for the nearest simple noun (puppy→dog, automobile→car, kitty→cat). Leave out anything else.
+"edit": true if the request changes the previous picture (e.g. "make it blue", "now at night", "add a hat") — then BOTH texts must describe the whole changed picture.
+Never add anything unsafe, violent or adult. Words to be written on the picture are handled separately: do not include text or captions.`;
+  try {
+    const j = await Promise.race([postJSON(FLOOF_API, { token: mwToken(), system: sys, messages: [{ role: "user", content: (prev ? "Earlier in this chat:\n" + prev + "\n\n" : "") + "Request: " + text }], maxTokens: 600 }, null, "floof"), new Promise((_, no) => setTimeout(() => no(new Error("slow")), 12000))]);
+    const m = String(j && j.text || "").match(/\{[\s\S]*\}/); if (!m) return null;
+    const o = JSON.parse(m[0]), P = String(o.prompt || "").replace(/\s+/g, " ").trim().slice(0, 700), M = String(o.mini || "").toLowerCase().replace(/[^a-z0-9 ]/g, " ").replace(/\s+/g, " ").trim().slice(0, 160);
+    if (!P || ARTI_BAD.test(P) || ARTI_BAD.test(M)) return null;
+    return { prompt: P, mini: M, edit: !!o.edit };
+  } catch (e) { return null; }
+}
 function artiDayKey() { const d = new Date(); return "arti." + d.getFullYear() + "-" + (d.getMonth() + 1) + "-" + d.getDate(); }
 function artiUsed() { return ls.get(artiDayKey(), 0); }
 window.Floof.addProvider({ id: "arti", label: "🎨 Arti — free image maker (25 a day)", ph: "", nokey: true, ok: () => true, vision: false,
@@ -3236,11 +3254,13 @@ window.Floof.addProvider({ id: "arti", label: "🎨 Arti — free image maker (2
     if (/\b(who|what) (are|is) (you|u|arti)\b|\byour name\b/i.test(text)) return done("I'm **Arti** 🎨, Floof AI's image maker. Describe a picture — the subject, the style (photo, cartoon, anime, pixel art, watercolour, 3D) and the shape (wide or tall) — and I'll paint it. I can make 25 images per person per day, for free.");
     if (/\b(video|animation|animate|movie|clip|gif)\b/i.test(text) && !/\b(picture|image|poster|thumbnail|cover)\b/i.test(text)) return done("I can only make **pictures**, not videos — free video AI isn't available without paying. I can make a still image of the scene instead: just describe it.");
     if (ARTI_BAD.test(text) || (ARTI_KID.test(text) && /\b(hot|sexy|kiss|date|dating|romantic|love|bed|bath|swim)\w*/i.test(text))) return done("I can't make that picture. Try something else — a scene, a character, a poster, a landscape or a cool object.");
-    let miniNote = "";
+    let miniNote = "", planned = null;
     if (model === "artimini") { // Arti's own model: on this device, no limit
       try { text = await avishFixTypos(text, null); } catch {}
-      const url = await artiMini(text);
-      if (url) return done(`![${text.replace(/[\[\]()]/g, "")}](${url})\n\n🎨 *Arti Mini · Arti's own model, trained by us — painted 8 versions and kept the best one. For big, detailed pictures switch to "Arti · FLUX" in the model menu.*`);
+      status("🧠 Arti is working out the picture…");
+      const plan = await artiPlan(text, msgs); if (plan) planned = plan;
+      const url = await artiMini(plan && plan.mini ? plan.mini : text);
+      if (url) return done(`![${(plan && plan.mini || text).replace(/[\[\]()]/g, "")}](${url})\n\n🎨 *Arti Mini · Arti's own model, trained by us — painted 8 versions and kept the best one. For big, detailed pictures switch to "Arti · FLUX" in the model menu.*`);
       miniNote = "\n\n*(Arti Mini hasn't learned how to draw that yet, so the main Arti painter made it instead.)*"; // fall through to the big painter
     }
     const used = artiUsed(); if (used >= ARTI_MAX) return done(`You've used all **${ARTI_MAX}** of today's images. Arti refills at midnight — see you tomorrow! 🎨`);
@@ -3252,11 +3272,13 @@ window.Floof.addProvider({ id: "arti", label: "🎨 Arti — free image maker (2
       .replace(/^\s*(please\s+)?(can you\s+|could you\s+)?(make|draw|create|generate|paint|show)( me)?( an?| the)?( image| picture| pic| drawing)?( of)?\s*/i, "").replace(/\s+/g, " ").replace(/^[\s,.]+|[\s,.]+$/g, "").slice(0, 600) || text;
     const wide = /\b(wide|landscape|banner|wallpaper for (pc|laptop|desktop)|youtube thumbnail|16:9)\b/i.test(text), tall = /\b(tall|portrait|phone wallpaper|poster|9:16)\b/i.test(text);
     const [w, h] = wide ? [1536, 864] : tall ? [896, 1536] : [1280, 1280];
-    const style = meme ? ", bold cartoon meme style, vivid colours, sharp clean lines, centred subject, plain background, no words, no captions" : ", high quality, highly detailed, sharp focus";
-    status("🔎 Arti's 3 researchers are looking it up…");
-    const R = await artiResearch(prompt).catch(() => null);
+    const style = meme ? ", bold cartoon meme style, vivid colours, sharp clean lines, centred subject, plain background, no words, no captions" : ", high quality, highly detailed, sharp focus, no text";
+    status("🧠 Arti is planning the picture + 🔎 researching it…");
+    let [plan, R] = await Promise.all([planned ? Promise.resolve(planned) : artiPlan(prompt, msgs), artiResearch(prompt).catch(() => null)]);
+    if (plan && plan.edit) R = null; // changing the last picture: the research was about the change, not the thing
+    if (plan && plan.prompt) prompt = plan.prompt.slice(0, 300); // the picture's label = the full planned description (so the next "now make it…" knows it)
     const extra = R && R.details ? `. Accurate details: ${R.details}` : "";
-    const fullPrompt = (prompt + extra).slice(0, 900) + style, aspect = wide ? "16:9" : tall ? "9:16" : "1:1";
+    const fullPrompt = ((plan && plan.prompt ? plan.prompt : prompt) + extra).slice(0, 1100) + style, aspect = wide ? "16:9" : tall ? "9:16" : "1:1";
     const cap = quoted.join(" | ").replace(/[\[\]()]/g, "").toUpperCase();
     const cost = grid ? 3 : 1; if (used + cost > ARTI_MAX) return done(`That needs ${cost} of your daily images and you have ${ARTI_MAX - used} left — try a single picture instead.`);
     const rs = R && R.n ? `\n🔎 *Researched first:* ${R.url ? `[${R.title}](${R.url})` : R.title}${R.details ? " — used its description of how it looks" : ""}` : "";
